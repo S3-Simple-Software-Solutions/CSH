@@ -594,6 +594,44 @@ async function sendParkingQrEmail({ to, reserva }) {
   });
 }
 
+function paymentReceiptEmailHtml({ reserva, recibo }) {
+  return `<!doctype html>
+<html lang="es"><body style="margin:0;background:#f7f1df;padding:24px;font-family:Arial,sans-serif;color:#1c1713">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e6dcc3;border-radius:10px;overflow:hidden">
+    <div style="background:#d62828;color:#fff;padding:22px 28px;text-align:center">
+      <h1 style="margin:0;font-size:24px;letter-spacing:.04em">Club Sport Herediano</h1>
+      <p style="margin:6px 0 0;color:#ffe7e7">Recibo de parqueo</p>
+    </div>
+    <div style="padding:26px 28px">
+      <p style="font-size:15px;line-height:1.55;margin:0 0 18px">Tu pago fue registrado correctamente.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 18px">
+        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Transaccion</td><td style="padding:8px">${escapeHtml(recibo.transaccion)}</td></tr>
+        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Espacio</td><td style="padding:8px">${escapeHtml(reserva.espacioId)}</td></tr>
+        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Placa</td><td style="padding:8px">${escapeHtml(reserva.placa)}</td></tr>
+        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Tiempo cobrado</td><td style="padding:8px">${recibo.horas}h</td></tr>
+        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Total</td><td style="padding:8px">CRC ${recibo.monto}</td></tr>
+      </table>
+      <p style="font-size:13px;color:#6b6254;margin:0">El espacio quedo liberado despues del pago.</p>
+    </div>
+    <div style="padding:14px 28px;background:#13100e;color:#aa9d84;text-align:center;font-size:12px">
+      Mensaje automatico. No respondas a este correo.
+    </div>
+  </div>
+</body></html>`;
+}
+
+async function sendPaymentReceiptEmail({ to, reserva, recibo }) {
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    throw new Error('Correo invalido');
+  }
+  await makeMailTransport().sendMail({
+    from: MAIL_FROM,
+    to,
+    subject: `Recibo de parqueo ${reserva.espacioId} - Club Sport Herediano`,
+    html: paymentReceiptEmailHtml({ reserva, recibo }),
+  });
+}
+
 async function handleParqueoPublico(req, res, urlPath, requestUrl) {
   const sub = urlPath.slice(PARQUEO_API_PUBLICA.length) || '/';
   const data = loadParqueo();
@@ -713,12 +751,16 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
   if (req.method === 'POST' && sub === '/consulta') {
     const { reserva, error } = buscarPorPlaca();
     if (error) return fail(404, error);
+    const { horas, monto } = montoDe(reserva);
     return sendJson(res, 200, {
       ok: true,
       info: {
         espacioId: reserva.espacioId, placa: reserva.placa, estado: reserva.estado,
         inicio: reserva.inicio, fin: reserva.fin,
         correo: maskedReservaEmail(reserva),
+        horas,
+        monto,
+        tarifa: TARIFA_HORA,
       },
     });
   }
@@ -749,21 +791,53 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
   if (req.method === 'POST' && sub === '/pagar') {
     const { reserva, error } = buscarPorPlaca();
     if (error) return fail(404, error);
+    const email = reservaEmail(reserva);
+    if (!email) return fail(409, 'La reserva no tiene correo asociado para enviar el recibo');
+    const pago = body.pago || {};
+    const cardNumber = String(pago.cardNumber || '').replace(/\D/g, '');
+    const exp = String(pago.exp || '').trim();
+    const cvv = String(pago.cvv || '').replace(/\D/g, '');
+    const name = String(pago.name || '').trim();
+    if (name.length < 3) return fail(400, 'Ingresa el nombre del tarjetahabiente');
+    if (cardNumber.length < 13 || cardNumber.length > 19) return fail(400, 'Numero de tarjeta invalido');
+    if (!/^\d{2}\/\d{2}$/.test(exp)) return fail(400, 'Fecha de expiracion invalida');
+    if (cvv.length < 3 || cvv.length > 4) return fail(400, 'CVV invalido');
+    if (cardNumber.endsWith('0000')) return fail(402, 'La transaccion fue rechazada por el emisor');
     const { horas, monto } = montoDe(reserva);
+    const recibo = {
+      espacioId: reserva.espacioId,
+      placa: reserva.placa,
+      horas,
+      monto,
+      transaccion: `CSH-PAY-${Date.now().toString(36).toUpperCase()}`,
+      correo: maskedReservaEmail(reserva),
+    };
+    try {
+      await sendPaymentReceiptEmail({ to: email, reserva, recibo });
+    } catch (err) {
+      console.error(`[mail] Error enviando recibo a ${email}: ${err.message}`);
+      return fail(502, 'No se pudo enviar el recibo. No se realizo el cobro');
+    }
     reserva.estado = 'finalizada';
+    reserva.pago = {
+      transaccion: recibo.transaccion,
+      monto,
+      horas,
+      timestamp: new Date().toISOString(),
+      metodo: `****${cardNumber.slice(-4)}`,
+    };
     const espacio = data.espacios.find((e) => e.id === reserva.espacioId);
     if (espacio) { espacio.estado = 'disponible'; espacio.reservaId = null; }
     logEvento(data, 'pago', {
       espacioId: reserva.espacioId,
       user: { id: null, name: 'Invitado' },
       placa: reserva.placa,
-      notas: `CRC ${monto} (${horas}h) — pago y salida`,
+      notas: `CRC ${monto} (${horas}h) - ${recibo.transaccion}`,
     });
     saveParqueo(data);
-    const recibo = { espacioId: reserva.espacioId, placa: reserva.placa, horas, monto };
     return sendJson(res, 200, {
       ok: true,
-      recibo: { ...recibo, walletUrl: walletPayload(recibo).url },
+      recibo,
     });
   }
 
@@ -1344,6 +1418,22 @@ function parqueoPublicoHtml() {
   .pq-reserva-grid span { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.12em; }
   .pq-security-note { margin:14px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
   .pq-ok-msg { display:none; margin-top:12px; color:#7ee2a0; font-size:13px; }
+  .pq-total { margin:14px 0 0; padding:12px; border:1px solid rgba(201,169,97,.35); border-radius:4px;
+    display:flex; justify-content:space-between; gap:14px; color:var(--muted); }
+  .pq-total strong { color:var(--gold); font-size:20px; }
+  #pq-pay-back { position:fixed; inset:0; z-index:70; display:none; place-items:center; background:rgba(5,4,3,.72); padding:18px; }
+  #pq-pay-back.open { display:grid; }
+  .pq-pay-modal { width:min(460px, 100%); background:var(--surface-2); border:1px solid rgba(201,169,97,.45);
+    border-radius:6px; padding:22px; max-height:calc(100vh - 36px); overflow:auto; }
+  .pq-pay-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .pq-pay-head h3 { margin:0; font-family:Impact, Haettenschweiler, sans-serif; font-size:28px; text-transform:uppercase; }
+  .pq-pay-x { border:0; background:transparent; color:var(--muted); font-size:24px; cursor:pointer; line-height:1; }
+  .pq-pay-summary { margin:14px 0; border:1px solid var(--line); border-radius:4px; padding:12px; color:var(--muted); font-size:13px; }
+  .pq-pay-summary strong { color:var(--paper); }
+  .pq-pay-row { display:grid; grid-template-columns:1fr 120px; gap:10px; }
+  #pq-pay-msg { display:none; margin-top:12px; border-radius:4px; padding:10px 12px; font-size:13px; }
+  #pq-pay-msg.ok { display:block; color:#7ee2a0; border:1px solid rgba(22,163,74,.45); background:rgba(22,163,74,.12); }
+  #pq-pay-msg.err { display:block; color:#ffd0d0; border:1px solid rgba(214,40,40,.5); background:rgba(214,40,40,.12); }
   .pq-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
   .pq-tabs { display:flex; gap:8px; }
   .pq-tab { min-height:38px; padding:0 18px; border-radius:4px; border:1px solid var(--line);
@@ -1450,6 +1540,7 @@ function parqueoPublicoHtml() {
     </div>
     <div id="pq-croquis"><p style="color:var(--muted)">Cargando croquis...</p></div>
     <div id="pq-form-back"><div class="pq-form-card" id="pq-form"></div></div>
+    <div id="pq-pay-back"><div class="pq-pay-modal" id="pq-pay-modal"></div></div>
   </main>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
@@ -1458,6 +1549,7 @@ function parqueoPublicoHtml() {
     var TARIFA = ${TARIFA_HORA};
     var ESPACIOS = [];
     var piso = 1;
+    var reservaActual = null;
 
     function $(sel) { return document.querySelector(sel); }
     function esc(v) {
@@ -1470,6 +1562,7 @@ function parqueoPublicoHtml() {
       var d = new Date(iso);
       return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     }
+    function money(n) { return '&#8353;' + Number(n || 0).toLocaleString('es-CR'); }
     function api(method, ruta, body) {
       return fetch(API + ruta, {
         method: method,
@@ -1596,6 +1689,53 @@ function parqueoPublicoHtml() {
     formBack.addEventListener('click', function (ev) { if (ev.target === formBack) cerrarForm(); });
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') cerrarForm(); });
 
+    var payBack = $('#pq-pay-back');
+    var payModal = $('#pq-pay-modal');
+    function showPayMsg(text, ok) {
+      var msg = $('#pq-pay-msg');
+      msg.className = ok ? 'ok' : 'err';
+      msg.textContent = text;
+    }
+    function cerrarPago() {
+      payBack.classList.remove('open');
+      payModal.innerHTML = '';
+    }
+    function abrirPago(info) {
+      reservaActual = info;
+      payModal.innerHTML =
+        '<div class="pq-pay-head"><h3>Pagar parqueo</h3>' +
+          '<button class="pq-pay-x" type="button" data-pay-close aria-label="Cerrar">&times;</button></div>' +
+        '<div class="pq-pay-summary">' +
+          '<div>Espacio <strong>' + esc(info.espacioId) + '</strong> &middot; Placa <strong>' + esc(info.placa) + '</strong></div>' +
+          '<div>Tiempo cobrado: <strong>' + info.horas + 'h</strong></div>' +
+          '<div>Total: <strong>' + money(info.monto) + '</strong></div>' +
+          '<div>Recibo a: <strong>' + esc(info.correo) + '</strong></div>' +
+        '</div>' +
+        '<label for="pq-pay-name">Nombre en la tarjeta</label>' +
+        '<input id="pq-pay-name" autocomplete="cc-name" placeholder="Nombre completo">' +
+        '<label for="pq-pay-card">Numero de tarjeta</label>' +
+        '<input id="pq-pay-card" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="4111 1111 1111 1111">' +
+        '<div class="pq-pay-row">' +
+          '<div><label for="pq-pay-exp">Expira</label><input id="pq-pay-exp" autocomplete="cc-exp" maxlength="5" placeholder="MM/AA"></div>' +
+          '<div><label for="pq-pay-cvv">CVV</label><input id="pq-pay-cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123"></div>' +
+        '</div>' +
+        '<div class="pq-form-actions">' +
+          '<button class="btn" type="button" id="pq-pay-submit">Pagar ' + money(info.monto) + '</button>' +
+          '<button class="btn ghost" type="button" data-pay-close>Cancelar</button>' +
+        '</div>' +
+        '<div id="pq-pay-msg"></div>';
+      payBack.classList.add('open');
+      $('#pq-pay-name').focus();
+    }
+    payBack.addEventListener('click', function (ev) { if (ev.target === payBack || ev.target.closest('[data-pay-close]')) cerrarPago(); });
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') cerrarPago(); });
+    document.addEventListener('input', function (ev) {
+      if (ev.target && ev.target.id === 'pq-pay-exp') {
+        var v = ev.target.value.replace(/\\D/g, '').slice(0, 4);
+        ev.target.value = v.length > 2 ? v.slice(0, 2) + '/' + v.slice(2) : v;
+      }
+    });
+
     document.addEventListener('click', function (ev) {
       var tab = ev.target.closest('.pq-tab[data-piso]');
       if (tab) { piso = Number(tab.getAttribute('data-piso')); renderCroquis(); return; }
@@ -1669,6 +1809,7 @@ function parqueoPublicoHtml() {
       if (!placa) { showErr('Ingresa la placa del vehiculo.'); return; }
       api('POST', '/consulta', { placa: placa }).then(function (j) {
         if (!j.ok) { showErr(j.error); return; }
+        reservaActual = j.info;
         var rec = $('#pq-recibo');
         rec.style.display = 'block';
         rec.innerHTML = '<strong>Reserva encontrada</strong>' +
@@ -1680,9 +1821,19 @@ function parqueoPublicoHtml() {
             '<div><span>Desde</span>' + fmtFecha(j.info.inicio) + '</div>' +
             '<div><span>Hasta</span>' + fmtFecha(j.info.fin) + '</div>' +
           '</div>' +
+          '<div class="pq-total"><span>Total a pagar<br><small>' + j.info.horas + 'h a ' + money(j.info.tarifa) + '/h</small></span><strong>' + money(j.info.monto) + '</strong></div>' +
+          '<button class="btn" type="button" id="pq-pagar">Pagar parqueo</button>' +
           '<button class="btn ghost" type="button" id="pq-reenviar" data-placa="' + esc(j.info.placa) + '">Reenviar correo</button>' +
           '<p id="pq-reenvio-msg" class="pq-ok-msg"></p>' +
           '<p class="pq-security-note">Por seguridad, el codigo de reserva y el QR solo se muestran dentro del area autenticada.</p>';
+        $('#pq-pagar').addEventListener('click', function () {
+          if (!reservaActual) return;
+          if (reservaActual.correo === 'Sin correo asociado') {
+            showErr('No se puede pagar sin correo asociado para enviar el recibo.');
+            return;
+          }
+          abrirPago(reservaActual);
+        });
         $('#pq-reenviar').addEventListener('click', function () {
           var btn = this;
           btn.disabled = true;
@@ -1696,6 +1847,30 @@ function parqueoPublicoHtml() {
             msg.style.display = 'block';
           });
         });
+      });
+    });
+
+    document.addEventListener('click', function (ev) {
+      var submit = ev.target.closest('#pq-pay-submit');
+      if (!submit || !reservaActual) return;
+      var pago = {
+        name: ($('#pq-pay-name').value || '').trim(),
+        cardNumber: ($('#pq-pay-card').value || '').trim(),
+        exp: ($('#pq-pay-exp').value || '').trim(),
+        cvv: ($('#pq-pay-cvv').value || '').trim(),
+      };
+      submit.disabled = true;
+      submit.textContent = 'Procesando...';
+      api('POST', '/pagar', { placa: reservaActual.placa, pago: pago }).then(function (j) {
+        submit.disabled = false;
+        submit.textContent = 'Pagar ' + money(reservaActual.monto).replace(/&#8353;/, '₡');
+        if (!j.ok) { showPayMsg(j.error || 'No se pudo realizar la transaccion.', false); return; }
+        showPayMsg('Pago exitoso. Recibo enviado a ' + j.recibo.correo + '. Transaccion ' + j.recibo.transaccion + '.', true);
+        $('#pq-recibo').innerHTML =
+          '<strong>Pago registrado</strong>' +
+          '<div class="pq-total"><span>Transaccion<br><small>' + esc(j.recibo.transaccion) + '</small></span><strong>' + money(j.recibo.monto) + '</strong></div>' +
+          '<p class="pq-security-note">El espacio quedo liberado y el recibo fue enviado a ' + esc(j.recibo.correo) + '.</p>';
+        refresh();
       });
     });
 
