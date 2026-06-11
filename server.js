@@ -1316,7 +1316,9 @@ function parqueoPublicoHtml() {
     padding:12px 16px; margin-bottom:28px; max-width:640px; line-height:1.5; font-size:14px; }
   .aviso a { color:var(--gold); }
   .pago-card { border:1px solid rgba(201,169,97,.4); border-radius:6px; background:var(--surface);
-    padding:22px; max-width:520px; margin-bottom:36px; }
+    padding:22px; max-width:1040px; margin-bottom:36px; display:grid; grid-template-columns:minmax(280px, 1fr) minmax(360px, 1.15fr);
+    gap:22px; align-items:start; }
+  .pq-search-form { min-width:0; }
   .pago-card h2 { margin:0 0 4px; font-family:Impact, Haettenschweiler, sans-serif; font-size:24px; text-transform:uppercase; }
   .pago-card p { margin:0; color:var(--muted); font-size:13px; line-height:1.5; }
   label { display:block; font-size:11px; color:var(--gold); letter-spacing:.14em; text-transform:uppercase; margin:16px 0 6px; }
@@ -1334,7 +1336,7 @@ function parqueoPublicoHtml() {
   #pq-detalle div { display:flex; justify-content:space-between; gap:12px; margin-bottom:6px; }
   #pq-detalle span { color:var(--muted); }
   #pq-detalle .monto { font-size:24px; color:var(--gold); font-weight:800; }
-  #pq-recibo { display:none; margin-top:18px; border:1px dashed rgba(201,169,97,.5); border-radius:4px;
+  #pq-recibo { display:none; min-height:100%; border:1px dashed rgba(201,169,97,.5); border-radius:4px;
     padding:16px; text-align:center; line-height:1.6; }
   #pq-recibo strong { color:#7ee2a0; }
   .pq-reserva-grid { margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; text-align:left; }
@@ -1395,6 +1397,7 @@ function parqueoPublicoHtml() {
     .pq-calle-label { writing-mode:horizontal-tb; text-orientation:mixed; }
   }
   @media (max-width:720px) {
+    .pago-card { grid-template-columns:1fr; }
     /* En mobile el formulario reemplaza el contenido principal en vez de modal */
     #pq-form-back { position:static; background:none; padding:0; }
     #pq-form-back.open { display:block; }
@@ -1422,13 +1425,15 @@ function parqueoPublicoHtml() {
       <a href="/admin/sign-in?next=%2Fadmin%2Fparqueo">Inicia sesion</a> si tienes una cuenta.
     </div>
     <div class="pago-card">
-      <h2>Buscar mi Carro</h2>
-      <p>Ingresa la placa para confirmar la reserva y ver el correo asociado de forma segura.</p>
-      <label for="pq-placa">Placa del vehiculo</label>
-      <input id="pq-placa" maxlength="12" placeholder="ABC-123" autocomplete="off">
-      <button class="btn" type="button" id="pq-consultar">Buscar mi Carro</button>
-      <div class="err" id="pq-err"></div>
-      <div id="pq-detalle"></div>
+      <div class="pq-search-form">
+        <h2>Buscar mi Carro</h2>
+        <p>Ingresa la placa para confirmar la reserva y ver el correo asociado de forma segura.</p>
+        <label for="pq-placa">Placa del vehiculo</label>
+        <input id="pq-placa" maxlength="12" placeholder="ABC-123" autocomplete="off">
+        <button class="btn" type="button" id="pq-consultar">Buscar mi Carro</button>
+        <div class="err" id="pq-err"></div>
+        <div id="pq-detalle"></div>
+      </div>
       <div id="pq-recibo"></div>
     </div>
     <div class="pq-toolbar">
