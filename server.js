@@ -12,6 +12,8 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const os = require('os');
 const { execFileSync } = require('child_process');
+const nodemailer = require('nodemailer');
+const QRCodeNode = require('qrcode');
 
 const ORIGIN = 'https://www.herediano.com';
 const PORT = process.env.PORT || 8088;
@@ -28,6 +30,13 @@ const WALLET_CERT_PATH = process.env.HEREDIANO_WALLET_CERT_PATH || '';
 const WALLET_KEY_PATH = process.env.HEREDIANO_WALLET_KEY_PATH || '';
 const WALLET_WWDR_PATH = process.env.HEREDIANO_WALLET_WWDR_PATH || '';
 const WALLET_KEY_PASS = process.env.HEREDIANO_WALLET_KEY_PASS || '';
+const MAIL_FROM = process.env.HEREDIANO_MAIL_FROM || '"Club Sport Herediano" <herediano@milocalhost.work>';
+const MAIL_APP_URL = process.env.HEREDIANO_APP_URL || 'https://herediano.milocalhost.work';
+const SMTP_HOST = process.env.HEREDIANO_SMTP_HOST || process.env.SMTP_HOST || '127.0.0.1';
+const SMTP_PORT = Number(process.env.HEREDIANO_SMTP_PORT || process.env.SMTP_PORT || 1587);
+const SMTP_SECURE = String(process.env.HEREDIANO_SMTP_SECURE || process.env.SMTP_SECURE || '').toLowerCase() === 'true';
+const SMTP_USER = process.env.HEREDIANO_SMTP_USER || process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.HEREDIANO_SMTP_PASS || process.env.SMTP_PASS || '';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -488,13 +497,101 @@ function montoDe(reserva) {
 }
 
 function maskedReservaEmail(reserva) {
-  const owner = ADMIN_USERS.find((user) => user.id === reserva.userId);
-  const email = String(reserva.emailQr || (owner && owner.email) || '').trim().toLowerCase();
+  const email = reservaEmail(reserva);
   const at = email.indexOf('@');
   if (at <= 0 || at === email.length - 1) return 'Sin correo asociado';
   const local = email.slice(0, at);
   const domain = email.slice(at + 1);
   return `${local.slice(0, 3)}***@${domain}`;
+}
+
+function reservaEmail(reserva) {
+  const owner = ADMIN_USERS.find((user) => user.id === reserva.userId);
+  return String(reserva.emailQr || (owner && owner.email) || '').trim().toLowerCase();
+}
+
+function ensureReservaQrData(reserva) {
+  if (!reserva.codigo) {
+    reserva.codigo = `CSH-${reserva.id || crypto.randomUUID()}`;
+  }
+  if (!reserva.qrData) {
+    reserva.qrData = `${reserva.codigo}|${reserva.espacioId}|${reserva.placa}|${reserva.fin}`;
+  }
+  return reserva.qrData;
+}
+
+function makeMailTransport() {
+  const config = {
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    tls: { rejectUnauthorized: false },
+  };
+  if (SMTP_USER || SMTP_PASS) {
+    config.auth = { user: SMTP_USER, pass: SMTP_PASS };
+  }
+  return nodemailer.createTransport(config);
+}
+
+function fmtMailDate(iso) {
+  return new Date(iso).toLocaleString('es-CR', {
+    timeZone: 'America/Costa_Rica',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function parkingQrEmailHtml({ reserva }) {
+  return `<!doctype html>
+<html lang="es"><body style="margin:0;background:#f7f1df;padding:24px;font-family:Arial,sans-serif;color:#1c1713">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e6dcc3;border-radius:10px;overflow:hidden">
+    <div style="background:#d62828;color:#fff;padding:22px 28px;text-align:center">
+      <h1 style="margin:0;font-size:24px;letter-spacing:.04em">Club Sport Herediano</h1>
+      <p style="margin:6px 0 0;color:#ffe7e7">QR de parqueo</p>
+    </div>
+    <div style="padding:26px 28px">
+      <p style="font-size:15px;line-height:1.55;margin:0 0 18px">Presenta este codigo QR en el acceso del parqueo.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 18px">
+        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Espacio</td><td style="padding:8px">${escapeHtml(reserva.espacioId)}</td></tr>
+        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Placa</td><td style="padding:8px">${escapeHtml(reserva.placa)}</td></tr>
+        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Desde</td><td style="padding:8px">${escapeHtml(fmtMailDate(reserva.inicio))}</td></tr>
+        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Hasta</td><td style="padding:8px">${escapeHtml(fmtMailDate(reserva.fin))}</td></tr>
+      </table>
+      <p style="font-size:13px;color:#6b6254;margin:0">Tambien puedes abrir el modulo de parqueo: <a href="${MAIL_APP_URL}/parqueo" style="color:#d62828">${MAIL_APP_URL}/parqueo</a></p>
+    </div>
+    <div style="padding:14px 28px;background:#13100e;color:#aa9d84;text-align:center;font-size:12px">
+      Mensaje automatico. No respondas a este correo.
+    </div>
+  </div>
+</body></html>`;
+}
+
+async function sendParkingQrEmail({ to, reserva }) {
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    throw new Error('Correo invalido');
+  }
+  const qrPng = await QRCodeNode.toBuffer(ensureReservaQrData(reserva), {
+    type: 'png',
+    width: 360,
+    margin: 2,
+    errorCorrectionLevel: 'M',
+  });
+  await makeMailTransport().sendMail({
+    from: MAIL_FROM,
+    to,
+    subject: `QR de parqueo ${reserva.espacioId} - Club Sport Herediano`,
+    html: parkingQrEmailHtml({ reserva }),
+    attachments: [
+      {
+        filename: `QR-${reserva.codigo || reserva.espacioId}.png`,
+        content: qrPng,
+        contentType: 'image/png',
+      },
+    ],
+  });
 }
 
 async function handleParqueoPublico(req, res, urlPath, requestUrl) {
@@ -585,6 +682,17 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
       notas: email ? `Walk-in, estimado ${duracion} min, QR a ${email}` : `Walk-in, estimado ${duracion} min`,
     });
     saveParqueo(data);
+    let emailSent = false;
+    let emailError = '';
+    if (email) {
+      try {
+        await sendParkingQrEmail({ to: email, reserva });
+        emailSent = true;
+      } catch (err) {
+        emailError = err.message || 'No se pudo enviar el correo';
+        console.error(`[mail] Error enviando QR a ${email}: ${emailError}`);
+      }
+    }
     return sendJson(res, 200, {
       ok: true,
       sesion: {
@@ -596,6 +704,8 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
         codigo: reserva.codigo,
         qrData: reserva.qrData,
         correo: email ? maskedReservaEmail(reserva) : '',
+        emailSent,
+        emailError,
       },
     });
   }
@@ -619,6 +729,12 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
     const correo = maskedReservaEmail(reserva);
     if (correo === 'Sin correo asociado') {
       return fail(409, 'La reserva no tiene correo asociado');
+    }
+    try {
+      await sendParkingQrEmail({ to: reservaEmail(reserva), reserva });
+    } catch (err) {
+      console.error(`[mail] Error reenviando QR a ${correo}: ${err.message}`);
+      return fail(502, 'No se pudo enviar el correo en este momento');
     }
     logEvento(data, 'envio', {
       espacioId: reserva.espacioId,
@@ -774,6 +890,12 @@ async function handleParqueoApi(req, res, urlPath, requestUrl, user) {
       return fail(400, 'Correo invalido');
     }
     reserva.emailQr = email;
+    try {
+      await sendParkingQrEmail({ to: email, reserva });
+    } catch (err) {
+      console.error(`[mail] Error enviando QR a ${email}: ${err.message}`);
+      return fail(502, 'No se pudo enviar el correo en este momento');
+    }
     logEvento(data, 'envio', {
       espacioId: reserva.espacioId, user, placa: reserva.placa, notas: `QR a ${email}`,
     });
@@ -1492,12 +1614,15 @@ function parqueoPublicoHtml() {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { ferr('Ingresa un correo valido.'); return; }
         api('POST', '/ocupar', { espacioId: espacioId, placa: placa, duracion: dur, email: email }).then(function (j) {
           if (!j.ok) { ferr(j.error); return; }
+          var envioTxt = j.sesion.emailSent
+            ? 'QR enviado a ' + esc(j.sesion.correo) + '.'
+            : 'No se pudo enviar el correo ahora. Puedes descargar el QR aqui mismo.';
           formCard.innerHTML =
             '<div class="pq-form-head"><h3>Espacio tomado</h3>' +
               '<button class="pq-x" type="button" data-cerrar aria-label="Cerrar">&times;</button></div>' +
             '<div class="pq-ok"><strong>' + esc(j.sesion.espacioId) + '</strong> &middot; Placa ' + esc(j.sesion.placa) + '<br>' +
               'Ingreso: ' + fmtFecha(j.sesion.inicio) + '<br>' +
-              'QR enviado a ' + esc(j.sesion.correo) + '.</div>' +
+              envioTxt + '</div>' +
             '<div id="pq-form-qr"></div>' +
             '<div class="pq-form-code">' + esc(j.sesion.qrData) + '</div>' +
             '<div class="pq-form-actions">' +
