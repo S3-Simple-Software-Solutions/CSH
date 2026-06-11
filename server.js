@@ -525,6 +525,14 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
       codigo: `CSH-R-${id.slice(2).padStart(4, '0')}`,
       qrData: '',
     };
+    reserva.qrData = `${reserva.codigo}|${espacio.id}|${placa}|${reserva.fin}`;
+    const email = String(body.email || '').trim().toLowerCase();
+    if (email) {
+      if (email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return fail(400, 'Correo invalido');
+      }
+      reserva.emailQr = email;
+    }
     data.reservas.push(reserva);
     espacio.estado = 'ocupado';
     espacio.reservaId = id;
@@ -532,12 +540,21 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
       espacioId: espacio.id,
       user: { id: null, name: 'Invitado' },
       placa,
-      notas: `Walk-in, estimado ${duracion} min`,
+      notas: email ? `Walk-in, estimado ${duracion} min, QR a ${email}` : `Walk-in, estimado ${duracion} min`,
     });
     saveParqueo(data);
     return sendJson(res, 200, {
       ok: true,
-      sesion: { espacioId: espacio.id, placa, inicio: reserva.inicio },
+      sesion: {
+        reservaId: reserva.id,
+        espacioId: espacio.id,
+        placa,
+        inicio: reserva.inicio,
+        fin: reserva.fin,
+        codigo: reserva.codigo,
+        qrData: reserva.qrData,
+        correo: email ? maskedReservaEmail(reserva) : '',
+      },
     });
   }
 
@@ -1071,6 +1088,9 @@ function parqueoPublicoHtml() {
   .pq-form-actions { display:flex; gap:10px; flex-wrap:wrap; }
   .pq-ok { margin-top:14px; border:1px dashed rgba(201,169,97,.5); border-radius:4px; padding:14px; line-height:1.6; }
   .pq-ok strong { color:#7ee2a0; }
+  #pq-form-qr { width:164px; margin:14px auto 8px; background:#fff; padding:8px; border-radius:4px; }
+  #pq-form-qr img, #pq-form-qr canvas { display:block; margin:0 auto; }
+  .pq-form-code { color:var(--gold); font-size:12px; word-break:break-all; text-align:center; }
   @media (max-width:980px) {
     .pq-piso { grid-template-columns:1fr; }
     .pq-calle { min-height:56px; flex-direction:row; }
@@ -1128,6 +1148,7 @@ function parqueoPublicoHtml() {
     <div id="pq-croquis"><p style="color:var(--muted)">Cargando croquis...</p></div>
     <div id="pq-form-back"><div class="pq-form-card" id="pq-form"></div></div>
   </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
   (function () {
     var API = '/api/parqueo/publico';
@@ -1228,6 +1249,8 @@ function parqueoPublicoHtml() {
           '<option value="240">4 horas</option>' +
           '<option value="480">8 horas</option>' +
         '</select>' +
+        '<label for="pq-f-email">Correo para recibir el QR</label>' +
+        '<input id="pq-f-email" type="email" maxlength="120" placeholder="correo@ejemplo.com" autocomplete="email">' +
         '<div class="pq-form-actions">' +
           '<button class="btn" type="button" data-confirmar="' + esc(esp.id) + '">Tomar espacio</button>' +
           '<button class="btn ghost" type="button" data-cerrar>Volver</button>' +
@@ -1266,18 +1289,47 @@ function parqueoPublicoHtml() {
         var espacioId = conf.getAttribute('data-confirmar');
         var placa = ($('#pq-f-placa').value || '').trim().toUpperCase();
         var dur = Number($('#pq-f-dur').value);
+        var email = ($('#pq-f-email').value || '').trim();
         if (!placa) { ferr('Ingresa la placa del vehiculo.'); return; }
-        api('POST', '/ocupar', { espacioId: espacioId, placa: placa, duracion: dur }).then(function (j) {
+        if (!email) { ferr('Ingresa un correo para enviar el QR.'); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { ferr('Ingresa un correo valido.'); return; }
+        api('POST', '/ocupar', { espacioId: espacioId, placa: placa, duracion: dur, email: email }).then(function (j) {
           if (!j.ok) { ferr(j.error); return; }
           formCard.innerHTML =
             '<div class="pq-form-head"><h3>Espacio tomado</h3>' +
               '<button class="pq-x" type="button" data-cerrar aria-label="Cerrar">&times;</button></div>' +
             '<div class="pq-ok"><strong>' + esc(j.sesion.espacioId) + '</strong> &middot; Placa ' + esc(j.sesion.placa) + '<br>' +
               'Ingreso: ' + fmtFecha(j.sesion.inicio) + '<br>' +
-              'Puedes buscar la reserva ingresando tu placa en <em>Buscar mi Carro</em>.</div>' +
-            '<div class="pq-form-actions"><button class="btn" type="button" data-cerrar>Listo</button></div>';
+              'QR enviado a ' + esc(j.sesion.correo) + '.</div>' +
+            '<div id="pq-form-qr"></div>' +
+            '<div class="pq-form-code">' + esc(j.sesion.qrData) + '</div>' +
+            '<div class="pq-form-actions">' +
+              '<button class="btn ghost" type="button" data-descargar-qr>Descargar QR</button>' +
+              '<button class="btn" type="button" data-cerrar>Listo</button>' +
+            '</div>';
+          if (window.QRCode) {
+            new QRCode($('#pq-form-qr'), { text: j.sesion.qrData, width: 148, height: 148 });
+          } else {
+            $('#pq-form-qr').textContent = j.sesion.qrData;
+          }
+          formCard.setAttribute('data-qr-code', j.sesion.codigo);
           refresh();
         });
+        return;
+      }
+      if (ev.target.closest('[data-descargar-qr]')) {
+        var cont = $('#pq-form-qr');
+        if (!cont) return;
+        var canvas = cont.querySelector('canvas');
+        var img = cont.querySelector('img');
+        var url = canvas ? canvas.toDataURL('image/png') : (img ? img.src : null);
+        if (!url) return;
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = (formCard.getAttribute('data-qr-code') || 'CSH-QR') + '.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
         return;
       }
     });
