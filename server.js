@@ -474,7 +474,15 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
       ok: true,
       tarifa: TARIFA_HORA,
       espacios: data.espacios.map((e) => ({
-        id: e.id, piso: e.piso, zona: e.zona, num: e.num, estado: e.estado,
+        id: e.id,
+        piso: e.piso,
+        zona: e.zona,
+        num: e.num,
+        estado: e.estado,
+        reserva: (() => {
+          const r = e.reservaId ? data.reservas.find((reserva) => reserva.id === e.reservaId && activa(reserva)) : null;
+          return r ? { inicio: r.inicio, fin: r.fin } : null;
+        })(),
       })),
     });
   }
@@ -1066,12 +1074,22 @@ function parqueoPublicoHtml() {
   .pq-zona { border:1px solid var(--line); border-radius:6px; background:var(--surface); padding:14px; min-width:0; }
   .pq-zona h3 { margin:0 0 12px; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold); }
   .pq-grid { display:grid; grid-template-columns:repeat(10, 1fr); gap:4px; }
-  .espacio { aspect-ratio:1; border-radius:3px; display:grid; place-items:center;
+  .espacio { position:relative; overflow:hidden; aspect-ratio:1; border-radius:3px; display:grid; place-items:center;
     font-size:10px; font-weight:600; color:rgba(255,255,255,.92); user-select:none; }
+  .espacio .pq-num { position:relative; z-index:1; }
   .espacio.disponible { background:rgba(22,163,74,.72); cursor:pointer; }
   .espacio.disponible:hover { background:var(--verde); outline:2px solid var(--gold); }
   .espacio.reservado { background:rgba(234,88,12,.85); }
   .espacio.ocupado { background:rgba(214,40,40,.88); }
+  .pq-exp { position:absolute; left:3px; right:3px; bottom:3px; height:4px; border-radius:999px;
+    background:rgba(5,4,3,.45); overflow:hidden; }
+  .pq-exp i { display:block; width:100%; height:100%; background:#7ee2a0; border-radius:999px;
+    transition:width 1s linear, background .25s ease; }
+  .pq-exp i.medio { background:#facc15; }
+  .pq-exp i.bajo { background:#fff; }
+  .pq-exp i.vencido { background:#111; width:100%; }
+  .pq-overdue { position:absolute; top:3px; right:3px; z-index:2; background:rgba(5,4,3,.68);
+    color:#fff; font-size:8px; line-height:1; padding:2px 3px; border-radius:3px; }
   .pq-calle { border:1px dashed rgba(201,169,97,.4); border-radius:6px; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:18px; color:var(--muted); font-size:11px; letter-spacing:.18em; }
   .pq-calle-label { writing-mode:vertical-rl; text-orientation:upright; letter-spacing:.4em; }
@@ -1190,9 +1208,10 @@ function parqueoPublicoHtml() {
           // Solo los disponibles son seleccionables y muestran informacion;
           // de los ocupados el invitado no ve nada.
           if (es.estado === 'disponible') {
-            h += '<div class="espacio disponible" data-id="' + esc(es.id) + '" title="' + esc(es.id) + ' - disponible">' + es.num + '</div>';
+            h += '<div class="espacio disponible" data-id="' + esc(es.id) + '" title="' + esc(es.id) + ' - disponible"><span class="pq-num">' + es.num + '</span></div>';
           } else {
-            h += '<div class="espacio ' + esc(es.estado) + '">' + es.num + '</div>';
+            var exp = es.reserva ? '<span class="pq-overdue"></span><span class="pq-exp" data-inicio="' + esc(es.reserva.inicio) + '" data-fin="' + esc(es.reserva.fin) + '"><i></i></span>' : '';
+            h += '<div class="espacio ' + esc(es.estado) + '"><span class="pq-num">' + es.num + '</span>' + exp + '</div>';
           }
         }
         return h;
@@ -1213,6 +1232,26 @@ function parqueoPublicoHtml() {
       var tabs = document.querySelectorAll('.pq-tab');
       for (var b = 0; b < tabs.length; b++) {
         tabs[b].classList.toggle('active', Number(tabs[b].getAttribute('data-piso')) === piso);
+      }
+      tickExpiracion();
+    }
+
+    function tickExpiracion() {
+      var bars = document.querySelectorAll('.pq-exp');
+      for (var i = 0; i < bars.length; i++) {
+        var bar = bars[i];
+        var fill = bar.querySelector('i');
+        var inicio = new Date(bar.getAttribute('data-inicio')).getTime();
+        var fin = new Date(bar.getAttribute('data-fin')).getTime();
+        var total = Math.max(1, fin - inicio);
+        var left = fin - Date.now();
+        var pct = Math.max(0, Math.min(1, left / total));
+        fill.style.width = (pct * 100) + '%';
+        fill.classList.toggle('medio', pct > 0.2 && pct <= 0.5);
+        fill.classList.toggle('bajo', pct > 0 && pct <= 0.2);
+        fill.classList.toggle('vencido', left <= 0);
+        var overdue = bar.parentElement.querySelector('.pq-overdue');
+        if (overdue) overdue.textContent = left <= 0 ? 'vencido' : '';
       }
     }
 
@@ -1373,6 +1412,7 @@ function parqueoPublicoHtml() {
     });
 
     refresh();
+    setInterval(tickExpiracion, 1000);
     setInterval(refresh, 60000);
   })();
   </script>
