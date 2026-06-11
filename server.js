@@ -37,6 +37,15 @@ const SMTP_PORT = Number(process.env.HEREDIANO_SMTP_PORT || process.env.SMTP_POR
 const SMTP_SECURE = String(process.env.HEREDIANO_SMTP_SECURE || process.env.SMTP_SECURE || '').toLowerCase() === 'true';
 const SMTP_USER = process.env.HEREDIANO_SMTP_USER || process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.HEREDIANO_SMTP_PASS || process.env.SMTP_PASS || '';
+const OFFICIAL_SPONSORS = [
+  'Reebok',
+  'Taqueritos',
+  'Hariana',
+  'Transcomer British International',
+  'Electrolit',
+  'Chery',
+  'Solo Cracks',
+];
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -544,25 +553,61 @@ function fmtMailDate(iso) {
   });
 }
 
+async function getShieldAttachment() {
+  const key = keyFor(SITE_LOGO_PATH);
+  let entry = readCache(key);
+  if (!entry) {
+    try {
+      const fresh = await fetchOrigin(SITE_LOGO_PATH);
+      writeCache(key, fresh.body, fresh.meta);
+      entry = { body: fresh.body, meta: fresh.meta };
+    } catch (err) {
+      console.error(`[mail] No se pudo cargar escudo: ${err.message}`);
+      return null;
+    }
+  }
+  return {
+    filename: 'escudo-herediano.png',
+    content: entry.body,
+    contentType: entry.meta.ct || 'image/png',
+    cid: 'csh-shield',
+    contentDisposition: 'inline',
+  };
+}
+
+function sponsorHtml() {
+  return OFFICIAL_SPONSORS.map((name) => (
+    `<span style="display:inline-block;margin:4px;padding:8px 10px;border:1px solid rgba(201,169,97,.45);border-radius:999px;background:#17110f;color:#f7f1df;font-size:12px;font-weight:700;letter-spacing:.02em">${escapeHtml(name)}</span>`
+  )).join('');
+}
+
 function parkingQrEmailHtml({ reserva }) {
   return `<!doctype html>
-<html lang="es"><body style="margin:0;background:#f7f1df;padding:24px;font-family:Arial,sans-serif;color:#1c1713">
-  <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e6dcc3;border-radius:10px;overflow:hidden">
-    <div style="background:#d62828;color:#fff;padding:22px 28px;text-align:center">
-      <h1 style="margin:0;font-size:24px;letter-spacing:.04em">Club Sport Herediano</h1>
-      <p style="margin:6px 0 0;color:#ffe7e7">QR de parqueo</p>
+<html lang="es"><body style="margin:0;background:#0a0908;padding:24px;font-family:Inter,Manrope,Arial,sans-serif;color:#f7f1df">
+  <div style="max-width:620px;margin:0 auto;background:#13100e;border:1px solid rgba(201,169,97,.45);border-radius:8px;overflow:hidden">
+    <div style="background:#d62828;padding:24px 28px;text-align:center">
+      <img src="cid:csh-shield" width="72" alt="Club Sport Herediano" style="display:block;margin:0 auto 12px">
+      <h1 style="margin:0;color:#f7f1df;font-family:Impact,'Arial Black',Arial,sans-serif;font-size:32px;letter-spacing:.04em;text-transform:uppercase">Herediano</h1>
+      <p style="margin:6px 0 0;color:#ffe7e7;font-size:13px;letter-spacing:.16em;text-transform:uppercase">QR de parqueo</p>
     </div>
-    <div style="padding:26px 28px">
-      <p style="font-size:15px;line-height:1.55;margin:0 0 18px">Presenta este codigo QR en el acceso del parqueo.</p>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 18px">
-        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Espacio</td><td style="padding:8px">${escapeHtml(reserva.espacioId)}</td></tr>
-        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Placa</td><td style="padding:8px">${escapeHtml(reserva.placa)}</td></tr>
-        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Desde</td><td style="padding:8px">${escapeHtml(fmtMailDate(reserva.inicio))}</td></tr>
-        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Hasta</td><td style="padding:8px">${escapeHtml(fmtMailDate(reserva.fin))}</td></tr>
+    <div style="padding:28px">
+      <p style="font-size:15px;line-height:1.55;margin:0 0 20px;color:#d8cdb6">Presenta este codigo QR en el acceso del parqueo. Guarda este correo hasta finalizar tu visita.</p>
+      <div style="text-align:center;margin:18px 0 22px">
+        <img src="cid:parking-qr" width="220" alt="QR de parqueo" style="display:inline-block;background:#fff;border:8px solid #fff;border-radius:6px">
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 22px;color:#f7f1df">
+        <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Espacio</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(reserva.espacioId)}</td></tr>
+        <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Placa</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(reserva.placa)}</td></tr>
+        <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Desde</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(fmtMailDate(reserva.inicio))}</td></tr>
+        <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Hasta</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(fmtMailDate(reserva.fin))}</td></tr>
       </table>
-      <p style="font-size:13px;color:#6b6254;margin:0">Tambien puedes abrir el modulo de parqueo: <a href="${MAIL_APP_URL}/parqueo" style="color:#d62828">${MAIL_APP_URL}/parqueo</a></p>
+      <div style="border-top:1px solid rgba(201,169,97,.35);padding-top:18px;text-align:center">
+        <p style="margin:0 0 10px;color:#c9a961;font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:800">Patrocinadores oficiales</p>
+        <div>${sponsorHtml()}</div>
+      </div>
+      <p style="font-size:12px;color:#aa9d84;margin:20px 0 0;text-align:center">Modulo de parqueo: <a href="${MAIL_APP_URL}/parqueo" style="color:#c9a961">${MAIL_APP_URL}/parqueo</a></p>
     </div>
-    <div style="padding:14px 28px;background:#13100e;color:#aa9d84;text-align:center;font-size:12px">
+    <div style="padding:14px 28px;background:#0a0908;color:#aa9d84;text-align:center;font-size:12px">
       Mensaje automatico. No respondas a este correo.
     </div>
   </div>
@@ -579,41 +624,54 @@ async function sendParkingQrEmail({ to, reserva }) {
     margin: 2,
     errorCorrectionLevel: 'M',
   });
+  const shield = await getShieldAttachment();
+  const attachments = [
+    {
+      filename: `QR-${reserva.codigo || reserva.espacioId}.png`,
+      content: qrPng,
+      contentType: 'image/png',
+      cid: 'parking-qr',
+      contentDisposition: 'inline',
+    },
+  ];
+  if (shield) attachments.push(shield);
   await makeMailTransport().sendMail({
     from: MAIL_FROM,
     to,
     subject: `QR de parqueo ${reserva.espacioId} - Club Sport Herediano`,
     html: parkingQrEmailHtml({ reserva }),
-    attachments: [
-      {
-        filename: `QR-${reserva.codigo || reserva.espacioId}.png`,
-        content: qrPng,
-        contentType: 'image/png',
-      },
-    ],
+    attachments,
   });
 }
 
 function paymentReceiptEmailHtml({ reserva, recibo }) {
   return `<!doctype html>
-<html lang="es"><body style="margin:0;background:#f7f1df;padding:24px;font-family:Arial,sans-serif;color:#1c1713">
-  <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e6dcc3;border-radius:10px;overflow:hidden">
-    <div style="background:#d62828;color:#fff;padding:22px 28px;text-align:center">
-      <h1 style="margin:0;font-size:24px;letter-spacing:.04em">Club Sport Herediano</h1>
-      <p style="margin:6px 0 0;color:#ffe7e7">Recibo de parqueo</p>
+<html lang="es"><body style="margin:0;background:#0a0908;padding:24px;font-family:Inter,Manrope,Arial,sans-serif;color:#f7f1df">
+  <div style="max-width:620px;margin:0 auto;background:#13100e;border:1px solid rgba(201,169,97,.45);border-radius:8px;overflow:hidden">
+    <div style="background:#d62828;padding:24px 28px;text-align:center">
+      <img src="cid:csh-shield" width="72" alt="Club Sport Herediano" style="display:block;margin:0 auto 12px">
+      <h1 style="margin:0;color:#f7f1df;font-family:Impact,'Arial Black',Arial,sans-serif;font-size:32px;letter-spacing:.04em;text-transform:uppercase">Herediano</h1>
+      <p style="margin:6px 0 0;color:#ffe7e7;font-size:13px;letter-spacing:.16em;text-transform:uppercase">Recibo de parqueo</p>
     </div>
-    <div style="padding:26px 28px">
-      <p style="font-size:15px;line-height:1.55;margin:0 0 18px">Tu pago fue registrado correctamente.</p>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 18px">
-        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Transaccion</td><td style="padding:8px">${escapeHtml(recibo.transaccion)}</td></tr>
-        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Espacio</td><td style="padding:8px">${escapeHtml(reserva.espacioId)}</td></tr>
-        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Placa</td><td style="padding:8px">${escapeHtml(reserva.placa)}</td></tr>
-        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Tiempo cobrado</td><td style="padding:8px">${recibo.horas}h</td></tr>
-        <tr><td style="padding:8px;background:#f7f1df;font-weight:bold">Total</td><td style="padding:8px">CRC ${recibo.monto}</td></tr>
+    <div style="padding:28px">
+      <p style="font-size:15px;line-height:1.55;margin:0 0 18px;color:#d8cdb6">Tu pago fue registrado correctamente. Gracias por visitar al Team.</p>
+      <div style="margin:0 0 18px;padding:18px;border:1px solid rgba(201,169,97,.45);border-radius:6px;text-align:center">
+        <p style="margin:0;color:#aa9d84;font-size:12px;letter-spacing:.14em;text-transform:uppercase">Total pagado</p>
+        <p style="margin:6px 0 0;color:#c9a961;font-size:32px;font-weight:900">CRC ${recibo.monto}</p>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 22px;color:#f7f1df">
+        <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Transaccion</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(recibo.transaccion)}</td></tr>
+        <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Espacio</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(reserva.espacioId)}</td></tr>
+        <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Placa</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(reserva.placa)}</td></tr>
+        <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Tiempo cobrado</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${recibo.horas}h</td></tr>
       </table>
-      <p style="font-size:13px;color:#6b6254;margin:0">El espacio quedo liberado despues del pago.</p>
+      <div style="border-top:1px solid rgba(201,169,97,.35);padding-top:18px;text-align:center">
+        <p style="margin:0 0 10px;color:#c9a961;font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:800">Patrocinadores oficiales</p>
+        <div>${sponsorHtml()}</div>
+      </div>
+      <p style="font-size:12px;color:#aa9d84;margin:20px 0 0;text-align:center">El espacio quedo liberado despues del pago.</p>
     </div>
-    <div style="padding:14px 28px;background:#13100e;color:#aa9d84;text-align:center;font-size:12px">
+    <div style="padding:14px 28px;background:#0a0908;color:#aa9d84;text-align:center;font-size:12px">
       Mensaje automatico. No respondas a este correo.
     </div>
   </div>
@@ -624,11 +682,13 @@ async function sendPaymentReceiptEmail({ to, reserva, recibo }) {
   if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
     throw new Error('Correo invalido');
   }
+  const shield = await getShieldAttachment();
   await makeMailTransport().sendMail({
     from: MAIL_FROM,
     to,
     subject: `Recibo de parqueo ${reserva.espacioId} - Club Sport Herediano`,
     html: paymentReceiptEmailHtml({ reserva, recibo }),
+    attachments: shield ? [shield] : [],
   });
 }
 
