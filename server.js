@@ -1104,11 +1104,11 @@ function parqueoPublicoHtml() {
       <a href="/admin/sign-in?next=%2Fadmin%2Fparqueo">Inicia sesion</a> si tienes una cuenta.
     </div>
     <div class="pago-card">
-      <h2>Buscar reserva</h2>
+      <h2>Buscar mi Carro</h2>
       <p>Ingresa la placa para confirmar la reserva y ver el correo asociado de forma segura.</p>
       <label for="pq-placa">Placa del vehiculo</label>
       <input id="pq-placa" maxlength="12" placeholder="ABC-123" autocomplete="off">
-      <button class="btn" type="button" id="pq-consultar">Buscar reserva</button>
+      <button class="btn" type="button" id="pq-consultar">Buscar mi Carro</button>
       <div class="err" id="pq-err"></div>
       <div id="pq-detalle"></div>
       <div id="pq-recibo"></div>
@@ -1274,7 +1274,7 @@ function parqueoPublicoHtml() {
               '<button class="pq-x" type="button" data-cerrar aria-label="Cerrar">&times;</button></div>' +
             '<div class="pq-ok"><strong>' + esc(j.sesion.espacioId) + '</strong> &middot; Placa ' + esc(j.sesion.placa) + '<br>' +
               'Ingreso: ' + fmtFecha(j.sesion.inicio) + '<br>' +
-              'Puedes buscar la reserva ingresando tu placa en <em>Buscar reserva</em>.</div>' +
+              'Puedes buscar la reserva ingresando tu placa en <em>Buscar mi Carro</em>.</div>' +
             '<div class="pq-form-actions"><button class="btn" type="button" data-cerrar>Listo</button></div>';
           refresh();
         });
