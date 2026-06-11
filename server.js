@@ -859,6 +859,9 @@ function parqueoPublicoHtml() {
   #pq-recibo { display:none; margin-top:18px; border:1px dashed rgba(201,169,97,.5); border-radius:4px;
     padding:16px; text-align:center; line-height:1.6; }
   #pq-recibo strong { color:#7ee2a0; }
+  #pq-recibo-qr { width:164px; margin:14px auto 8px; background:#fff; padding:8px; border-radius:4px; }
+  #pq-recibo-qr img, #pq-recibo-qr canvas { display:block; margin:0 auto; }
+  .pq-recibo-code { margin-top:8px; color:var(--gold); font-size:12px; word-break:break-all; }
   .pq-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
   .pq-tabs { display:flex; gap:8px; }
   .pq-tab { min-height:38px; padding:0 18px; border-radius:4px; border:1px solid var(--line);
@@ -950,6 +953,7 @@ function parqueoPublicoHtml() {
     <div id="pq-croquis"><p style="color:var(--muted)">Cargando croquis...</p></div>
     <div id="pq-form-back"><div class="pq-form-card" id="pq-form"></div></div>
   </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
   (function () {
     var API = '/api/parqueo/publico';
@@ -1128,10 +1132,25 @@ function parqueoPublicoHtml() {
             $('#pq-detalle').style.display = 'none';
             var rec = $('#pq-recibo');
             rec.style.display = 'block';
+            var qrData = [
+              'CSH-PAGO',
+              p.recibo.espacioId,
+              p.recibo.placa,
+              p.recibo.horas + 'h',
+              'CRC' + p.recibo.monto,
+              new Date().toISOString()
+            ].join('|');
             rec.innerHTML = '<strong>Pago registrado</strong><br>' +
               esc(p.recibo.espacioId) + ' &middot; Placa ' + esc(p.recibo.placa) + '<br>' +
               p.recibo.horas + 'h &middot; &#8353;' + p.recibo.monto + '<br>' +
-              'Gracias por tu visita. El espacio quedo liberado.';
+              'Gracias por tu visita. El espacio quedo liberado.' +
+              '<div id="pq-recibo-qr"></div>' +
+              '<div class="pq-recibo-code">' + esc(qrData) + '</div>';
+            if (window.QRCode) {
+              new QRCode($('#pq-recibo-qr'), { text: qrData, width: 148, height: 148 });
+            } else {
+              $('#pq-recibo-qr').textContent = qrData;
+            }
             $('#pq-placa').value = '';
             refresh();
           });
