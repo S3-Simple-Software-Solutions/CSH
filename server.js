@@ -554,6 +554,23 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
     });
   }
 
+  if (req.method === 'POST' && sub === '/reenviar') {
+    const { reserva, error } = buscarPorPlaca();
+    if (error) return fail(404, error);
+    const correo = maskedReservaEmail(reserva);
+    if (correo === 'Sin correo asociado') {
+      return fail(409, 'La reserva no tiene correo asociado');
+    }
+    logEvento(data, 'envio', {
+      espacioId: reserva.espacioId,
+      user: { id: null, name: 'Consulta publica' },
+      placa: reserva.placa,
+      notas: `Reenvio solicitado a ${correo}`,
+    });
+    saveParqueo(data);
+    return sendJson(res, 200, { ok: true, correo });
+  }
+
   if (req.method === 'POST' && sub === '/pagar') {
     const { reserva, error } = buscarPorPlaca();
     if (error) return fail(404, error);
@@ -1019,6 +1036,7 @@ function parqueoPublicoHtml() {
   .pq-reserva-grid div { border-bottom:1px solid var(--line); padding-bottom:6px; }
   .pq-reserva-grid span { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.12em; }
   .pq-security-note { margin:14px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
+  .pq-ok-msg { display:none; margin-top:12px; color:#7ee2a0; font-size:13px; }
   .pq-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
   .pq-tabs { display:flex; gap:8px; }
   .pq-tab { min-height:38px; padding:0 18px; border-radius:4px; border:1px solid var(--line);
@@ -1283,7 +1301,22 @@ function parqueoPublicoHtml() {
             '<div><span>Desde</span>' + fmtFecha(j.info.inicio) + '</div>' +
             '<div><span>Hasta</span>' + fmtFecha(j.info.fin) + '</div>' +
           '</div>' +
+          '<button class="btn ghost" type="button" id="pq-reenviar" data-placa="' + esc(j.info.placa) + '">Reenviar correo</button>' +
+          '<p id="pq-reenvio-msg" class="pq-ok-msg"></p>' +
           '<p class="pq-security-note">Por seguridad, el codigo de reserva y el QR solo se muestran dentro del area autenticada.</p>';
+        $('#pq-reenviar').addEventListener('click', function () {
+          var btn = this;
+          btn.disabled = true;
+          btn.textContent = 'Reenviando...';
+          api('POST', '/reenviar', { placa: btn.getAttribute('data-placa') }).then(function (r) {
+            btn.disabled = false;
+            btn.textContent = 'Reenviar correo';
+            if (!r.ok) { showErr(r.error); return; }
+            var msg = $('#pq-reenvio-msg');
+            msg.textContent = 'Correo reenviado a ' + r.correo + '.';
+            msg.style.display = 'block';
+          });
+        });
       });
     });
 
