@@ -17,6 +17,7 @@ const HOST = '0.0.0.0';
 const CACHE_DIR = path.join(__dirname, 'cache');
 const DATA_DIR = path.join(__dirname, 'data');
 const PARQUEO_FILE = path.join(DATA_DIR, 'parqueo.json');
+const CUPONERA_FILE = path.join(DATA_DIR, 'cuponera.json');
 const ADMIN_LOGO_PATH = '/admin/assets/logo-shield.png';
 const SITE_LOGO_PATH = '/brand/logo-shield.png';
 const SECRET = process.env.HEREDIANO_SECRET || 'cambie-esta-clave-herediano-secret-2026';
@@ -47,19 +48,16 @@ const OFFICIAL_SPONSORS = [
 ];
 
 const ADMIN_USERS = [
-  { id: 'u-001', name: 'Administrador CSH', username: process.env.HEREDIANO_ADMIN_USER || 'admin', email: process.env.HEREDIANO_ADMIN_EMAIL || 'admin@herediano.com', password: process.env.HEREDIANO_ADMIN_PASS || AUTH_PASS, role: 'Super admin', area: 'Administracion', status: 'Activo', parkingRole: 'admin' },
-  { id: 'u-002', name: 'Operaciones Estadio', username: 'operaciones', email: 'operaciones@herediano.com', password: 'operaciones1921', role: 'Operador', area: 'Parqueo', status: 'Demo', parkingRole: 'admin' },
-  { id: 'u-003', name: 'Comercial CSH', username: 'comercial', email: 'comercial@herediano.com', password: 'comercial1921', role: 'Editor', area: 'Patrocinadores', status: 'Demo', parkingRole: 'socio' },
-  { id: 'u-004', name: 'Socio Demo', username: 'socio1', email: 'socio1@herediano.com', password: 'socio1921', role: 'Socio', area: 'Parqueo', status: 'Demo', parkingRole: 'socio' },
+  { id: 'u-001', name: 'Administrador CSH', username: process.env.HEREDIANO_ADMIN_USER || 'admin', email: process.env.HEREDIANO_ADMIN_EMAIL || 'admin@herediano.com', password: process.env.HEREDIANO_ADMIN_PASS || AUTH_PASS, role: 'Super admin', area: 'Administracion', status: 'Activo', parkingRole: 'admin', couponRole: 'admin' },
+  { id: 'u-002', name: 'Operaciones Estadio', username: 'operaciones', email: 'operaciones@herediano.com', password: 'operaciones1921', role: 'Operador', area: 'Parqueo', status: 'Demo', parkingRole: 'admin', couponRole: 'socio' },
+  { id: 'u-003', name: 'Comercial CSH', username: 'comercial', email: 'comercial@herediano.com', password: 'comercial1921', role: 'Patrocinador', area: 'Patrocinadores', status: 'Demo', parkingRole: 'socio', couponRole: 'patrocinador', sponsor: 'Reebok' },
+  { id: 'u-004', name: 'Socio Demo', username: 'socio1', email: 'socio1@herediano.com', password: 'socio1921', role: 'Socio', area: 'Socios', status: 'Demo', parkingRole: 'socio', couponRole: 'socio' },
 ];
 
-if (!process.env.DATABASE_URL) {
-  console.error('Falta DATABASE_URL. La app ahora requiere PostgreSQL.');
-  process.exit(1);
-}
-
 fs.mkdirSync(CACHE_DIR, { recursive: true });
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const USE_DB = Boolean(process.env.DATABASE_URL);
+const pool = USE_DB ? new Pool({ connectionString: process.env.DATABASE_URL }) : null;
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '64kb' }));
@@ -137,12 +135,144 @@ function requireAdmin(req, res, next) {
   req.adminUser = user;
   return next();
 }
+function canManageCoupons(user) {
+  return user && (user.couponRole === 'admin' || user.couponRole === 'patrocinador');
+}
 
 async function query(sql, params) {
   const result = await pool.query(sql, params);
   return result.rows;
 }
+function readParkingData() {
+  if (!fs.existsSync(PARQUEO_FILE)) {
+    const initial = initParqueoJsonShape();
+    writeParkingData(initial);
+    return initial;
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(PARQUEO_FILE, 'utf8'));
+    return {
+      espacios: Array.isArray(data.espacios) ? data.espacios : [],
+      reservas: Array.isArray(data.reservas) ? data.reservas : [],
+      eventos: Array.isArray(data.eventos) ? data.eventos : [],
+    };
+  } catch (_) {
+    const initial = initParqueoJsonShape();
+    writeParkingData(initial);
+    return initial;
+  }
+}
+function writeParkingData(data) {
+  fs.writeFileSync(PARQUEO_FILE, `${JSON.stringify(data, null, 2)}\n`);
+}
+function initCuponeraJsonShape() {
+  const offers = ['20% en articulo seleccionado', '2x1 en combo familiar', '15% pagando con tarjeta CSH', 'Upgrade gratis', '10% en tienda oficial', 'Bebida gratis', 'Envio sin costo'];
+  const categories = ['Indumentaria', 'Alimentos', 'Finanzas', 'Hidratacion', 'Automotriz', 'Entretenimiento'];
+  return {
+    cupones: OFFICIAL_SPONSORS.map((s, index) => ({
+      id: `CUP-${String(index + 1).padStart(3, '0')}`,
+      proveedor: s.name,
+      logo: s.path,
+      titulo: offers[index % offers.length],
+      descripcion: `Beneficio demo para socios CSH con ${s.name}.`,
+      codigo: `CSH${String(s.name).replace(/\W/g, '').slice(0, 4).toUpperCase()}${10 + index}`,
+      categoria: categories[index % categories.length],
+      descuento: [20, 25, 15, 30, 10, 12, 18][index % 7],
+      vigencia: new Date(Date.now() + (index + 14) * 86400000).toISOString(),
+      estado: index === 2 ? 'retirado' : 'habilitado',
+      usos: 40 + index * 9,
+      limite: 120 + index * 20,
+      actualizado: new Date().toISOString(),
+    })),
+    eventos: [],
+  };
+}
+function readCuponeraData() {
+  if (!fs.existsSync(CUPONERA_FILE)) {
+    const initial = initCuponeraJsonShape();
+    writeCuponeraData(initial);
+    return initial;
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(CUPONERA_FILE, 'utf8'));
+    return {
+      cupones: Array.isArray(data.cupones) ? data.cupones : [],
+      eventos: Array.isArray(data.eventos) ? data.eventos : [],
+    };
+  } catch (_) {
+    const initial = initCuponeraJsonShape();
+    writeCuponeraData(initial);
+    return initial;
+  }
+}
+function writeCuponeraData(data) {
+  fs.writeFileSync(CUPONERA_FILE, `${JSON.stringify(data, null, 2)}\n`);
+}
+function publicCoupon(cupon) {
+  return {
+    id: cupon.id,
+    proveedor: cupon.proveedor,
+    logo: cupon.logo,
+    titulo: cupon.titulo,
+    descripcion: cupon.descripcion,
+    codigo: cupon.codigo,
+    categoria: cupon.categoria,
+    descuento: cupon.descuento,
+    vigencia: cupon.vigencia,
+    estado: cupon.estado,
+    usos: cupon.usos,
+    limite: cupon.limite,
+    actualizado: cupon.actualizado,
+  };
+}
+function couponStats(cupones) {
+  const enabled = cupones.filter((c) => c.estado === 'habilitado').length;
+  return { total: cupones.length, habilitados: enabled, retirados: cupones.length - enabled, usos: cupones.reduce((sum, c) => sum + Number(c.usos || 0), 0) };
+}
+function activeReservations(data) {
+  return data.reservas.filter((r) => r.estado === 'reservado' || r.estado === 'ocupado');
+}
+function nextJsonReservationId(data) {
+  const max = data.reservas.reduce((n, r) => Math.max(n, Number(String(r.id || '').replace(/\D/g, '')) || 0), 0);
+  return `R-${String(max + 1).padStart(3, '0')}`;
+}
+function nextJsonEventId(data) {
+  const max = data.eventos.reduce((n, e) => Math.max(n, Number(String(e.id || '').replace(/\D/g, '')) || 0), 0);
+  return `E-${String(max + 1).padStart(3, '0')}`;
+}
+function pushJsonEvent(data, type, { espacioId, user, placa, notas }) {
+  data.eventos.push({
+    id: nextJsonEventId(data),
+    tipo: type,
+    espacioId: espacioId || '',
+    userId: user ? user.id : null,
+    userName: user ? user.name : '',
+    placa: placa || '',
+    timestamp: new Date().toISOString(),
+    notas: notas || '',
+  });
+}
+function publicSpacesFromJson(data) {
+  const reservations = new Map(activeReservations(data).map((r) => [r.id, r]));
+  return data.espacios
+    .slice()
+    .sort((a, b) => a.piso - b.piso || String(a.zona).localeCompare(String(b.zona)) || a.num - b.num)
+    .map((s) => {
+      const reserva = reservations.get(s.reservaId);
+      return { id: s.id, piso: s.piso, zona: s.zona, num: s.num, estado: s.estado, reserva: reserva ? { inicio: reserva.inicio, fin: reserva.fin } : null };
+    });
+}
+function getJsonActiveReservationByPlate(data, plate) {
+  return activeReservations(data).filter((r) => r.placa === plate).sort((a, b) => new Date(b.inicio) - new Date(a.inicio))[0] || null;
+}
+function getJsonActiveReservationById(data, id) {
+  return activeReservations(data).find((r) => r.id === id) || null;
+}
 async function initDb() {
+  if (!USE_DB) {
+    readParkingData();
+    return;
+  }
   await pool.query(`
     create table if not exists parking_spaces (
       id text primary key,
@@ -189,6 +319,7 @@ async function initDb() {
   if (count === 0) await seedParking();
 }
 async function applyPasswordOverrides() {
+  if (!USE_DB) return;
   const rows = await query('select user_id, password from admin_passwords');
   for (const row of rows) {
     const user = ADMIN_USERS.find((u) => u.id === row.user_id);
@@ -196,6 +327,11 @@ async function applyPasswordOverrides() {
   }
 }
 async function setAdminUserPassword(userId, password) {
+  if (!USE_DB) {
+    const user = ADMIN_USERS.find((u) => u.id === userId);
+    if (user) user.password = password;
+    return;
+  }
   await pool.query(`
     insert into admin_passwords (user_id, password, updated_at)
     values ($1, $2, now())
@@ -274,10 +410,12 @@ function toReservation(row) {
   };
 }
 async function getActiveReservationByPlate(plate) {
+  if (!USE_DB) return getJsonActiveReservationByPlate(readParkingData(), plate);
   const rows = await query(`select * from parking_reservations where ${activeWhere} and plate = $1 order by starts_at desc limit 1`, [plate]);
   return rows[0] ? toReservation(rows[0]) : null;
 }
 async function getActiveReservationById(id) {
+  if (!USE_DB) return getJsonActiveReservationById(readParkingData(), id);
   const rows = await query(`select * from parking_reservations where ${activeWhere} and id = $1 limit 1`, [id]);
   return rows[0] ? toReservation(rows[0]) : null;
 }
@@ -385,7 +523,7 @@ function loginPage({ error = '', next = '/' } = {}) {
 
 app.get('/api/session', (req, res) => {
   const user = validAdminToken(parseCookies(req.headers.cookie)[ADMIN_COOKIE]);
-  res.json({ ok: true, user: user ? { id: user.id, name: user.name, email: user.email, role: user.role, area: user.area, status: user.status, parkingRole: user.parkingRole } : null });
+  res.json({ ok: true, user: user ? { id: user.id, name: user.name, email: user.email, role: user.role, area: user.area, status: user.status, parkingRole: user.parkingRole, couponRole: user.couponRole, sponsor: user.sponsor } : null });
 });
 app.get('/__login', (req, res) => res.type('html').send(loginPage({ next: safeNext(req.query.next) })));
 app.post('/__login', (req, res) => {
@@ -402,16 +540,28 @@ app.get('/__logout', (req, res) => {
 app.post('/admin/sign-in', (req, res) => {
   const user = findAdminUser(req.body.usuario, req.body.clave);
   if (!user) return res.status(401).json({ ok: false, error: 'Usuario o contrasena incorrectos.' });
-  res.setHeader('set-cookie', cookieAttrs(req, ADMIN_COOKIE, makeAdminToken(user), ADMIN_SESSION_HOURS * 3600, '/admin'));
-  res.json({ ok: true, user: { id: user.id, name: user.name, role: user.role, parkingRole: user.parkingRole } });
+  // Path=/ porque la SPA valida sesion en /api/session; se limpia ademas la
+  // cookie vieja con Path=/admin para que no haga sombra en rutas /admin/*.
+  res.setHeader('set-cookie', [
+    cookieAttrs(req, ADMIN_COOKIE, '', 0, '/admin'),
+    cookieAttrs(req, ADMIN_COOKIE, makeAdminToken(user), ADMIN_SESSION_HOURS * 3600, '/'),
+  ]);
+  res.json({ ok: true, user: { id: user.id, name: user.name, role: user.role, parkingRole: user.parkingRole, couponRole: user.couponRole, sponsor: user.sponsor } });
 });
 app.post('/admin/logout', (req, res) => {
-  res.setHeader('set-cookie', cookieAttrs(req, ADMIN_COOKIE, '', 0, '/admin'));
+  res.setHeader('set-cookie', [
+    cookieAttrs(req, ADMIN_COOKIE, '', 0, '/admin'),
+    cookieAttrs(req, ADMIN_COOKIE, '', 0, '/'),
+  ]);
   res.json({ ok: true });
 });
 
 app.get('/api/parqueo/publico/estado', async (_req, res, next) => {
   try {
+    if (!USE_DB) {
+      const data = readParkingData();
+      return res.json({ ok: true, tarifa: TARIFA_HORA, espacios: publicSpacesFromJson(data) });
+    }
     const rows = await query(`
       select s.*, r.starts_at, r.ends_at
       from parking_spaces s
@@ -432,6 +582,37 @@ app.post('/api/parqueo/publico/consulta', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 app.post('/api/parqueo/publico/ocupar', async (req, res, next) => {
+  if (!USE_DB) {
+    try {
+      const data = readParkingData();
+      const plate = String(req.body.placa || '').trim().toUpperCase();
+      const email = String(req.body.email || '').trim().toLowerCase();
+      const duration = Number(req.body.duracion);
+      if (!plate || plate.length > 12) return res.status(400).json({ ok: false, error: 'Placa invalida' });
+      if (!email || email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ ok: false, error: 'Correo invalido' });
+      if (!Number.isFinite(duration) || duration < 15 || duration > 1440) return res.status(400).json({ ok: false, error: 'Duracion invalida (15-1440 minutos)' });
+      const space = data.espacios.find((s) => s.id === req.body.espacioId);
+      if (!space) return res.status(404).json({ ok: false, error: 'El espacio no existe' });
+      if (space.estado !== 'disponible') return res.status(409).json({ ok: false, error: 'El espacio no esta disponible' });
+      if (getJsonActiveReservationByPlate(data, plate)) return res.status(409).json({ ok: false, error: 'Esa placa ya tiene un espacio activo' });
+      const id = nextJsonReservationId(data);
+      const starts = new Date();
+      const ends = new Date(starts.getTime() + duration * 60000);
+      const code = `CSH-R-${id.slice(2).padStart(4, '0')}`;
+      const qrData = `${code}|${space.id}|${plate}|${ends.toISOString()}`;
+      const reserva = { id, espacioId: space.id, userId: null, userName: 'Invitado', placa: plate, rol: 'invitado', estado: 'ocupado', inicio: starts.toISOString(), fin: ends.toISOString(), codigo: code, qrData, emailQr: email };
+      data.reservas.push(reserva);
+      space.estado = 'ocupado';
+      space.reservaId = id;
+      pushJsonEvent(data, 'entrada', { espacioId: space.id, user: { id: null, name: 'Invitado' }, placa: plate, notas: `Walk-in, estimado ${duration} min, QR a ${email}` });
+      writeParkingData(data);
+      let emailSent = false;
+      let emailError = '';
+      try { await sendParkingQrEmail({ to: email, reserva }); emailSent = true; }
+      catch (err) { emailError = err.message; console.error(`[mail] Error enviando QR a ${email}: ${emailError}`); }
+      return res.json({ ok: true, sesion: { reservaId: id, espacioId: space.id, placa: plate, inicio: reserva.inicio, fin: reserva.fin, codigo: code, qrData, correo: maskedReservaEmail(reserva), emailSent, emailError } });
+    } catch (err) { return next(err); }
+  }
   const client = await pool.connect();
   try {
     const plate = String(req.body.placa || '').trim().toUpperCase();
@@ -477,11 +658,43 @@ app.post('/api/parqueo/publico/reenviar', async (req, res, next) => {
     const email = reservaEmail(reserva);
     if (!email) return res.status(409).json({ ok: false, error: 'La reserva no tiene correo asociado' });
     await sendParkingQrEmail({ to: email, reserva });
-    await logEvento(pool, 'envio', { espacioId: reserva.espacioId, user: { id: null, name: 'Consulta publica' }, placa: reserva.placa, notas: `Reenvio solicitado a ${maskedReservaEmail(reserva)}` });
+    if (USE_DB) await logEvento(pool, 'envio', { espacioId: reserva.espacioId, user: { id: null, name: 'Consulta publica' }, placa: reserva.placa, notas: `Reenvio solicitado a ${maskedReservaEmail(reserva)}` });
+    else {
+      const data = readParkingData();
+      pushJsonEvent(data, 'envio', { espacioId: reserva.espacioId, user: { id: null, name: 'Consulta publica' }, placa: reserva.placa, notas: `Reenvio solicitado a ${maskedReservaEmail(reserva)}` });
+      writeParkingData(data);
+    }
     res.json({ ok: true, correo: maskedReservaEmail(reserva) });
   } catch (err) { next(err); }
 });
 app.post('/api/parqueo/publico/pagar', async (req, res, next) => {
+  if (!USE_DB) {
+    try {
+      const data = readParkingData();
+      const plate = String(req.body.placa || '').trim().toUpperCase();
+      const reserva = getJsonActiveReservationByPlate(data, plate);
+      if (!reserva) return res.status(404).json({ ok: false, error: 'No hay parqueo activo para esa placa' });
+      const email = reservaEmail(reserva);
+      if (!email) return res.status(409).json({ ok: false, error: 'La reserva no tiene correo asociado para enviar el recibo' });
+      const pago = req.body.pago || {};
+      const cardNumber = String(pago.cardNumber || '').replace(/\D/g, '');
+      if (String(pago.name || '').trim().length < 3) return res.status(400).json({ ok: false, error: 'Ingresa el nombre del tarjetahabiente' });
+      if (cardNumber.length < 13 || cardNumber.length > 19) return res.status(400).json({ ok: false, error: 'Numero de tarjeta invalido' });
+      if (!/^\d{2}\/\d{2}$/.test(String(pago.exp || '').trim())) return res.status(400).json({ ok: false, error: 'Fecha de expiracion invalida' });
+      if (String(pago.cvv || '').replace(/\D/g, '').length < 3) return res.status(400).json({ ok: false, error: 'CVV invalido' });
+      if (cardNumber.endsWith('0000')) return res.status(402).json({ ok: false, error: 'La transaccion fue rechazada por el emisor' });
+      const { horas, monto } = montoDe(reserva);
+      const recibo = { espacioId: reserva.espacioId, placa: reserva.placa, horas, monto, transaccion: `CSH-PAY-${Date.now().toString(36).toUpperCase()}`, correo: maskedReservaEmail(reserva) };
+      await sendPaymentReceiptEmail({ to: email, reserva, recibo });
+      reserva.estado = 'finalizada';
+      reserva.pago = { transaccion: recibo.transaccion, monto, horas, timestamp: new Date().toISOString(), metodo: `****${cardNumber.slice(-4)}` };
+      const space = data.espacios.find((s) => s.id === reserva.espacioId);
+      if (space) { space.estado = 'disponible'; space.reservaId = null; }
+      pushJsonEvent(data, 'pago', { espacioId: reserva.espacioId, user: { id: null, name: 'Invitado' }, placa: reserva.placa, notas: `CRC ${monto} (${horas}h) - ${recibo.transaccion}` });
+      writeParkingData(data);
+      return res.json({ ok: true, recibo });
+    } catch (err) { return next(err); }
+  }
   const client = await pool.connect();
   try {
     const plate = String(req.body.placa || '').trim().toUpperCase();
@@ -513,8 +726,20 @@ app.post('/api/parqueo/publico/pagar', async (req, res, next) => {
   }
 });
 
+app.get('/api/cuponera/publico', (_req, res) => {
+  const data = readCuponeraData();
+  const cupones = data.cupones.filter((c) => c.estado === 'habilitado').map(publicCoupon);
+  res.json({ ok: true, cupones, stats: couponStats(data.cupones) });
+});
+
 app.get('/admin/api/parqueo/estado', requireAdmin, async (_req, res, next) => {
   try {
+    if (!USE_DB) {
+      const data = readParkingData();
+      const espacios = data.espacios.slice().sort((a, b) => a.piso - b.piso || String(a.zona).localeCompare(String(b.zona)) || a.num - b.num);
+      const reservas = activeReservations(data).slice().sort((a, b) => new Date(b.inicio) - new Date(a.inicio));
+      return res.json({ ok: true, espacios, reservas });
+    }
     const spaces = (await query('select * from parking_spaces order by floor, zone, num')).map(toSpace);
     const reservations = (await query(`select * from parking_reservations where ${activeWhere} order by starts_at desc`)).map(toReservation);
     res.json({ ok: true, espacios: spaces, reservas: reservations });
@@ -525,6 +750,11 @@ app.get('/admin/api/parqueo/eventos', requireAdmin, async (req, res, next) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     const plate = String(req.query.placa || '').trim().toUpperCase();
+    if (!USE_DB) {
+      const filtered = readParkingData().eventos.filter((e) => !plate || String(e.placa || '').toUpperCase().includes(plate));
+      filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      return res.json({ ok: true, total: filtered.length, eventos: filtered.slice(offset, offset + limit) });
+    }
     const where = plate ? 'where upper(plate) like $1' : '';
     const params = plate ? [`%${plate}%`, limit, offset] : [limit, offset];
     const countParams = plate ? [`%${plate}%`] : [];
@@ -534,6 +764,33 @@ app.get('/admin/api/parqueo/eventos', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 app.post('/admin/api/parqueo/reservar', requireAdmin, async (req, res, next) => {
+  if (!USE_DB) {
+    try {
+      const data = readParkingData();
+      const user = req.adminUser;
+      const isAdmin = user.parkingRole === 'admin';
+      const plate = String(req.body.placa || '').trim().toUpperCase();
+      const duration = Number(req.body.duracion);
+      if (!plate || plate.length > 12) return res.status(400).json({ ok: false, error: 'Placa invalida' });
+      if (!Number.isFinite(duration) || duration < 15 || duration > 1440) return res.status(400).json({ ok: false, error: 'Duracion invalida (15-1440 minutos)' });
+      const space = data.espacios.find((s) => s.id === req.body.espacioId);
+      if (!space) return res.status(404).json({ ok: false, error: 'El espacio no existe' });
+      if (space.estado !== 'disponible') return res.status(409).json({ ok: false, error: 'El espacio no esta disponible' });
+      if (!isAdmin && activeReservations(data).some((r) => r.userId === user.id)) return res.status(409).json({ ok: false, error: 'Ya tienes una reserva activa' });
+      const id = nextJsonReservationId(data);
+      const starts = new Date();
+      const ends = new Date(starts.getTime() + duration * 60000);
+      const code = `CSH-R-${id.slice(2).padStart(4, '0')}`;
+      const qrData = `${code}|${space.id}|${plate}|${ends.toISOString()}`;
+      const reserva = { id, espacioId: space.id, userId: user.id, userName: user.name, placa: plate, rol: user.parkingRole || 'socio', estado: 'reservado', inicio: starts.toISOString(), fin: ends.toISOString(), codigo: code, qrData };
+      data.reservas.push(reserva);
+      space.estado = 'reservado';
+      space.reservaId = id;
+      pushJsonEvent(data, 'reserva', { espacioId: space.id, user, placa: plate, notas: `Duracion ${duration} min` });
+      writeParkingData(data);
+      return res.json({ ok: true, reserva });
+    } catch (err) { return next(err); }
+  }
   const client = await pool.connect();
   try {
     const user = req.adminUser;
@@ -571,6 +828,18 @@ app.post('/admin/api/parqueo/reservar', requireAdmin, async (req, res, next) => 
 app.post('/admin/api/parqueo/ocupar', requireAdmin, async (req, res, next) => {
   try {
     if (req.adminUser.parkingRole !== 'admin') return res.status(403).json({ ok: false, error: 'Solo administradores pueden marcar entradas' });
+    if (!USE_DB) {
+      const data = readParkingData();
+      const reserva = getJsonActiveReservationById(data, req.body.reservaId);
+      if (!reserva) return res.status(404).json({ ok: false, error: 'Reserva no activa' });
+      if (reserva.estado === 'ocupado') return res.status(409).json({ ok: false, error: 'El espacio ya esta ocupado' });
+      reserva.estado = 'ocupado';
+      const space = data.espacios.find((s) => s.id === reserva.espacioId);
+      if (space) space.estado = 'ocupado';
+      pushJsonEvent(data, 'entrada', { espacioId: reserva.espacioId, user: req.adminUser, placa: reserva.placa });
+      writeParkingData(data);
+      return res.json({ ok: true });
+    }
     const reserva = await getActiveReservationById(req.body.reservaId);
     if (!reserva) return res.status(404).json({ ok: false, error: 'Reserva no activa' });
     if (reserva.estado === 'ocupado') return res.status(409).json({ ok: false, error: 'El espacio ya esta ocupado' });
@@ -582,6 +851,20 @@ app.post('/admin/api/parqueo/ocupar', requireAdmin, async (req, res, next) => {
 });
 app.post('/admin/api/parqueo/liberar', requireAdmin, async (req, res, next) => {
   try {
+    if (!USE_DB) {
+      const data = readParkingData();
+      const space = data.espacios.find((s) => s.id === req.body.espacioId);
+      if (!space) return res.status(404).json({ ok: false, error: 'El espacio no existe' });
+      const reserva = space.reservaId ? getJsonActiveReservationById(data, space.reservaId) : null;
+      if (!reserva) return res.status(409).json({ ok: false, error: 'El espacio no tiene reserva activa' });
+      if (reserva.userId !== req.adminUser.id && req.adminUser.parkingRole !== 'admin') return res.status(403).json({ ok: false, error: 'Sin permiso para liberar este espacio' });
+      reserva.estado = 'finalizada';
+      space.estado = 'disponible';
+      space.reservaId = null;
+      pushJsonEvent(data, 'salida', { espacioId: space.id, user: req.adminUser, placa: reserva.placa, notas: reserva.userId === req.adminUser.id ? '' : 'Liberado por admin' });
+      writeParkingData(data);
+      return res.json({ ok: true });
+    }
     const rows = await query('select * from parking_spaces where id = $1', [req.body.espacioId]);
     const space = rows[0];
     if (!space) return res.status(404).json({ ok: false, error: 'El espacio no existe' });
@@ -596,6 +879,20 @@ app.post('/admin/api/parqueo/liberar', requireAdmin, async (req, res, next) => {
 });
 app.post('/admin/api/parqueo/extender', requireAdmin, async (req, res, next) => {
   try {
+    if (!USE_DB) {
+      const data = readParkingData();
+      const reserva = getJsonActiveReservationById(data, req.body.reservaId);
+      if (!reserva) return res.status(404).json({ ok: false, error: 'Reserva no activa' });
+      if (reserva.userId !== req.adminUser.id && req.adminUser.parkingRole !== 'admin') return res.status(403).json({ ok: false, error: 'Sin permiso para extender esta reserva' });
+      const minutos = Number(req.body.minutos);
+      if (!Number.isFinite(minutos) || minutos < 5 || minutos > 720) return res.status(400).json({ ok: false, error: 'Minutos invalidos (5-720)' });
+      const base = Math.max(new Date(reserva.fin).getTime(), Date.now());
+      reserva.fin = new Date(base + minutos * 60000).toISOString();
+      reserva.qrData = `${reserva.codigo}|${reserva.espacioId}|${reserva.placa}|${reserva.fin}`;
+      pushJsonEvent(data, 'extension', { espacioId: reserva.espacioId, user: req.adminUser, placa: reserva.placa, notas: `+${minutos} min` });
+      writeParkingData(data);
+      return res.json({ ok: true });
+    }
     const reserva = await getActiveReservationById(req.body.reservaId);
     if (!reserva) return res.status(404).json({ ok: false, error: 'Reserva no activa' });
     if (reserva.userId !== req.adminUser.id && req.adminUser.parkingRole !== 'admin') return res.status(403).json({ ok: false, error: 'Sin permiso para extender esta reserva' });
@@ -611,6 +908,18 @@ app.post('/admin/api/parqueo/extender', requireAdmin, async (req, res, next) => 
 });
 app.delete('/admin/api/parqueo/reserva/:id', requireAdmin, async (req, res, next) => {
   try {
+    if (!USE_DB) {
+      const data = readParkingData();
+      const reserva = getJsonActiveReservationById(data, req.params.id);
+      if (!reserva) return res.status(404).json({ ok: false, error: 'Reserva no activa' });
+      if (reserva.userId !== req.adminUser.id && req.adminUser.parkingRole !== 'admin') return res.status(403).json({ ok: false, error: 'Sin permiso para cancelar esta reserva' });
+      reserva.estado = 'cancelada';
+      const space = data.espacios.find((s) => s.id === reserva.espacioId);
+      if (space) { space.estado = 'disponible'; space.reservaId = null; }
+      pushJsonEvent(data, 'cancelacion', { espacioId: reserva.espacioId, user: req.adminUser, placa: reserva.placa, notas: reserva.userId === req.adminUser.id ? '' : 'Cancelada por admin' });
+      writeParkingData(data);
+      return res.json({ ok: true });
+    }
     const reserva = await getActiveReservationById(req.params.id);
     if (!reserva) return res.status(404).json({ ok: false, error: 'Reserva no activa' });
     if (reserva.userId !== req.adminUser.id && req.adminUser.parkingRole !== 'admin') return res.status(403).json({ ok: false, error: 'Sin permiso para cancelar esta reserva' });
@@ -628,13 +937,43 @@ app.post('/admin/api/parqueo/enviar-qr', requireAdmin, async (req, res, next) =>
     const email = String(req.body.email || '').trim().toLowerCase();
     if (email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ ok: false, error: 'Correo invalido' });
     await sendParkingQrEmail({ to: email, reserva });
-    await pool.query('update parking_reservations set email_qr = $1 where id = $2', [email, reserva.id]);
-    await logEvento(pool, 'envio', { espacioId: reserva.espacioId, user: req.adminUser, placa: reserva.placa, notas: `QR a ${email}` });
+    if (USE_DB) {
+      await pool.query('update parking_reservations set email_qr = $1 where id = $2', [email, reserva.id]);
+      await logEvento(pool, 'envio', { espacioId: reserva.espacioId, user: req.adminUser, placa: reserva.placa, notas: `QR a ${email}` });
+    } else {
+      const data = readParkingData();
+      const current = getJsonActiveReservationById(data, reserva.id);
+      if (current) current.emailQr = email;
+      pushJsonEvent(data, 'envio', { espacioId: reserva.espacioId, user: req.adminUser, placa: reserva.placa, notas: `QR a ${email}` });
+      writeParkingData(data);
+    }
     res.json({ ok: true, email });
   } catch (err) { next(err); }
 });
+app.get('/admin/api/cuponera', requireAdmin, (req, res) => {
+  const data = readCuponeraData();
+  const scope = req.adminUser.couponRole === 'patrocinador' ? req.adminUser.sponsor : '';
+  const cupones = data.cupones
+    .filter((c) => !scope || c.proveedor === scope)
+    .map(publicCoupon);
+  res.json({ ok: true, cupones, eventos: data.eventos.slice().reverse().slice(0, 50), stats: couponStats(cupones), role: req.adminUser.couponRole || 'socio', sponsor: scope });
+});
+app.post('/admin/api/cuponera/:id/estado', requireAdmin, (req, res) => {
+  if (!canManageCoupons(req.adminUser)) return res.status(403).json({ ok: false, error: 'Sin permiso para administrar cupones' });
+  const estado = String(req.body.estado || '');
+  if (!['habilitado', 'retirado'].includes(estado)) return res.status(400).json({ ok: false, error: 'Estado invalido' });
+  const data = readCuponeraData();
+  const cupon = data.cupones.find((c) => c.id === req.params.id);
+  if (!cupon) return res.status(404).json({ ok: false, error: 'Cupon no encontrado' });
+  if (req.adminUser.couponRole === 'patrocinador' && cupon.proveedor !== req.adminUser.sponsor) return res.status(403).json({ ok: false, error: 'Solo puedes gestionar cupones de tu patrocinador' });
+  cupon.estado = estado;
+  cupon.actualizado = new Date().toISOString();
+  data.eventos.push({ id: `CE-${Date.now().toString(36)}`, cuponId: cupon.id, proveedor: cupon.proveedor, estado, userId: req.adminUser.id, userName: req.adminUser.name, timestamp: cupon.actualizado });
+  writeCuponeraData(data);
+  res.json({ ok: true, cupon: publicCoupon(cupon), stats: couponStats(data.cupones) });
+});
 app.get('/admin/api/users', requireAdmin, (req, res) => {
-  res.json({ ok: true, users: ADMIN_USERS.map((u) => ({ id: u.id, name: u.name, username: u.username, email: u.email, role: u.role, area: u.area, status: u.status, parkingRole: u.parkingRole })) });
+  res.json({ ok: true, users: ADMIN_USERS.map((u) => ({ id: u.id, name: u.name, username: u.username, email: u.email, role: u.role, area: u.area, status: u.status, parkingRole: u.parkingRole, couponRole: u.couponRole, sponsor: u.sponsor })) });
 });
 app.post('/admin/api/users/password', requireAdmin, async (req, res, next) => {
   try {
@@ -660,7 +999,20 @@ const distDir = path.join(__dirname, 'dist');
 if (fs.existsSync(distDir)) {
   app.use('/assets', express.static(path.join(distDir, 'assets'), { maxAge: '1y', immutable: true }));
   app.get('/parqueo', (_req, res) => res.sendFile(path.join(distDir, 'index.html')));
+  app.get('/cuponera', (_req, res) => res.sendFile(path.join(distDir, 'index.html')));
   app.get(/^\/admin(?:\/.*)?$/, (_req, res) => res.sendFile(path.join(distDir, 'index.html')));
+}
+
+const NAV_LINKS = '<a class="csh-cuponera-link" href="/cuponera">Cuponera</a><a class="csh-parqueo-link" href="/parqueo">Parqueo</a><a class="csh-admin-signin" href="/admin">Sign in</a>';
+const NAV_STYLE = '<style id="csh-nav-style">.csh-admin-signin,.csh-parqueo-link,.csh-cuponera-link{font-family:Oswald,sans-serif;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#f7f1df;text-decoration:none;margin-left:12px}.csh-admin-signin{background:#d62828;padding:10px 14px;border-radius:2px}</style>';
+// El sitio es Next.js: al hidratar, React reconstruye el nav y elimina los enlaces
+// inyectados en el HTML estatico, por eso el observer los re-inserta.
+const NAV_SCRIPT = `<script id="csh-nav-script">(function(){var html=${JSON.stringify(NAV_LINKS)};function ensure(){if(document.querySelector('.csh-admin-signin'))return;var nav=document.querySelector('.csh-nav-desktop')||document.querySelector('nav');if(nav)nav.insertAdjacentHTML('beforeend',html);}var t;new MutationObserver(function(){clearTimeout(t);t=setTimeout(ensure,120);}).observe(document.documentElement,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensure);else ensure();})();</script>`;
+function decorateSiteHtml(s) {
+  s = s.replace(/<a class="csh-(?:cuponera-link|parqueo-link|admin-signin)"[^>]*>[^<]*<\/a>/g, '');
+  if (!s.includes('csh-nav-style')) s = s.replace('</head>', `${NAV_STYLE}${NAV_SCRIPT}</head>`);
+  s = s.replace('</nav>', `${NAV_LINKS}</nav>`);
+  return s;
 }
 
 app.use(async (req, res, next) => {
@@ -671,14 +1023,7 @@ app.use(async (req, res, next) => {
     const entry = await getCachedAsset(req.originalUrl);
     let body = entry.body;
     if (/text\/html/i.test(entry.meta.ct || '')) {
-      let s = body.toString('utf8');
-      const links = '<a class="csh-parqueo-link" href="/parqueo">Parqueo</a><a class="csh-admin-signin" href="/admin">Sign in</a>';
-      const style = '<style>.csh-admin-signin,.csh-parqueo-link{font-family:Oswald,sans-serif;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#f7f1df;text-decoration:none;margin-left:12px}.csh-admin-signin{background:#d62828;padding:10px 14px;border-radius:2px}</style>';
-      if (!s.includes('csh-admin-signin')) {
-        s = s.replace('</head>', `${style}</head>`);
-        s = s.replace('</nav>', `${links}</nav>`);
-      }
-      body = Buffer.from(s, 'utf8');
+      body = Buffer.from(decorateSiteHtml(body.toString('utf8')), 'utf8');
     }
     const headers = { 'content-type': entry.meta.ct || 'application/octet-stream', 'cache-control': /text\/html/i.test(entry.meta.ct || '') ? 'no-store' : 'public, max-age=3600' };
     if (/gzip/.test(req.headers['accept-encoding'] || '') && /text\/|javascript|json|xml|svg/i.test(entry.meta.ct || '')) {
@@ -694,8 +1039,9 @@ app.use((err, _req, res, _next) => {
 });
 
 initDb().then(() => {
-  app.listen(PORT, HOST, () => console.log(`Herediano React + PostgreSQL corriendo en http://${HOST}:${PORT}`));
+  const storage = USE_DB ? 'PostgreSQL' : 'JSON local';
+  app.listen(PORT, HOST, () => console.log(`Herediano React + ${storage} corriendo en http://${HOST}:${PORT}`));
 }).catch((err) => {
-  console.error('No se pudo inicializar PostgreSQL:', err);
+  console.error('No se pudo inicializar el almacenamiento:', err);
   process.exit(1);
 });

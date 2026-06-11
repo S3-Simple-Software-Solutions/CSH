@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Car, Clock, LogOut, Mail, Shield, Users } from 'lucide-react';
+import { BadgePercent, Car, Clock, Globe, LogOut, Mail, Moon, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Truck, Users, UtensilsCrossed } from 'lucide-react';
 import './styles.css';
 
 const money = (value) => `₡${Number(value || 0).toLocaleString('es-CR')}`;
@@ -31,6 +31,21 @@ async function api(path, options = {}) {
   return json;
 }
 
+const THEME_KEY = 'csh-theme';
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem(THEME_KEY, theme);
+}
+function ThemeToggle() {
+  const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || 'dark');
+  useEffect(() => { applyTheme(theme); }, [theme]);
+  return (
+    <button className="icon-text ghost" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}>
+      {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+    </button>
+  );
+}
+
 function Header({ user, onLogout }) {
   return (
     <header className="top">
@@ -39,11 +54,70 @@ function Header({ user, onLogout }) {
         <span>Herediano</span>
       </a>
       <nav>
+        <a href="/cuponera">Cuponera</a>
         <a href="/parqueo">Parqueo</a>
         <a href="/admin">Admin</a>
+        <ThemeToggle />
         {user && <button className="icon-text ghost" onClick={onLogout}><LogOut size={16} />Salir</button>}
       </nav>
     </header>
+  );
+}
+
+function CouponCard({ cupon, admin = false, onToggle }) {
+  const pct = Math.min(100, Math.round((Number(cupon.usos || 0) / Math.max(1, Number(cupon.limite || 1))) * 100));
+  return (
+    <article className={`coupon ${cupon.estado}`}>
+      <div className="coupon-stub">
+        <img src={cupon.logo} alt={cupon.proveedor} />
+        <span>{cupon.categoria}</span>
+      </div>
+      <div className="coupon-body">
+        <div className="coupon-top">
+          <span className="coupon-provider">{cupon.proveedor}</span>
+          <b className={`coupon-status ${cupon.estado}`}>{cupon.estado}</b>
+        </div>
+        <h2>{cupon.titulo}</h2>
+        <p>{cupon.descripcion}</p>
+        <div className="coupon-code"><span>Codigo</span><strong>{cupon.codigo}</strong></div>
+        <div className="coupon-usage">
+          <div className="coupon-meter"><i className={pct >= 85 ? 'high' : ''} style={{ width: `${pct}%` }} /></div>
+          <small>{cupon.usos}/{cupon.limite} usos</small>
+        </div>
+        <div className="coupon-foot">
+          <small>Vence {fmtFullDate(cupon.vigencia)}</small>
+          {admin && (
+            <button className="coupon-toggle" onClick={() => onToggle?.(cupon)} title={cupon.estado === 'habilitado' ? 'Retirar cupon' : 'Habilitar cupon'}>
+              {cupon.estado === 'habilitado' ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+              {cupon.estado === 'habilitado' ? 'Retirar' : 'Habilitar'}
+            </button>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function PublicCoupons() {
+  const [state, setState] = useState({ cupones: [], stats: null });
+  useEffect(() => { api('/api/cuponera/publico').then((data) => data.ok && setState({ cupones: data.cupones, stats: data.stats })); }, []);
+  return (
+    <>
+      <Header />
+      <main className="page">
+        <p className="eyebrow">Modulo de cuponera</p>
+        <h1>Beneficios para socios</h1>
+        <p className="sub">Cupones activos de patrocinadores oficiales. Presenta el codigo en el comercio participante para aplicar el descuento.</p>
+        <section className="coupon-stats">
+          <div><span>Disponibles</span><b>{state.stats?.habilitados || state.cupones.length}</b></div>
+          <div><span>Usos registrados</span><b>{state.stats?.usos || 0}</b></div>
+          <div><span>Proveedores</span><b>{new Set(state.cupones.map((c) => c.proveedor)).size}</b></div>
+        </section>
+        <section className="coupon-list">
+          {state.cupones.map((cupon) => <CouponCard key={cupon.id} cupon={cupon} />)}
+        </section>
+      </main>
+    </>
   );
 }
 
@@ -61,36 +135,76 @@ function ExpirationBar({ start, end }) {
 }
 
 function ParkingGrid({ spaces, floor, onSpace, admin = false, reservations = [], me }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
   const grouped = { A: [], B: [] };
   spaces.filter((s) => s.piso === floor).forEach((s) => grouped[s.zona]?.push(s));
+  Object.values(grouped).forEach((list) => list.sort((a, b) => a.num - b.num));
   const reservationById = new Map(reservations.map((r) => [r.id, r]));
-  const renderZone = (zone) => (
-    <section className="zone">
-      <h3>Zona {zone} · Piso {floor}</h3>
-      <div className="grid">
-        {grouped[zone].sort((a, b) => a.num - b.num).map((space) => {
-          const reservation = reservationById.get(space.reservaId);
-          const mine = reservation && reservation.userId === me?.id;
-          return (
-            <button
-              key={space.id}
-              className={`space ${space.estado} ${mine ? 'mine' : ''}`}
-              onClick={() => onSpace?.(space, reservation)}
-              title={admin && reservation ? `${space.id} · ${reservation.placa}` : `${space.id} · ${space.estado}`}
-            >
-              <span>{space.num}</span>
-              {(reservation || space.reserva) && <ExpirationBar start={(reservation || space.reserva).inicio} end={(reservation || space.reserva).fin} />}
-            </button>
-          );
-        })}
-      </div>
-    </section>
+  const total = grouped.A.length + grouped.B.length;
+
+  const stall = (space, open) => {
+    const reservation = reservationById.get(space.reservaId);
+    const session = reservation || space.reserva;
+    const mine = reservation && reservation.userId === me?.id;
+    const expired = session && new Date(session.fin).getTime() <= now;
+    return (
+      <button
+        key={space.id}
+        className={`stall ${space.estado} open-${open} ${expired ? 'vencido' : ''} ${mine ? 'mine' : ''}`}
+        onClick={() => onSpace?.(space, reservation)}
+        title={admin && reservation ? `${space.id} · ${reservation.placa}${expired ? ' · vencido' : ''}` : `${space.id} · ${expired ? 'tiempo vencido' : space.estado}`}
+      >
+        {space.estado === 'ocupado' && <Car size={11} aria-hidden />}
+        <span>{space.num}</span>
+        {session && <ExpirationBar start={session.inicio} end={session.fin} />}
+      </button>
+    );
+  };
+  const strip = (zone, from, to, open) => (
+    <div className="stall-strip">{grouped[zone].slice(from, to).map((s) => stall(s, open))}</div>
   );
+  const lane = (dir) => (
+    <div className={`lane ${dir}`} aria-hidden>
+      <span>{dir === 'left' ? '‹ ‹ ‹' : '› › ›'}</span>
+    </div>
+  );
+
   return (
-    <div className="parking-grid">
-      {renderZone('A')}
-      <div className="street"><span>ENTRADA</span><b>CALLE</b></div>
-      {renderZone('B')}
+    <div className="lot-wrap">
+      <div className="lot">
+        <div className="lot-banner">Nivel {floor}</div>
+        <div className="lot-head"><span>Zona A</span><span /><span>Zona B</span></div>
+        <div className="lot-row">
+          {strip('A', 0, 25, 'down')}
+          <div className="lot-core stairs"><span>Gradas</span></div>
+          {strip('B', 0, 25, 'down')}
+        </div>
+        {lane('right')}
+        <div className="lot-row">
+          <div className="bay-col">
+            {strip('A', 25, 50, 'up')}
+            <div className="bay-divider" />
+            {strip('A', 50, 75, 'down')}
+          </div>
+          <div className="lot-core ramp"><span>Rampa<br />{floor === 1 ? '↑ N2' : '↓ N1'}</span></div>
+          <div className="bay-col">
+            {strip('B', 25, 50, 'up')}
+            <div className="bay-divider" />
+            {strip('B', 50, 75, 'down')}
+          </div>
+        </div>
+        {lane('left')}
+        <div className="lot-row">
+          {strip('A', 75, 100, 'up')}
+          <div className="lot-core entry"><span>Entrada ↓</span></div>
+          {strip('B', 75, 100, 'up')}
+        </div>
+        <div className="lot-foot">Total nivel {floor}: {total} espacios</div>
+      </div>
     </div>
   );
 }
@@ -208,6 +322,7 @@ function Toolbar({ floor, setFloor, stats }) {
         <span><i className="green" />Disponible</span>
         <span><i className="orange" />Reservado</span>
         <span><i className="red" />Ocupado</span>
+        <span><i className="wine" />Tiempo vencido</span>
         <span>{stats}</span>
       </div>
     </div>
@@ -270,6 +385,46 @@ function PaymentModal({ info, onClose, onDone }) {
   );
 }
 
+const WIP_MODULES = {
+  '/admin/restaurantes': {
+    icon: UtensilsCrossed,
+    title: 'Gestion de restaurantes',
+    desc: 'Administracion de los puntos de comida del estadio: locales, menus, precios e inventario por evento.',
+    items: ['Catalogo de locales y menus por partido', 'Control de inventario y precios', 'Reportes de ventas por evento'],
+  },
+  '/admin/proveedores': {
+    icon: Truck,
+    title: 'Gestion de proveedores',
+    desc: 'Registro y seguimiento de proveedores del club: contratos, ordenes de compra y pagos.',
+    items: ['Directorio de proveedores y contactos', 'Ordenes de compra y entregas', 'Historial de contratos y pagos'],
+  },
+  '/admin/web': {
+    icon: Globe,
+    title: 'Gestion de la pagina web',
+    desc: 'Contenido del sitio publico: noticias, plantilla de jugadores y material multimedia.',
+    items: ['Editor de noticias y comunicados', 'Plantilla y fichas de jugadores', 'Imagenes y patrocinadores del sitio'],
+  },
+};
+
+function UnderConstruction({ modulo }) {
+  const Icon = modulo.icon;
+  return (
+    <main className="page">
+      <p className="eyebrow">Modulo en construccion</p>
+      <h1>{modulo.title}</h1>
+      <p className="sub">{modulo.desc}</p>
+      <div className="wip-card">
+        <Icon size={36} />
+        <div>
+          <span className="pill">En construccion</span>
+          <p>Lo que incluira este modulo:</p>
+          <ul>{modulo.items.map((item) => <li key={item}>{item}</li>)}</ul>
+        </div>
+      </div>
+    </main>
+  );
+}
+
 function AdminApp() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -290,11 +445,16 @@ function AdminApp() {
         <a className="side-brand" onClick={() => navigate('/admin')}><img src="/admin/assets/logo-shield.png" alt="" /><b>Herediano</b><span>Admin</span></a>
         <button className={route === '/admin' ? 'active' : ''} onClick={() => navigate('/admin')}><Shield size={17} />Resumen</button>
         <button className={route === '/admin/parqueo' ? 'active' : ''} onClick={() => navigate('/admin/parqueo')}><Car size={17} />Gestion de parqueo</button>
+        <button className={route === '/admin/cuponera' ? 'active' : ''} onClick={() => navigate('/admin/cuponera')}><Ticket size={17} />Cuponera</button>
         <button className={route === '/admin/usuarios' ? 'active' : ''} onClick={() => navigate('/admin/usuarios')}><Users size={17} />Gestion de usuarios</button>
+        {Object.entries(WIP_MODULES).map(([path, mod]) => {
+          const Icon = mod.icon;
+          return <button key={path} className={route === path ? 'active' : ''} onClick={() => navigate(path)}><Icon size={17} />{mod.title}</button>;
+        })}
       </aside>
       <section className="admin-main">
         <Header user={user} onLogout={logout} />
-        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : <AdminHome user={user} navigate={navigate} />}
+        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
   );
@@ -324,7 +484,22 @@ function AdminLogin() {
 }
 
 function AdminHome({ user, navigate }) {
-  return <main className="page"><p className="eyebrow">Centro de mando</p><h1>Administracion CSH</h1><p className="sub">Sesion activa de {user.name}. Selecciona un modulo para operar.</p><div className="module-grid"><button onClick={() => navigate('/admin/parqueo')}><Car />Gestion de parqueo</button><button onClick={() => navigate('/admin/usuarios')}><Users />Gestion de usuarios</button></div></main>;
+  return (
+    <main className="page">
+      <p className="eyebrow">Centro de mando</p>
+      <h1>Administracion CSH</h1>
+      <p className="sub">Sesion activa de {user.name}. Selecciona un modulo para operar.</p>
+      <div className="module-grid">
+        <button onClick={() => navigate('/admin/parqueo')}><Car />Gestion de parqueo</button>
+        <button onClick={() => navigate('/admin/cuponera')}><BadgePercent />Cuponera</button>
+        <button onClick={() => navigate('/admin/usuarios')}><Users />Gestion de usuarios</button>
+        {Object.entries(WIP_MODULES).map(([path, mod]) => {
+          const Icon = mod.icon;
+          return <button key={path} className="wip" onClick={() => navigate(path)}><Icon /><span>{mod.title}<small>En construccion</small></span></button>;
+        })}
+      </div>
+    </main>
+  );
 }
 
 function AdminUsers() {
@@ -385,6 +560,41 @@ function AdminParking({ user }) {
   );
 }
 
+function AdminCoupons({ user }) {
+  const [state, setState] = useState({ cupones: [], eventos: [], stats: {}, role: 'socio', sponsor: '' });
+  const [message, setMessage] = useState(null);
+  const refresh = async () => {
+    const data = await api('/admin/api/cuponera');
+    if (data.ok) setState(data);
+  };
+  useEffect(() => { refresh(); }, []);
+  async function toggle(cupon) {
+    setMessage(null);
+    const estado = cupon.estado === 'habilitado' ? 'retirado' : 'habilitado';
+    const data = await api(`/admin/api/cuponera/${cupon.id}/estado`, { method: 'POST', body: JSON.stringify({ estado }) });
+    if (!data.ok) return setMessage({ type: 'error', text: data.error });
+    setMessage({ type: 'ok', text: `${cupon.proveedor}: cupon ${estado}.` });
+    refresh();
+  }
+  const canManage = state.role === 'admin' || state.role === 'patrocinador';
+  return (
+    <main className="page">
+      <p className="eyebrow">Beneficios y proveedores</p><h1>Cuponera</h1>
+      <p className="sub">{state.role === 'patrocinador' ? `Panel de patrocinador para ${state.sponsor}.` : 'Panel administrativo para revisar, retirar o habilitar cupones de descuento.'}</p>
+      <section className="coupon-stats">
+        <div><span>Total</span><b>{state.stats.total || 0}</b></div>
+        <div><span>Habilitados</span><b>{state.stats.habilitados || 0}</b></div>
+        <div><span>Retirados</span><b>{state.stats.retirados || 0}</b></div>
+      </section>
+      {message && <div className={message.type === 'ok' ? 'okbox' : 'error'}>{message.text}</div>}
+      <section className="coupon-list admin-coupons">
+        {state.cupones.map((cupon) => <CouponCard key={cupon.id} cupon={cupon} admin={canManage} onToggle={toggle} />)}
+      </section>
+      <section className="events"><h2>Actividad de cupones</h2><div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Proveedor</th><th>Cupon</th><th>Estado</th><th>Usuario</th></tr></thead><tbody>{state.eventos.map((e) => <tr key={e.id}><td>{fmtFullDate(e.timestamp)}</td><td>{e.proveedor}</td><td>{e.cuponId}</td><td>{e.estado}</td><td>{e.userName}</td></tr>)}</tbody></table></div></section>
+    </main>
+  );
+}
+
 function AdminSpaceModal({ modal, user, onClose, afterAction }) {
   const { space, reservation } = modal;
   const [plate, setPlate] = useState('');
@@ -418,7 +628,9 @@ function MessageModal({ title, text, onClose }) {
 function App() {
   const path = location.pathname;
   if (path.startsWith('/admin')) return <AdminApp />;
+  if (path.startsWith('/cuponera')) return <PublicCoupons />;
   return <PublicParking />;
 }
 
+applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 createRoot(document.getElementById('root')).render(<App />);
