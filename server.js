@@ -19,6 +19,7 @@ const HOST = '0.0.0.0';
 const CACHE_DIR = path.join(__dirname, 'cache');
 const DATA_DIR = path.join(__dirname, 'data');
 const PARQUEO_FILE = path.join(DATA_DIR, 'parqueo.json');
+const ADMIN_USERS_FILE = path.join(DATA_DIR, 'admin-users.json');
 const ADMIN_LOGO_PATH = '/admin/assets/logo-shield.png';
 const SITE_LOGO_PATH = '/brand/logo-shield.png';
 const WALLET_PASS_TYPE_ID = process.env.HEREDIANO_WALLET_PASS_TYPE_ID || '';
@@ -86,6 +87,39 @@ const ADMIN_USERS = [
     parkingRole: 'socio',
   },
 ];
+
+function loadAdminUserOverrides() {
+  try {
+    return JSON.parse(fs.readFileSync(ADMIN_USERS_FILE, 'utf8'));
+  } catch (_) {
+    return { passwords: {} };
+  }
+}
+
+function saveAdminUserOverrides(data) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(ADMIN_USERS_FILE, JSON.stringify(data, null, 2));
+}
+
+function applyAdminUserOverrides() {
+  const data = loadAdminUserOverrides();
+  for (const user of ADMIN_USERS) {
+    if (data.passwords && typeof data.passwords[user.id] === 'string') {
+      user.password = data.passwords[user.id];
+    }
+  }
+}
+
+function setAdminUserPassword(userId, password) {
+  const data = loadAdminUserOverrides();
+  data.passwords = data.passwords || {};
+  data.passwords[userId] = password;
+  saveAdminUserOverrides(data);
+  const user = ADMIN_USERS.find((u) => u.id === userId);
+  if (user) user.password = password;
+}
+
+applyAdminUserOverrides();
 
 const ADMIN_MODULES = [
   { path: '/admin/pagina-web', label: 'Pagina web', eyebrow: 'Contenido publico', icon: 'web' },
@@ -787,6 +821,33 @@ async function handleParqueoApi(req, res, urlPath, requestUrl, user) {
   return fail(404, 'Ruta no encontrada');
 }
 
+const ADMIN_USERS_API = '/admin/api/users';
+
+async function handleAdminUsersApi(req, res, urlPath, user) {
+  const sub = urlPath.slice(ADMIN_USERS_API.length) || '/';
+  const fail = (status, error) => sendJson(res, status, { ok: false, error });
+  if (user.parkingRole !== 'admin') return fail(403, 'Solo administradores pueden cambiar contrasenas');
+
+  if (req.method === 'POST' && sub === '/password') {
+    let body = {};
+    try { body = JSON.parse((await readBody(req)) || '{}'); }
+    catch (_) { return fail(400, 'JSON invalido'); }
+    const target = ADMIN_USERS.find((u) => u.id === body.userId);
+    if (!target) return fail(404, 'Usuario no encontrado');
+    const password = String(body.password || '');
+    if (password.length < 8 || password.length > 80) {
+      return fail(400, 'La contrasena debe tener entre 8 y 80 caracteres');
+    }
+    setAdminUserPassword(target.id, password);
+    return sendJson(res, 200, {
+      ok: true,
+      user: { id: target.id, name: target.name, email: target.email },
+    });
+  }
+
+  return fail(404, 'Ruta no encontrada');
+}
+
 // ── Página de login (sin dependencias externas, sin emojis) ─────────────────
 function loginPage({ error, next = '/' } = {}) {
   const action = `/__login?next=${encodeURIComponent(safeNext(next))}`;
@@ -971,12 +1032,109 @@ function adminUsersTable() {
     <td>${escapeHtml(user.role)}</td>
     <td>${escapeHtml(user.area)}</td>
     <td><span class="state">${escapeHtml(user.status)}</span></td>
+    <td><button class="user-pass-btn" type="button" data-user-id="${escapeHtml(user.id)}" data-user-name="${escapeHtml(user.name)}">Cambiar clave</button></td>
   </tr>`).join('');
   return `<div class="table-wrap">
+    <style>
+      .user-pass-btn { min-height:32px; border-radius:4px; border:1px solid var(--line); background:transparent;
+        color:var(--paper); font:inherit; font-size:12px; padding:0 10px; cursor:pointer; }
+      .user-pass-btn:hover { border-color:var(--gold); color:var(--gold); }
+      #user-pass-back { position:fixed; inset:0; z-index:90; display:none; place-items:center;
+        background:rgba(5,4,3,.72); padding:18px; }
+      #user-pass-back.open { display:grid; }
+      .user-pass-modal { width:min(420px, 100%); border:1px solid rgba(201,169,97,.4); border-radius:6px;
+        background:var(--surface-2); padding:22px; }
+      .user-pass-head { display:flex; justify-content:space-between; gap:12px; align-items:center; }
+      .user-pass-head h3 { margin:0; font-family:Impact, Haettenschweiler, sans-serif; font-size:26px; text-transform:uppercase; }
+      .user-pass-x { border:0; background:transparent; color:var(--muted); font-size:24px; cursor:pointer; line-height:1; }
+      .user-pass-modal label { display:block; margin:16px 0 6px; color:var(--gold); font-size:11px; letter-spacing:.14em; text-transform:uppercase; }
+      .user-pass-modal input { width:100%; min-height:42px; border:1px solid var(--line); border-radius:4px;
+        background:#100d0b; color:var(--paper); padding:0 12px; font:inherit; outline:none; }
+      .user-pass-modal input:focus { border-color:var(--gold); }
+      .user-pass-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+      .user-pass-save { min-height:38px; border-radius:4px; border:1px solid var(--red); background:var(--red);
+        color:#fff; font-weight:700; padding:0 14px; cursor:pointer; }
+      .user-pass-cancel { min-height:38px; border-radius:4px; border:1px solid var(--line); background:transparent;
+        color:var(--paper); padding:0 14px; cursor:pointer; }
+      #user-pass-msg { display:none; margin-top:12px; font-size:13px; }
+      #user-pass-msg.ok { color:#7ee2a0; }
+      #user-pass-msg.err { color:#ffd0d0; }
+    </style>
     <table>
-      <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Area</th><th>Estado</th></tr></thead>
+      <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Area</th><th>Estado</th><th>Acciones</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
+    <div id="user-pass-back">
+      <div class="user-pass-modal">
+        <div class="user-pass-head">
+          <h3>Cambiar clave</h3>
+          <button class="user-pass-x" type="button" data-user-pass-close aria-label="Cerrar">&times;</button>
+        </div>
+        <p id="user-pass-name" style="color:var(--muted);margin:6px 0 0"></p>
+        <label for="user-pass-new">Nueva contrasena</label>
+        <input id="user-pass-new" type="password" autocomplete="new-password" minlength="8" maxlength="80">
+        <label for="user-pass-confirm">Confirmar contrasena</label>
+        <input id="user-pass-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="80">
+        <div class="user-pass-actions">
+          <button class="user-pass-save" type="button" id="user-pass-save">Guardar</button>
+          <button class="user-pass-cancel" type="button" data-user-pass-close>Cancelar</button>
+        </div>
+        <div id="user-pass-msg"></div>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var selected = null;
+      var back = document.getElementById('user-pass-back');
+      var nameEl = document.getElementById('user-pass-name');
+      var pass = document.getElementById('user-pass-new');
+      var confirm = document.getElementById('user-pass-confirm');
+      var msg = document.getElementById('user-pass-msg');
+      function showMsg(text, ok) {
+        msg.textContent = text;
+        msg.className = ok ? 'ok' : 'err';
+        msg.style.display = 'block';
+      }
+      function close() {
+        back.classList.remove('open');
+        selected = null;
+        pass.value = '';
+        confirm.value = '';
+        msg.style.display = 'none';
+      }
+      document.addEventListener('click', function (ev) {
+        var btn = ev.target.closest('.user-pass-btn');
+        if (btn) {
+          selected = btn.getAttribute('data-user-id');
+          nameEl.textContent = btn.getAttribute('data-user-name') || '';
+          pass.value = '';
+          confirm.value = '';
+          msg.style.display = 'none';
+          back.classList.add('open');
+          pass.focus();
+          return;
+        }
+        if (ev.target === back || ev.target.closest('[data-user-pass-close]')) close();
+      });
+      document.getElementById('user-pass-save').addEventListener('click', function () {
+        if (!selected) return;
+        if (pass.value.length < 8) { showMsg('La contrasena debe tener al menos 8 caracteres.', false); return; }
+        if (pass.value !== confirm.value) { showMsg('Las contrasenas no coinciden.', false); return; }
+        fetch('/admin/api/users/password', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ userId: selected, password: pass.value }),
+        }).then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (!j.ok) { showMsg(j.error || 'No se pudo cambiar la clave.', false); return; }
+            showMsg('Clave actualizada para ' + j.user.name + '.', true);
+            pass.value = '';
+            confirm.value = '';
+          })
+          .catch(function () { showMsg('Error de red.', false); });
+      });
+    })();
+    </script>
   </div>`;
 }
 
@@ -2394,6 +2552,12 @@ const server = http.createServer(async (req, res) => {
       location: '/admin/sign-in',
     });
     return res.end();
+  }
+
+  if (urlPath.startsWith(ADMIN_USERS_API)) {
+    const user = validAdminToken(parseCookies(req.headers.cookie)[ADMIN_COOKIE]);
+    if (!user) return sendJson(res, 401, { ok: false, error: 'No autenticado' });
+    return handleAdminUsersApi(req, res, urlPath, user);
   }
 
   if (urlPath.startsWith(PARQUEO_API)) {
