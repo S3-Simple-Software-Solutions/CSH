@@ -443,7 +443,7 @@ function buildWalletPass(payload) {
   }
 }
 
-// ── Parqueo: API publica (invitado anonimo — solo consulta y pago) ─────────
+// ── Parqueo: API publica (invitado anonimo — consulta disponibilidad y reservas)
 const PARQUEO_API_PUBLICA = '/api/parqueo/publico';
 const TARIFA_HORA = 1000; // colones por hora o fraccion
 
@@ -550,11 +550,19 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
     const { reserva, error } = buscarPorPlaca();
     if (error) return fail(404, error);
     const { horas, monto } = montoDe(reserva);
+    const wallet = {
+      espacioId: reserva.espacioId,
+      placa: reserva.placa,
+      horas,
+      monto,
+    };
     return sendJson(res, 200, {
       ok: true,
       info: {
         espacioId: reserva.espacioId, placa: reserva.placa, estado: reserva.estado,
-        inicio: reserva.inicio, horas, monto, tarifa: TARIFA_HORA,
+        inicio: reserva.inicio, fin: reserva.fin, horas, monto, tarifa: TARIFA_HORA,
+        codigo: reserva.codigo, qrData: reserva.qrData || `${reserva.codigo}|${reserva.espacioId}|${reserva.placa}|${reserva.fin}`,
+        walletUrl: walletPayload(wallet).url,
       },
     });
   }
@@ -1023,6 +1031,9 @@ function parqueoPublicoHtml() {
   #pq-recibo-qr { width:164px; margin:14px auto 8px; background:#fff; padding:8px; border-radius:4px; }
   #pq-recibo-qr img, #pq-recibo-qr canvas { display:block; margin:0 auto; }
   .pq-recibo-code { margin-top:8px; color:var(--gold); font-size:12px; word-break:break-all; }
+  .pq-reserva-grid { margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; text-align:left; }
+  .pq-reserva-grid div { border-bottom:1px solid var(--line); padding-bottom:6px; }
+  .pq-reserva-grid span { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.12em; }
   .wallet-btn { min-height:44px; margin-top:14px; border:1px solid rgba(255,255,255,.24); border-radius:6px;
     background:#000; color:#fff; padding:0 16px; display:inline-flex; align-items:center; justify-content:center;
     gap:8px; text-decoration:none; font-size:13px; font-weight:700; }
@@ -1089,17 +1100,17 @@ function parqueoPublicoHtml() {
   </header>
   <main>
     <h1>Parqueo del estadio</h1>
-    <p class="sub">Consulta la disponibilidad de los 400 espacios en tiempo real y paga tu parqueo con la placa del vehiculo.</p>
+    <p class="sub">Consulta la disponibilidad de los 400 espacios en tiempo real y busca tu reserva con la placa del vehiculo.</p>
     <div class="aviso">
       Las reservas son exclusivas para socios y personal del club.
       <a href="/admin/sign-in?next=%2Fadmin%2Fparqueo">Inicia sesion</a> si tienes una cuenta.
     </div>
     <div class="pago-card">
-      <h2>Pagar parqueo</h2>
-      <p>Tarifa: <strong>&#8353;${TARIFA_HORA}</strong> por hora o fraccion. El pago registra tu salida.</p>
+      <h2>Buscar reserva</h2>
+      <p>Ingresa la placa para ver el espacio asignado, el QR de acceso y la opcion de Apple Wallet.</p>
       <label for="pq-placa">Placa del vehiculo</label>
       <input id="pq-placa" maxlength="12" placeholder="ABC-123" autocomplete="off">
-      <button class="btn" type="button" id="pq-consultar">Consultar monto</button>
+      <button class="btn" type="button" id="pq-consultar">Buscar reserva</button>
       <div class="err" id="pq-err"></div>
       <div id="pq-detalle"></div>
       <div id="pq-recibo"></div>
@@ -1266,7 +1277,7 @@ function parqueoPublicoHtml() {
               '<button class="pq-x" type="button" data-cerrar aria-label="Cerrar">&times;</button></div>' +
             '<div class="pq-ok"><strong>' + esc(j.sesion.espacioId) + '</strong> &middot; Placa ' + esc(j.sesion.placa) + '<br>' +
               'Ingreso: ' + fmtFecha(j.sesion.inicio) + '<br>' +
-              'Al salir, paga ingresando tu placa en <em>Pagar parqueo</em>.</div>' +
+              'Puedes buscar la reserva ingresando tu placa en <em>Buscar reserva</em>.</div>' +
             '<div class="pq-form-actions"><button class="btn" type="button" data-cerrar>Listo</button></div>';
           refresh();
         });
@@ -1282,48 +1293,27 @@ function parqueoPublicoHtml() {
       if (!placa) { showErr('Ingresa la placa del vehiculo.'); return; }
       api('POST', '/consulta', { placa: placa }).then(function (j) {
         if (!j.ok) { showErr(j.error); return; }
-        var d = $('#pq-detalle');
-        d.style.display = 'block';
-        d.innerHTML =
-          '<div><span>Espacio</span> ' + esc(j.info.espacioId) + '</div>' +
-          '<div><span>Placa</span> ' + esc(j.info.placa) + '</div>' +
-          '<div><span>Ingreso</span> ' + fmtFecha(j.info.inicio) + '</div>' +
-          '<div><span>Tiempo</span> ' + j.info.horas + 'h (hora o fraccion)</div>' +
-          '<div><span>Total</span> <span class="monto">&#8353;' + j.info.monto + '</span></div>' +
-          '<button class="btn" type="button" id="pq-pagar" data-placa="' + esc(j.info.placa) + '">Pagar &#8353;' + j.info.monto + '</button>';
-        $('#pq-pagar').addEventListener('click', function () {
-          var pl = this.getAttribute('data-placa');
-          api('POST', '/pagar', { placa: pl }).then(function (p) {
-            if (!p.ok) { showErr(p.error); return; }
-            $('#pq-detalle').style.display = 'none';
-            var rec = $('#pq-recibo');
-            rec.style.display = 'block';
-            var qrData = [
-              'CSH-PAGO',
-              p.recibo.espacioId,
-              p.recibo.placa,
-              p.recibo.horas + 'h',
-              'CRC' + p.recibo.monto,
-              new Date().toISOString()
-            ].join('|');
-            rec.innerHTML = '<strong>Pago registrado</strong><br>' +
-              esc(p.recibo.espacioId) + ' &middot; Placa ' + esc(p.recibo.placa) + '<br>' +
-              p.recibo.horas + 'h &middot; &#8353;' + p.recibo.monto + '<br>' +
-              'Gracias por tu visita. El espacio quedo liberado.' +
-              '<div id="pq-recibo-qr"></div>' +
-              '<div class="pq-recibo-code">' + esc(qrData) + '</div>' +
-              '<a class="wallet-btn" href="' + esc(p.recibo.walletUrl) + '" target="_blank" rel="noopener">' +
-                '<span>+</span> Agregar a Apple Wallet' +
-              '</a>';
-            if (window.QRCode) {
-              new QRCode($('#pq-recibo-qr'), { text: qrData, width: 148, height: 148 });
-            } else {
-              $('#pq-recibo-qr').textContent = qrData;
-            }
-            $('#pq-placa').value = '';
-            refresh();
-          });
-        });
+        var rec = $('#pq-recibo');
+        rec.style.display = 'block';
+        rec.innerHTML = '<strong>Reserva encontrada</strong>' +
+          '<div class="pq-reserva-grid">' +
+            '<div><span>Espacio</span>' + esc(j.info.espacioId) + '</div>' +
+            '<div><span>Estado</span>' + esc(j.info.estado).toUpperCase() + '</div>' +
+            '<div><span>Placa</span>' + esc(j.info.placa) + '</div>' +
+            '<div><span>Codigo</span>' + esc(j.info.codigo) + '</div>' +
+            '<div><span>Desde</span>' + fmtFecha(j.info.inicio) + '</div>' +
+            '<div><span>Hasta</span>' + fmtFecha(j.info.fin) + '</div>' +
+          '</div>' +
+          '<div id="pq-recibo-qr"></div>' +
+          '<div class="pq-recibo-code">' + esc(j.info.qrData) + '</div>' +
+          '<a class="wallet-btn" href="' + esc(j.info.walletUrl) + '" target="_blank" rel="noopener">' +
+            '<span>+</span> Agregar a Apple Wallet' +
+          '</a>';
+        if (window.QRCode) {
+          new QRCode($('#pq-recibo-qr'), { text: j.info.qrData, width: 148, height: 148 });
+        } else {
+          $('#pq-recibo-qr').textContent = j.info.qrData;
+        }
       });
     });
 
