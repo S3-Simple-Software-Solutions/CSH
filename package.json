@@ -4,8 +4,10 @@
   "description": "Cached Club Sport Herediano proxy with login, admin shell, and parking management module.",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "start": "node server.js",
+    "check": "node --check server.js && npm run build"
   },
   "repository": {
     "type": "git",
@@ -19,7 +21,15 @@
   },
   "homepage": "https://github.com/anthonyOviedo/CSH#readme",
   "dependencies": {
+    "@vitejs/plugin-react": "^6.0.2",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "lucide-react": "^1.17.0",
     "nodemailer": "^8.0.11",
-    "qrcode": "^1.5.4"
+    "pg": "^8.21.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "vite": "^8.0.16"
   }
 }
