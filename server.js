@@ -453,6 +453,16 @@ function montoDe(reserva) {
   return { horas, monto: horas * TARIFA_HORA };
 }
 
+function maskedReservaEmail(reserva) {
+  const owner = ADMIN_USERS.find((user) => user.id === reserva.userId);
+  const email = String(reserva.emailQr || (owner && owner.email) || '').trim().toLowerCase();
+  const at = email.indexOf('@');
+  if (at <= 0 || at === email.length - 1) return 'Sin correo asociado';
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  return `${local.slice(0, 3)}***@${domain}`;
+}
+
 async function handleParqueoPublico(req, res, urlPath, requestUrl) {
   const sub = urlPath.slice(PARQUEO_API_PUBLICA.length) || '/';
   const data = loadParqueo();
@@ -470,22 +480,7 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
   }
 
   if (req.method === 'GET' && sub === '/wallet') {
-    const payload = readWalletPayload(requestUrl);
-    if (!payload) return fail(400, 'Comprobante invalido');
-    if (!walletConfigured()) {
-      return sendHtml(res, 501, walletSetupHtml(), { 'cache-control': 'no-store' });
-    }
-    try {
-      const pass = buildWalletPass(payload);
-      res.writeHead(200, {
-        'content-type': 'application/vnd.apple.pkpass',
-        'content-disposition': `attachment; filename="CSH-${payload.placa}-${payload.espacioId}.pkpass"`,
-        'cache-control': 'no-store',
-      });
-      return res.end(pass);
-    } catch (e) {
-      return fail(500, `No se pudo generar el pase Wallet: ${e.message}`);
-    }
+    return fail(410, 'Apple Wallet no esta disponible desde la consulta publica');
   }
 
   let body = {};
@@ -549,20 +544,12 @@ async function handleParqueoPublico(req, res, urlPath, requestUrl) {
   if (req.method === 'POST' && sub === '/consulta') {
     const { reserva, error } = buscarPorPlaca();
     if (error) return fail(404, error);
-    const { horas, monto } = montoDe(reserva);
-    const wallet = {
-      espacioId: reserva.espacioId,
-      placa: reserva.placa,
-      horas,
-      monto,
-    };
     return sendJson(res, 200, {
       ok: true,
       info: {
         espacioId: reserva.espacioId, placa: reserva.placa, estado: reserva.estado,
-        inicio: reserva.inicio, fin: reserva.fin, horas, monto, tarifa: TARIFA_HORA,
-        codigo: reserva.codigo, qrData: reserva.qrData || `${reserva.codigo}|${reserva.espacioId}|${reserva.placa}|${reserva.fin}`,
-        walletUrl: walletPayload(wallet).url,
+        inicio: reserva.inicio, fin: reserva.fin,
+        correo: maskedReservaEmail(reserva),
       },
     });
   }
@@ -1028,17 +1015,10 @@ function parqueoPublicoHtml() {
   #pq-recibo { display:none; margin-top:18px; border:1px dashed rgba(201,169,97,.5); border-radius:4px;
     padding:16px; text-align:center; line-height:1.6; }
   #pq-recibo strong { color:#7ee2a0; }
-  #pq-recibo-qr { width:164px; margin:14px auto 8px; background:#fff; padding:8px; border-radius:4px; }
-  #pq-recibo-qr img, #pq-recibo-qr canvas { display:block; margin:0 auto; }
-  .pq-recibo-code { margin-top:8px; color:var(--gold); font-size:12px; word-break:break-all; }
   .pq-reserva-grid { margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; text-align:left; }
   .pq-reserva-grid div { border-bottom:1px solid var(--line); padding-bottom:6px; }
   .pq-reserva-grid span { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.12em; }
-  .wallet-btn { min-height:44px; margin-top:14px; border:1px solid rgba(255,255,255,.24); border-radius:6px;
-    background:#000; color:#fff; padding:0 16px; display:inline-flex; align-items:center; justify-content:center;
-    gap:8px; text-decoration:none; font-size:13px; font-weight:700; }
-  .wallet-btn:hover { background:#151515; }
-  .wallet-btn span { font-size:18px; line-height:1; }
+  .pq-security-note { margin:14px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
   .pq-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
   .pq-tabs { display:flex; gap:8px; }
   .pq-tab { min-height:38px; padding:0 18px; border-radius:4px; border:1px solid var(--line);
@@ -1107,7 +1087,7 @@ function parqueoPublicoHtml() {
     </div>
     <div class="pago-card">
       <h2>Buscar reserva</h2>
-      <p>Ingresa la placa para ver el espacio asignado, el QR de acceso y la opcion de Apple Wallet.</p>
+      <p>Ingresa la placa para confirmar la reserva y ver el correo asociado de forma segura.</p>
       <label for="pq-placa">Placa del vehiculo</label>
       <input id="pq-placa" maxlength="12" placeholder="ABC-123" autocomplete="off">
       <button class="btn" type="button" id="pq-consultar">Buscar reserva</button>
@@ -1130,7 +1110,6 @@ function parqueoPublicoHtml() {
     <div id="pq-croquis"><p style="color:var(--muted)">Cargando croquis...</p></div>
     <div id="pq-form-back"><div class="pq-form-card" id="pq-form"></div></div>
   </main>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
   (function () {
     var API = '/api/parqueo/publico';
@@ -1300,20 +1279,11 @@ function parqueoPublicoHtml() {
             '<div><span>Espacio</span>' + esc(j.info.espacioId) + '</div>' +
             '<div><span>Estado</span>' + esc(j.info.estado).toUpperCase() + '</div>' +
             '<div><span>Placa</span>' + esc(j.info.placa) + '</div>' +
-            '<div><span>Codigo</span>' + esc(j.info.codigo) + '</div>' +
+            '<div><span>Correo</span>' + esc(j.info.correo) + '</div>' +
             '<div><span>Desde</span>' + fmtFecha(j.info.inicio) + '</div>' +
             '<div><span>Hasta</span>' + fmtFecha(j.info.fin) + '</div>' +
           '</div>' +
-          '<div id="pq-recibo-qr"></div>' +
-          '<div class="pq-recibo-code">' + esc(j.info.qrData) + '</div>' +
-          '<a class="wallet-btn" href="' + esc(j.info.walletUrl) + '" target="_blank" rel="noopener">' +
-            '<span>+</span> Agregar a Apple Wallet' +
-          '</a>';
-        if (window.QRCode) {
-          new QRCode($('#pq-recibo-qr'), { text: j.info.qrData, width: 148, height: 148 });
-        } else {
-          $('#pq-recibo-qr').textContent = j.info.qrData;
-        }
+          '<p class="pq-security-note">Por seguridad, el codigo de reserva y el QR solo se muestran dentro del area autenticada.</p>';
       });
     });
 
