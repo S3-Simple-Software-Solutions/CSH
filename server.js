@@ -38,13 +38,13 @@ const SMTP_SECURE = String(process.env.HEREDIANO_SMTP_SECURE || process.env.SMTP
 const SMTP_USER = process.env.HEREDIANO_SMTP_USER || process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.HEREDIANO_SMTP_PASS || process.env.SMTP_PASS || '';
 const OFFICIAL_SPONSORS = [
-  'Reebok',
-  'Taqueritos',
-  'Hariana',
-  'Transcomer British International',
-  'Electrolit',
-  'Chery',
-  'Solo Cracks',
+  { name: 'Reebok', path: '/brand/sponsors/reebok.png', cid: 'sponsor-reebok', height: 42 },
+  { name: 'Taqueritos', path: '/brand/sponsors/taqueritos.png', cid: 'sponsor-taqueritos', height: 34 },
+  { name: 'Hariana', path: '/brand/sponsors/hariana.png', cid: 'sponsor-hariana', height: 34 },
+  { name: 'Transcomer British International', path: '/brand/sponsors/transcomer.png', cid: 'sponsor-transcomer', height: 34 },
+  { name: 'Electrolit', path: '/brand/sponsors/electrolit.png', cid: 'sponsor-electrolit', height: 34 },
+  { name: 'Chery', path: '/brand/sponsors/chery.png', cid: 'sponsor-chery', height: 34 },
+  { name: 'Solo Cracks', path: '/brand/partner-solocracks.png', cid: 'sponsor-solocracks', height: 34 },
 ];
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/124.0 Safari/537.36';
@@ -553,31 +553,50 @@ function fmtMailDate(iso) {
   });
 }
 
-async function getShieldAttachment() {
-  const key = keyFor(SITE_LOGO_PATH);
+async function getInlineAssetAttachment({ reqPath, cid, filename }) {
+  const key = keyFor(reqPath);
   let entry = readCache(key);
   if (!entry) {
     try {
-      const fresh = await fetchOrigin(SITE_LOGO_PATH);
+      const fresh = await fetchOrigin(reqPath);
       writeCache(key, fresh.body, fresh.meta);
       entry = { body: fresh.body, meta: fresh.meta };
     } catch (err) {
-      console.error(`[mail] No se pudo cargar escudo: ${err.message}`);
+      console.error(`[mail] No se pudo cargar asset ${reqPath}: ${err.message}`);
       return null;
     }
   }
   return {
-    filename: 'escudo-herediano.png',
+    filename,
     content: entry.body,
     contentType: entry.meta.ct || 'image/png',
-    cid: 'csh-shield',
+    cid,
     contentDisposition: 'inline',
   };
 }
 
+async function getShieldAttachment() {
+  return getInlineAssetAttachment({
+    reqPath: SITE_LOGO_PATH,
+    cid: 'csh-shield',
+    filename: 'escudo-herediano.png',
+  });
+}
+
+async function getSponsorAttachments() {
+  const items = await Promise.all(OFFICIAL_SPONSORS.map((sponsor) => (
+    getInlineAssetAttachment({
+      reqPath: sponsor.path,
+      cid: sponsor.cid,
+      filename: `${sponsor.cid}.png`,
+    })
+  )));
+  return items.filter(Boolean);
+}
+
 function sponsorHtml() {
-  return OFFICIAL_SPONSORS.map((name) => (
-    `<span style="display:inline-block;margin:4px;padding:8px 10px;border:1px solid rgba(201,169,97,.45);border-radius:999px;background:#17110f;color:#f7f1df;font-size:12px;font-weight:700;letter-spacing:.02em">${escapeHtml(name)}</span>`
+  return OFFICIAL_SPONSORS.map((sponsor) => (
+    `<span style="display:inline-block;vertical-align:middle;margin:6px 8px;padding:8px 10px;border:1px solid rgba(201,169,97,.35);border-radius:6px;background:#f7f1df"><img src="cid:${sponsor.cid}" height="${sponsor.height}" alt="${escapeHtml(sponsor.name)}" style="display:block;max-width:118px;width:auto;height:${sponsor.height}px;object-fit:contain"></span>`
   )).join('');
 }
 
@@ -625,6 +644,7 @@ async function sendParkingQrEmail({ to, reserva }) {
     errorCorrectionLevel: 'M',
   });
   const shield = await getShieldAttachment();
+  const sponsorAttachments = await getSponsorAttachments();
   const attachments = [
     {
       filename: `QR-${reserva.codigo || reserva.espacioId}.png`,
@@ -635,6 +655,7 @@ async function sendParkingQrEmail({ to, reserva }) {
     },
   ];
   if (shield) attachments.push(shield);
+  attachments.push(...sponsorAttachments);
   await makeMailTransport().sendMail({
     from: MAIL_FROM,
     to,
@@ -683,12 +704,16 @@ async function sendPaymentReceiptEmail({ to, reserva, recibo }) {
     throw new Error('Correo invalido');
   }
   const shield = await getShieldAttachment();
+  const sponsorAttachments = await getSponsorAttachments();
+  const attachments = [];
+  if (shield) attachments.push(shield);
+  attachments.push(...sponsorAttachments);
   await makeMailTransport().sendMail({
     from: MAIL_FROM,
     to,
     subject: `Recibo de parqueo ${reserva.espacioId} - Club Sport Herediano`,
     html: paymentReceiptEmailHtml({ reserva, recibo }),
-    attachments: shield ? [shield] : [],
+    attachments,
   });
 }
 
