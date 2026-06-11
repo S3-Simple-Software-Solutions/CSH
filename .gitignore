@@ -1,0 +1,10 @@
+cache/
+server.log
+*.log
+.env
+.env.*
+!.env.example
+data/*.json
+.claude/
+node_modules/
+.DS_Store
