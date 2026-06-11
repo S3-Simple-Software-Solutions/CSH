@@ -1931,8 +1931,9 @@ function parkingModuleHtml(user) {
     .pq-zona { border:1px solid var(--line); border-radius:6px; background:var(--surface); padding:14px; min-width:0; }
     .pq-zona h3 { margin:0 0 12px; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold); }
     .pq-grid { display:grid; grid-template-columns:repeat(10, 1fr); gap:4px; }
-    .espacio { position:relative; aspect-ratio:1; border-radius:3px; display:grid; place-items:center;
+    .espacio { position:relative; overflow:hidden; aspect-ratio:1; border-radius:3px; display:grid; place-items:center;
       font-size:10px; font-weight:600; color:rgba(255,255,255,.92); cursor:pointer; user-select:none; }
+    .espacio .pq-num { position:relative; z-index:1; }
     .espacio.disponible { background:rgba(22,163,74,.72); }
     .espacio.disponible:hover { background:var(--verde); }
     .espacio.reservado { background:rgba(234,88,12,.85); }
@@ -1944,6 +1945,13 @@ function parkingModuleHtml(user) {
       line-height:1; padding:2px 3px; border-radius:3px; font-variant-numeric:tabular-nums; z-index:2;
       box-shadow:0 2px 6px rgba(0,0,0,.45); }
     .pq-badge:empty { display:none; }
+    .pq-exp { position:absolute; left:3px; right:3px; bottom:3px; height:4px; border-radius:999px;
+      background:rgba(5,4,3,.45); overflow:hidden; }
+    .pq-exp i { display:block; width:100%; height:100%; background:#7ee2a0; border-radius:999px;
+      transition:width 1s linear, background .25s ease; }
+    .pq-exp i.medio { background:#facc15; }
+    .pq-exp i.bajo { background:#fff; }
+    .pq-exp i.vencido { background:#111; width:100%; }
     .pq-calle { border:1px dashed rgba(201,169,97,.4); border-radius:6px; display:flex; flex-direction:column;
       align-items:center; justify-content:center; gap:18px; color:var(--muted); font-size:11px; letter-spacing:.18em; }
     .pq-calle-label { writing-mode:vertical-rl; text-orientation:upright; letter-spacing:.4em; }
@@ -2148,8 +2156,9 @@ function parkingModuleHtml(user) {
           var es = arr[k];
           var r = reservaDe(es);
           var badge = r ? '<span class="pq-badge" data-fin="' + esc(r.fin) + '"></span>' : '';
+          var exp = r ? '<span class="pq-exp" data-inicio="' + esc(r.inicio) + '" data-fin="' + esc(r.fin) + '"><i></i></span>' : '';
           var mio = r && r.userId === ME.id ? ' mio' : '';
-          h += '<div class="espacio ' + esc(es.estado) + mio + '" data-id="' + esc(es.id) + '">' + es.num + badge + '</div>';
+          h += '<div class="espacio ' + esc(es.estado) + mio + '" data-id="' + esc(es.id) + '"><span class="pq-num">' + es.num + '</span>' + badge + exp + '</div>';
         }
         return h;
       }
@@ -2194,6 +2203,20 @@ function parkingModuleHtml(user) {
       for (var i = 0; i < badges.length; i++) {
         var left = new Date(badges[i].getAttribute('data-fin')).getTime() - Date.now();
         badges[i].textContent = left < 0 ? fmtDur(left).slice(0, 6) : '';
+      }
+      var expBars = document.querySelectorAll('.pq-exp');
+      for (var x = 0; x < expBars.length; x++) {
+        var exp = expBars[x];
+        var fill = exp.querySelector('i');
+        var start = new Date(exp.getAttribute('data-inicio')).getTime();
+        var end = new Date(exp.getAttribute('data-fin')).getTime();
+        var total = Math.max(1, end - start);
+        var remaining = end - Date.now();
+        var width = Math.max(0, Math.min(1, remaining / total));
+        fill.style.width = (width * 100) + '%';
+        fill.classList.toggle('medio', width > 0.2 && width <= 0.5);
+        fill.classList.toggle('bajo', width > 0 && width <= 0.2);
+        fill.classList.toggle('vencido', remaining <= 0);
       }
     }
 
