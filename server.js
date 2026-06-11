@@ -10,6 +10,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const zlib = require('zlib');
+const os = require('os');
+const { execFileSync } = require('child_process');
 
 const ORIGIN = 'https://www.herediano.com';
 const PORT = process.env.PORT || 8088;
@@ -19,6 +21,12 @@ const DATA_DIR = path.join(__dirname, 'data');
 const PARQUEO_FILE = path.join(DATA_DIR, 'parqueo.json');
 const ADMIN_LOGO_PATH = '/admin/assets/logo-shield.png';
 const SITE_LOGO_PATH = '/brand/logo-shield.png';
+const WALLET_PASS_TYPE_ID = process.env.HEREDIANO_WALLET_PASS_TYPE_ID || '';
+const WALLET_TEAM_ID = process.env.HEREDIANO_WALLET_TEAM_ID || '';
+const WALLET_CERT_PATH = process.env.HEREDIANO_WALLET_CERT_PATH || '';
+const WALLET_KEY_PATH = process.env.HEREDIANO_WALLET_KEY_PATH || '';
+const WALLET_WWDR_PATH = process.env.HEREDIANO_WALLET_WWDR_PATH || '';
+const WALLET_KEY_PASS = process.env.HEREDIANO_WALLET_KEY_PASS || '';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
@@ -302,6 +310,139 @@ function sendJson(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+function b64url(input) {
+  return Buffer.from(input).toString('base64')
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function unb64url(input) {
+  const value = String(input || '').replace(/-/g, '+').replace(/_/g, '/');
+  return Buffer.from(value + '='.repeat((4 - value.length % 4) % 4), 'base64').toString();
+}
+
+function walletPayload(recibo) {
+  const payload = {
+    espacioId: recibo.espacioId,
+    placa: recibo.placa,
+    horas: recibo.horas,
+    monto: recibo.monto,
+    issuedAt: new Date().toISOString(),
+  };
+  const data = b64url(JSON.stringify(payload));
+  const sig = crypto.createHmac('sha256', SECRET).update(data).digest('hex');
+  return { data, sig, url: `/api/parqueo/publico/wallet?d=${data}&s=${sig}` };
+}
+
+function readWalletPayload(requestUrl) {
+  const data = requestUrl.searchParams.get('d') || '';
+  const sig = requestUrl.searchParams.get('s') || '';
+  const good = crypto.createHmac('sha256', SECRET).update(data).digest('hex');
+  if (!sig || sig.length !== good.length) return null;
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return null;
+    const payload = JSON.parse(unb64url(data));
+    if (!payload.espacioId || !payload.placa) return null;
+    return payload;
+  } catch (_) {
+    return null;
+  }
+}
+
+function walletConfigured() {
+  return WALLET_PASS_TYPE_ID && WALLET_TEAM_ID && WALLET_CERT_PATH && WALLET_KEY_PATH && WALLET_WWDR_PATH &&
+    fs.existsSync(WALLET_CERT_PATH) && fs.existsSync(WALLET_KEY_PATH) && fs.existsSync(WALLET_WWDR_PATH);
+}
+
+function walletSetupHtml() {
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apple Wallet | Club Sport Herediano</title>
+<style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0908;color:#f7f1df;font-family:Inter,system-ui,sans-serif;padding:24px}
+.box{max-width:520px;border:1px solid rgba(201,169,97,.45);border-radius:6px;background:#13100e;padding:26px;line-height:1.55}
+h1{margin:0 0 10px;font-family:Impact,Haettenschweiler,sans-serif;text-transform:uppercase;font-size:34px}
+p{color:#aa9d84} code{color:#c9a961} a{color:#c9a961}
+</style></head><body><div class="box">
+<h1>Wallet pendiente</h1>
+<p>El boton ya esta conectado, pero Apple Wallet requiere firmar el pase con certificados de Apple Developer PassKit.</p>
+<p>Configura en <code>.env</code>: <code>HEREDIANO_WALLET_PASS_TYPE_ID</code>, <code>HEREDIANO_WALLET_TEAM_ID</code>, <code>HEREDIANO_WALLET_CERT_PATH</code>, <code>HEREDIANO_WALLET_KEY_PATH</code> y <code>HEREDIANO_WALLET_WWDR_PATH</code>.</p>
+<p><a href="/parqueo">Volver al parqueo</a></p>
+</div></body></html>`;
+}
+
+const WALLET_ICON = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAIAAAC1nk4lAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA' +
+  'YUlEQVR4nO3OQQ0AIBDAMMC/5+ONAvZoFSzZnplk9v6tQG+TWCasE1YJq4RVwirhWm4Kwxu3tIxh' +
+  'QjYWY50owjphlbBKWCWsElYJq4RVwirhWm4Kwxu3tIxhQjYWY50owjphlR8A4HFsDcvfCqUAAAAA' +
+  'SUVORK5CYII=', 'base64');
+
+function writeJsonFile(file, obj) {
+  fs.writeFileSync(file, JSON.stringify(obj, null, 2));
+}
+
+function buildWalletPass(payload) {
+  if (!walletConfigured()) return null;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csh-pass-'));
+  try {
+    const serial = crypto.createHash('sha1')
+      .update(`${payload.espacioId}|${payload.placa}|${payload.issuedAt}`)
+      .digest('hex')
+      .slice(0, 16);
+    const pass = {
+      formatVersion: 1,
+      passTypeIdentifier: WALLET_PASS_TYPE_ID,
+      serialNumber: serial,
+      teamIdentifier: WALLET_TEAM_ID,
+      organizationName: 'Club Sport Herediano',
+      description: 'Comprobante de parqueo Club Sport Herediano',
+      logoText: 'CSH Parqueo',
+      foregroundColor: 'rgb(247,241,223)',
+      backgroundColor: 'rgb(10,9,8)',
+      labelColor: 'rgb(201,169,97)',
+      barcode: {
+        message: `CSH-PAGO|${payload.espacioId}|${payload.placa}|${payload.horas}h|CRC${payload.monto}|${payload.issuedAt}`,
+        format: 'PKBarcodeFormatQR',
+        messageEncoding: 'iso-8859-1',
+      },
+      generic: {
+        primaryFields: [
+          { key: 'espacio', label: 'Espacio', value: payload.espacioId },
+        ],
+        secondaryFields: [
+          { key: 'placa', label: 'Placa', value: payload.placa },
+          { key: 'monto', label: 'Monto', value: `CRC ${payload.monto}` },
+        ],
+        auxiliaryFields: [
+          { key: 'tiempo', label: 'Tiempo', value: `${payload.horas}h` },
+        ],
+      },
+    };
+    writeJsonFile(path.join(tmp, 'pass.json'), pass);
+    fs.writeFileSync(path.join(tmp, 'icon.png'), WALLET_ICON);
+    fs.writeFileSync(path.join(tmp, 'icon@2x.png'), WALLET_ICON);
+    const files = ['pass.json', 'icon.png', 'icon@2x.png'];
+    const manifest = {};
+    for (const file of files) {
+      manifest[file] = crypto.createHash('sha1')
+        .update(fs.readFileSync(path.join(tmp, file)))
+        .digest('hex');
+    }
+    writeJsonFile(path.join(tmp, 'manifest.json'), manifest);
+    const args = ['smime', '-binary', '-sign', '-certfile', WALLET_WWDR_PATH,
+      '-signer', WALLET_CERT_PATH, '-inkey', WALLET_KEY_PATH,
+      '-in', path.join(tmp, 'manifest.json'), '-out', path.join(tmp, 'signature'),
+      '-outform', 'DER', '-nodetach'];
+    if (WALLET_KEY_PASS) args.push('-passin', `pass:${WALLET_KEY_PASS}`);
+    execFileSync('openssl', args, { stdio: 'ignore' });
+    const output = path.join(tmp, 'parqueo.pkpass');
+    execFileSync('zip', ['-q', '-j', output, ...files.map((f) => path.join(tmp, f)),
+      path.join(tmp, 'manifest.json'), path.join(tmp, 'signature')], { stdio: 'ignore' });
+    return fs.readFileSync(output);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 // ── Parqueo: API publica (invitado anonimo — solo consulta y pago) ─────────
 const PARQUEO_API_PUBLICA = '/api/parqueo/publico';
 const TARIFA_HORA = 1000; // colones por hora o fraccion
@@ -312,7 +453,7 @@ function montoDe(reserva) {
   return { horas, monto: horas * TARIFA_HORA };
 }
 
-async function handleParqueoPublico(req, res, urlPath) {
+async function handleParqueoPublico(req, res, urlPath, requestUrl) {
   const sub = urlPath.slice(PARQUEO_API_PUBLICA.length) || '/';
   const data = loadParqueo();
   const activa = (r) => r.estado === 'reservado' || r.estado === 'ocupado';
@@ -326,6 +467,25 @@ async function handleParqueoPublico(req, res, urlPath) {
         id: e.id, piso: e.piso, zona: e.zona, num: e.num, estado: e.estado,
       })),
     });
+  }
+
+  if (req.method === 'GET' && sub === '/wallet') {
+    const payload = readWalletPayload(requestUrl);
+    if (!payload) return fail(400, 'Comprobante invalido');
+    if (!walletConfigured()) {
+      return sendHtml(res, 501, walletSetupHtml(), { 'cache-control': 'no-store' });
+    }
+    try {
+      const pass = buildWalletPass(payload);
+      res.writeHead(200, {
+        'content-type': 'application/vnd.apple.pkpass',
+        'content-disposition': `attachment; filename="CSH-${payload.placa}-${payload.espacioId}.pkpass"`,
+        'cache-control': 'no-store',
+      });
+      return res.end(pass);
+    } catch (e) {
+      return fail(500, `No se pudo generar el pase Wallet: ${e.message}`);
+    }
   }
 
   let body = {};
@@ -413,9 +573,10 @@ async function handleParqueoPublico(req, res, urlPath) {
       notas: `CRC ${monto} (${horas}h) — pago y salida`,
     });
     saveParqueo(data);
+    const recibo = { espacioId: reserva.espacioId, placa: reserva.placa, horas, monto };
     return sendJson(res, 200, {
       ok: true,
-      recibo: { espacioId: reserva.espacioId, placa: reserva.placa, horas, monto },
+      recibo: { ...recibo, walletUrl: walletPayload(recibo).url },
     });
   }
 
@@ -862,6 +1023,11 @@ function parqueoPublicoHtml() {
   #pq-recibo-qr { width:164px; margin:14px auto 8px; background:#fff; padding:8px; border-radius:4px; }
   #pq-recibo-qr img, #pq-recibo-qr canvas { display:block; margin:0 auto; }
   .pq-recibo-code { margin-top:8px; color:var(--gold); font-size:12px; word-break:break-all; }
+  .wallet-btn { min-height:44px; margin-top:14px; border:1px solid rgba(255,255,255,.24); border-radius:6px;
+    background:#000; color:#fff; padding:0 16px; display:inline-flex; align-items:center; justify-content:center;
+    gap:8px; text-decoration:none; font-size:13px; font-weight:700; }
+  .wallet-btn:hover { background:#151515; }
+  .wallet-btn span { font-size:18px; line-height:1; }
   .pq-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
   .pq-tabs { display:flex; gap:8px; }
   .pq-tab { min-height:38px; padding:0 18px; border-radius:4px; border:1px solid var(--line);
@@ -1145,7 +1311,10 @@ function parqueoPublicoHtml() {
               p.recibo.horas + 'h &middot; &#8353;' + p.recibo.monto + '<br>' +
               'Gracias por tu visita. El espacio quedo liberado.' +
               '<div id="pq-recibo-qr"></div>' +
-              '<div class="pq-recibo-code">' + esc(qrData) + '</div>';
+              '<div class="pq-recibo-code">' + esc(qrData) + '</div>' +
+              '<a class="wallet-btn" href="' + esc(p.recibo.walletUrl) + '" target="_blank" rel="noopener">' +
+                '<span>+</span> Agregar a Apple Wallet' +
+              '</a>';
             if (window.QRCode) {
               new QRCode($('#pq-recibo-qr'), { text: qrData, width: 148, height: 148 });
             } else {
@@ -2166,7 +2335,7 @@ const server = http.createServer(async (req, res) => {
     return sendHtml(res, 200, parqueoPublicoHtml());
   }
   if (urlPath.startsWith(PARQUEO_API_PUBLICA)) {
-    return handleParqueoPublico(req, res, urlPath);
+    return handleParqueoPublico(req, res, urlPath, requestUrl);
   }
 
   // Loopback (warm.js) o sesión válida -> sirve el sitio
