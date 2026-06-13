@@ -253,6 +253,22 @@ input:focus, select:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb
 .module-grid button.wip { border-style: dashed; color: var(--muted); }
 .module-grid button.wip span { display: flex; flex-direction: column; gap: 4px; text-align: left; }
 .module-grid button.wip small { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); }
+.web-editor { display: grid; grid-template-columns: minmax(380px, 1.5fr) minmax(300px, 1fr); gap: 20px; align-items: start; }
+.hero-preview { position: relative; min-height: 380px; border: 1px solid var(--line); border-radius: 8px; background-size: cover; background-position: 50% 35%; background-color: #0a0908; overflow: hidden; display: flex; align-items: flex-end; }
+.hero-preview::before { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,9,8,.2), rgba(10,9,8,.78) 85%); }
+.hero-preview-body { position: relative; padding: 26px 28px; text-shadow: 0 2px 18px rgba(0,0,0,.6); }
+.hero-kicker { display: block; font-size: 11px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: #c9a961; margin-bottom: 14px; }
+.hero-title { display: block; font-family: Impact, Haettenschweiler, sans-serif; font-weight: 900; font-size: clamp(40px, 5vw, 72px); line-height: .85; text-transform: uppercase; color: #c9a961; }
+.hero-title b { display: block; color: #f7f1df; font-size: 1.4em; }
+.hero-sub { display: block; margin-top: 14px; font-style: italic; font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: #e8dcc0; }
+.hero-tag { position: absolute; top: 12px; right: 12px; z-index: 1; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #f7f1df; background: rgba(10,9,8,.62); border: 1px solid rgba(247,241,223,.25); border-radius: 999px; padding: 5px 11px; }
+.web-form { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 22px; }
+.web-form h2 { margin: 0 0 4px; font-size: 26px; }
+.web-form-img { margin-top: 26px !important; border-top: 1px solid var(--line); padding-top: 20px; }
+.actions.left { justify-content: flex-start; margin-top: 4px; }
+.file-btn { position: relative; overflow: hidden; cursor: pointer; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+@media (max-width: 980px) { .web-editor { grid-template-columns: 1fr; } }
 .wip-card { max-width: 640px; border: 1px dashed rgba(201, 169, 97, .5); border-radius: 6px; background: var(--surface); padding: 24px; display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; color: var(--muted); }
 .wip-card svg { color: var(--gold); }
 .wip-card p { margin: 14px 0 6px; }

@@ -18,6 +18,8 @@ const CACHE_DIR = path.join(__dirname, 'cache');
 const DATA_DIR = path.join(__dirname, 'data');
 const PARQUEO_FILE = path.join(DATA_DIR, 'parqueo.json');
 const CUPONERA_FILE = path.join(DATA_DIR, 'cuponera.json');
+const WEB_FILE = path.join(DATA_DIR, 'web.json');
+const HERO_IMG_FILE = path.join(DATA_DIR, 'hero-bg.bin');
 const ADMIN_LOGO_PATH = '/admin/assets/logo-shield.png';
 const SITE_LOGO_PATH = '/brand/logo-shield.png';
 const SECRET = process.env.HEREDIANO_SECRET || 'cambie-esta-clave-herediano-secret-2026';
@@ -987,6 +989,58 @@ app.post('/admin/api/users/password', requireAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+const WEB_DEFAULTS = { kicker: 'Clausura 2026 · Campeón Nacional', title: 'Título', number: '32', sub: 'Nuestra pasión es eterna' };
+function readWebData() {
+  try {
+    const d = JSON.parse(fs.readFileSync(WEB_FILE, 'utf8'));
+    return { kicker: d.kicker || null, title: d.title || null, number: d.number || null, sub: d.sub || null, imageType: d.imageType || null, imageVersion: d.imageVersion || null };
+  } catch (_) {
+    return { kicker: null, title: null, number: null, sub: null, imageType: null, imageVersion: null };
+  }
+}
+function writeWebData(data) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(WEB_FILE, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+app.get('/admin/api/web', requireAdmin, (_req, res) => {
+  res.json({ ok: true, config: readWebData(), defaults: WEB_DEFAULTS });
+});
+app.post('/admin/api/web', requireAdmin, (req, res) => {
+  const data = readWebData();
+  for (const key of ['kicker', 'title', 'number', 'sub']) {
+    const value = String(req.body[key] ?? '').trim().slice(0, 120);
+    data[key] = value && value !== WEB_DEFAULTS[key] ? value : null;
+  }
+  writeWebData(data);
+  res.json({ ok: true, config: data });
+});
+const heroUpload = express.raw({ type: ['image/png', 'image/jpeg', 'image/webp', 'image/avif'], limit: '8mb' });
+app.post('/admin/api/web/hero-imagen', requireAdmin, heroUpload, (req, res) => {
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ ok: false, error: 'Envia la imagen como cuerpo binario (PNG, JPG, WebP o AVIF)' });
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(HERO_IMG_FILE, req.body);
+  const data = readWebData();
+  data.imageType = req.headers['content-type'];
+  data.imageVersion = Date.now();
+  writeWebData(data);
+  res.json({ ok: true, config: data });
+});
+app.delete('/admin/api/web/hero-imagen', requireAdmin, (_req, res) => {
+  const data = readWebData();
+  data.imageType = null;
+  data.imageVersion = null;
+  try { fs.unlinkSync(HERO_IMG_FILE); } catch (_) {}
+  writeWebData(data);
+  res.json({ ok: true, config: data });
+});
+app.get('/site-assets/hero', (_req, res) => {
+  const data = readWebData();
+  if (!data.imageType || !fs.existsSync(HERO_IMG_FILE)) return res.status(404).end();
+  res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+  res.type(data.imageType).send(fs.readFileSync(HERO_IMG_FILE));
+});
+
 app.get(ADMIN_LOGO_PATH, async (_req, res, next) => {
   try {
     const entry = await getCachedAsset(SITE_LOGO_PATH);
@@ -1008,9 +1062,29 @@ const NAV_STYLE = '<style id="csh-nav-style">.csh-admin-signin,.csh-parqueo-link
 // El sitio es Next.js: al hidratar, React reconstruye el nav y elimina los enlaces
 // inyectados en el HTML estatico, por eso el observer los re-inserta.
 const NAV_SCRIPT = `<script id="csh-nav-script">(function(){var html=${JSON.stringify(NAV_LINKS)};function ensure(){if(document.querySelector('.csh-admin-signin'))return;var nav=document.querySelector('.csh-nav-desktop')||document.querySelector('nav');if(nav)nav.insertAdjacentHTML('beforeend',html);}var t;new MutationObserver(function(){clearTimeout(t);t=setTimeout(ensure,120);}).observe(document.documentElement,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensure);else ensure();})();</script>`;
+// Igual que con el nav: la hidratacion de Next.js pisa los cambios estaticos,
+// por eso los overrides del hero se aplican con un observer que los re-inserta.
+// Los guards (comparar antes de asignar) evitan que el propio apply dispare
+// el MutationObserver en bucle.
+function heroOverrideScript() {
+  const cfg = readWebData();
+  const overrides = {
+    kicker: cfg.kicker,
+    title: cfg.title,
+    number: cfg.number,
+    sub: cfg.sub,
+    image: cfg.imageVersion ? `/site-assets/hero?v=${cfg.imageVersion}` : null,
+  };
+  if (!overrides.kicker && !overrides.title && !overrides.number && !overrides.sub && !overrides.image) return '';
+  const payload = JSON.stringify(overrides).replace(/</g, '\\u003c');
+  return `<script id="csh-hero-script">(function(){var cfg=${payload};function apply(){var hs=document.querySelectorAll('h1');for(var i=0;i<hs.length;i++){var h=hs[i];var sp=h.querySelectorAll('span');if(sp.length<2)continue;if(sp[0].textContent!=='${WEB_DEFAULTS.title}'&&!sp[0].hasAttribute('data-csh'))continue;sp[0].setAttribute('data-csh','1');if(cfg.title&&sp[0].textContent!==cfg.title)sp[0].textContent=cfg.title;if(cfg.number&&sp[1].textContent!==cfg.number)sp[1].textContent=cfg.number;var eye=h.previousElementSibling;if(cfg.kicker&&eye){var t=eye.lastChild;if(t&&t.nodeType===3){if(t.nodeValue!==cfg.kicker)t.nodeValue=cfg.kicker;}else{eye.appendChild(document.createTextNode(cfg.kicker));}}var wrap=h.nextElementSibling;var p=wrap&&wrap.querySelector('p');if(cfg.sub&&p&&p.textContent!==cfg.sub)p.textContent=cfg.sub;if(cfg.image){var sec=h.closest('section')||h.parentElement;var img=(sec&&sec.querySelector('img[data-nimg]'))||document.querySelector('img[data-nimg=\\u0022fill\\u0022]');if(img&&img.getAttribute('src')!==cfg.image){img.removeAttribute('srcSet');img.removeAttribute('srcset');img.setAttribute('sizes','100vw');img.src=cfg.image;}}break;}}var t;new MutationObserver(function(){clearTimeout(t);t=setTimeout(apply,150);}).observe(document.documentElement,{childList:true,subtree:true});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply);else apply();})();</script>`;
+}
+
 function decorateSiteHtml(s) {
   s = s.replace(/<a class="csh-(?:cuponera-link|parqueo-link|admin-signin)"[^>]*>[^<]*<\/a>/g, '');
   if (!s.includes('csh-nav-style')) s = s.replace('</head>', `${NAV_STYLE}${NAV_SCRIPT}</head>`);
+  const hero = heroOverrideScript();
+  if (hero && !s.includes('csh-hero-script')) s = s.replace('</head>', `${hero}</head>`);
   s = s.replace('</nav>', `${NAV_LINKS}</nav>`);
   return s;
 }

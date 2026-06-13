@@ -398,12 +398,6 @@ const WIP_MODULES = {
     desc: 'Registro y seguimiento de proveedores del club: contratos, ordenes de compra y pagos.',
     items: ['Directorio de proveedores y contactos', 'Ordenes de compra y entregas', 'Historial de contratos y pagos'],
   },
-  '/admin/web': {
-    icon: Globe,
-    title: 'Gestion de la pagina web',
-    desc: 'Contenido del sitio publico: noticias, plantilla de jugadores y material multimedia.',
-    items: ['Editor de noticias y comunicados', 'Plantilla y fichas de jugadores', 'Imagenes y patrocinadores del sitio'],
-  },
 };
 
 function UnderConstruction({ modulo }) {
@@ -447,6 +441,7 @@ function AdminApp() {
         <button className={route === '/admin/parqueo' ? 'active' : ''} onClick={() => navigate('/admin/parqueo')}><Car size={17} />Gestion de parqueo</button>
         <button className={route === '/admin/cuponera' ? 'active' : ''} onClick={() => navigate('/admin/cuponera')}><Ticket size={17} />Cuponera</button>
         <button className={route === '/admin/usuarios' ? 'active' : ''} onClick={() => navigate('/admin/usuarios')}><Users size={17} />Gestion de usuarios</button>
+        <button className={route === '/admin/web' ? 'active' : ''} onClick={() => navigate('/admin/web')}><Globe size={17} />Gestion de la pagina web</button>
         {Object.entries(WIP_MODULES).map(([path, mod]) => {
           const Icon = mod.icon;
           return <button key={path} className={route === path ? 'active' : ''} onClick={() => navigate(path)}><Icon size={17} />{mod.title}</button>;
@@ -454,7 +449,7 @@ function AdminApp() {
       </aside>
       <section className="admin-main">
         <Header user={user} onLogout={logout} />
-        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
+        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/web' ? <AdminWeb /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
   );
@@ -493,10 +488,115 @@ function AdminHome({ user, navigate }) {
         <button onClick={() => navigate('/admin/parqueo')}><Car />Gestion de parqueo</button>
         <button onClick={() => navigate('/admin/cuponera')}><BadgePercent />Cuponera</button>
         <button onClick={() => navigate('/admin/usuarios')}><Users />Gestion de usuarios</button>
+        <button onClick={() => navigate('/admin/web')}><Globe />Gestion de la pagina web</button>
         {Object.entries(WIP_MODULES).map(([path, mod]) => {
           const Icon = mod.icon;
           return <button key={path} className="wip" onClick={() => navigate(path)}><Icon /><span>{mod.title}<small>En construccion</small></span></button>;
         })}
+      </div>
+    </main>
+  );
+}
+
+const HERO_ORIGINAL_IMG = '/_next/image?url=%2Fbrand%2Fhero%2Fchampions-bw.jpg&w=1200&q=75&dpl=dpl_2yZw8b3Benaf9j1imRXmBqppL4z9';
+
+function AdminWeb() {
+  const [config, setConfig] = useState(null);
+  const [defaults, setDefaults] = useState({});
+  const [form, setForm] = useState({ kicker: '', title: '', number: '', sub: '' });
+  const [msg, setMsg] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    const data = await api('/admin/api/web');
+    if (!data.ok) return setMsg({ type: 'error', text: data.error || 'No se pudo cargar la configuracion' });
+    setConfig(data.config);
+    setDefaults(data.defaults);
+    setForm({
+      kicker: data.config.kicker || data.defaults.kicker,
+      title: data.config.title || data.defaults.title,
+      number: data.config.number || data.defaults.number,
+      sub: data.config.sub || data.defaults.sub,
+    });
+  };
+  useEffect(() => { load(); }, []);
+
+  async function saveTexts() {
+    setMsg(null);
+    setSaving(true);
+    const data = await api('/admin/api/web', { method: 'POST', body: JSON.stringify(form) });
+    setSaving(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    setConfig(data.config);
+    setMsg({ type: 'ok', text: 'Textos del hero guardados. Ya estan visibles en el sitio.' });
+  }
+  async function uploadImage(file) {
+    if (!file) return;
+    setMsg(null);
+    setSaving(true);
+    const response = await fetch('/admin/api/web/hero-imagen', { method: 'POST', headers: { 'content-type': file.type }, body: file });
+    const data = await response.json().catch(() => ({ ok: false, error: 'Respuesta invalida' }));
+    setSaving(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    setConfig(data.config);
+    setMsg({ type: 'ok', text: 'Imagen de fondo actualizada.' });
+  }
+  async function removeImage() {
+    setMsg(null);
+    const data = await api('/admin/api/web/hero-imagen', { method: 'DELETE' });
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    setConfig(data.config);
+    setMsg({ type: 'ok', text: 'Se restauro la imagen original del sitio.' });
+  }
+  function restoreTexts() { setForm({ ...defaults }); }
+
+  if (!config) return <main className="page"><p>Cargando...</p></main>;
+  const heroImg = config.imageVersion ? `/site-assets/hero?v=${config.imageVersion}` : HERO_ORIGINAL_IMG;
+  return (
+    <main className="page">
+      <p className="eyebrow">Contenido del sitio publico</p>
+      <h1>Gestion de la pagina web</h1>
+      <p className="sub">Edita el hero de la portada: la imagen de fondo y sus textos. Los cambios se aplican de inmediato en el sitio.</p>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      <div className="web-editor">
+        <section className="hero-preview" style={{ backgroundImage: `url(${heroImg})` }}>
+          <div className="hero-preview-body">
+            <span className="hero-kicker">{form.kicker}</span>
+            <strong className="hero-title">{form.title}<b>{form.number}</b></strong>
+            <em className="hero-sub">{form.sub}</em>
+          </div>
+          <span className="hero-tag">{config.imageVersion ? 'Imagen personalizada' : 'Imagen original'}</span>
+        </section>
+        <section className="web-form">
+          <h2>Textos del hero</h2>
+          <label>Linea superior</label>
+          <input value={form.kicker} onChange={(e) => setForm({ ...form, kicker: e.target.value })} maxLength={120} />
+          <div className="two">
+            <div>
+              <label>Titulo</label>
+              <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} maxLength={40} />
+            </div>
+            <div>
+              <label>Numero</label>
+              <input value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} maxLength={10} />
+            </div>
+          </div>
+          <label>Frase</label>
+          <input value={form.sub} onChange={(e) => setForm({ ...form, sub: e.target.value })} maxLength={120} />
+          <div className="actions left">
+            <button className="btn" onClick={saveTexts} disabled={saving}>{saving ? 'Guardando...' : 'Guardar textos'}</button>
+            <button className="btn ghost" onClick={restoreTexts}>Restaurar originales</button>
+          </div>
+          <h2 className="web-form-img">Imagen de fondo</h2>
+          <p className="muted">PNG, JPG, WebP o AVIF · maximo 8 MB. Se recomienda una foto horizontal de al menos 1920px.</p>
+          <div className="actions left">
+            <label className="btn ghost file-btn">
+              Subir imagen
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/avif" onChange={(e) => { uploadImage(e.target.files[0]); e.target.value = ''; }} />
+            </label>
+            {config.imageVersion && <button className="btn ghost" onClick={removeImage}>Quitar imagen personalizada</button>}
+          </div>
+        </section>
       </div>
     </main>
   );
