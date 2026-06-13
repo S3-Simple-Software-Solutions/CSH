@@ -5,6 +5,7 @@ server.log
 .env.*
 !.env.example
 data/*.json
+ALL_SECRETS
 .claude/
 node_modules/
 .playwright-cli/
