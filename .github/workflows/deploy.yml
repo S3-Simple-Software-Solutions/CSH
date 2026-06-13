@@ -12,8 +12,10 @@ jobs:
     steps:
       - name: Parse ALL_SECRETS
         id: vars
+        env:
+          ALL_SECRETS: ${{ secrets.ALL_SECRETS }}
         run: |
-          echo "${{ secrets.ALL_SECRETS }}" > /tmp/secrets.env
+          printf '%s' "$ALL_SECRETS" > /tmp/secrets.env
 
           get() { grep "^$1=" /tmp/secrets.env | cut -d= -f2-; }
 
