@@ -9,11 +9,16 @@ function bool(value: string | undefined): boolean {
   return String(value || '').toLowerCase() === 'true';
 }
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Variable de entorno obligatoria ausente: ${name}`);
+  return value;
+}
+
 export const env = {
   PORT: num(process.env.PORT, 8088),
   HOST: '0.0.0.0',
-  DATABASE_URL: process.env.DATABASE_URL || '',
-  USE_DB: Boolean(process.env.DATABASE_URL),
+  DATABASE_URL: requireEnv('DATABASE_URL'),
   SECRET: process.env.HEREDIANO_SECRET || 'cambie-esta-clave-herediano-secret-2026',
   SESSION_HOURS: num(process.env.HEREDIANO_SESSION_HOURS, 12),
   ADMIN_SESSION_HOURS: num(process.env.HEREDIANO_ADMIN_SESSION_HOURS, 8),

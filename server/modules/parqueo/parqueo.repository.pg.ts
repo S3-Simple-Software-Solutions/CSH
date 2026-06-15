@@ -1,5 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
-import { getPool, query } from '../../core/db';
+import { pool, query } from '../../core/db';
 import { ApiError } from '../../core/errors';
 import {
   CreateReservationInput,
@@ -107,7 +107,7 @@ export class PgParqueoRepository implements ParqueoRepository {
   }
 
   async occupyPublic({ espacioId, placa, email, duracion }: OccupyPublicInput): Promise<Reservation> {
-    const client = await getPool().connect();
+    const client = await pool.connect();
     try {
       await client.query('begin');
       const spaceRows = await client.query('select * from parking_spaces where id = $1 for update', [espacioId]);
@@ -151,7 +151,7 @@ export class PgParqueoRepository implements ParqueoRepository {
   }
 
   async reservar({ espacioId, placa, duracion, user }: CreateReservationInput): Promise<Reservation> {
-    const client = await getPool().connect();
+    const client = await pool.connect();
     try {
       const isAdmin = user.parkingRole === 'admin';
       await client.query('begin');
@@ -201,9 +201,9 @@ export class PgParqueoRepository implements ParqueoRepository {
     const reserva = await this.getActiveReservationById(reservaId);
     if (!reserva) throw new ApiError(404, 'Reserva no activa');
     if (reserva.estado === 'ocupado') throw new ApiError(409, 'El espacio ya esta ocupado');
-    await getPool().query("update parking_reservations set status = 'ocupado' where id = $1", [reserva.id]);
-    await getPool().query("update parking_spaces set status = 'ocupado' where id = $1", [reserva.espacioId]);
-    await logEvento(getPool(), 'entrada', { espacioId: reserva.espacioId, user: actor, placa: reserva.placa });
+    await pool.query("update parking_reservations set status = 'ocupado' where id = $1", [reserva.id]);
+    await pool.query("update parking_spaces set status = 'ocupado' where id = $1", [reserva.espacioId]);
+    await logEvento(pool, 'entrada', { espacioId: reserva.espacioId, user: actor, placa: reserva.placa });
   }
 
   async liberar(espacioId: string, actor: { id: string; name: string; parkingRole: string }): Promise<void> {
@@ -213,9 +213,9 @@ export class PgParqueoRepository implements ParqueoRepository {
     const reserva = space.reservation_id ? await this.getActiveReservationById(space.reservation_id) : null;
     if (!reserva) throw new ApiError(409, 'El espacio no tiene reserva activa');
     if (reserva.userId !== actor.id && actor.parkingRole !== 'admin') throw new ApiError(403, 'Sin permiso para liberar este espacio');
-    await getPool().query("update parking_reservations set status = 'finalizada' where id = $1", [reserva.id]);
-    await getPool().query("update parking_spaces set status = 'disponible', reservation_id = null where id = $1", [space.id]);
-    await logEvento(getPool(), 'salida', { espacioId: space.id, user: actor, placa: reserva.placa, notas: reserva.userId === actor.id ? '' : 'Liberado por admin' });
+    await pool.query("update parking_reservations set status = 'finalizada' where id = $1", [reserva.id]);
+    await pool.query("update parking_spaces set status = 'disponible', reservation_id = null where id = $1", [space.id]);
+    await logEvento(pool, 'salida', { espacioId: space.id, user: actor, placa: reserva.placa, notas: reserva.userId === actor.id ? '' : 'Liberado por admin' });
   }
 
   async extender(reservaId: string, minutos: number, actor: { id: string; name: string; parkingRole: string }): Promise<void> {
@@ -225,21 +225,21 @@ export class PgParqueoRepository implements ParqueoRepository {
     const base = Math.max(new Date(reserva.fin).getTime(), Date.now());
     const fin = new Date(base + minutos * 60000).toISOString();
     const qrData = `${reserva.codigo}|${reserva.espacioId}|${reserva.placa}|${fin}`;
-    await getPool().query('update parking_reservations set ends_at = $1, qr_data = $2 where id = $3', [fin, qrData, reserva.id]);
-    await logEvento(getPool(), 'extension', { espacioId: reserva.espacioId, user: actor, placa: reserva.placa, notas: `+${minutos} min` });
+    await pool.query('update parking_reservations set ends_at = $1, qr_data = $2 where id = $3', [fin, qrData, reserva.id]);
+    await logEvento(pool, 'extension', { espacioId: reserva.espacioId, user: actor, placa: reserva.placa, notas: `+${minutos} min` });
   }
 
   async cancelar(id: string, actor: { id: string; name: string; parkingRole: string }): Promise<void> {
     const reserva = await this.getActiveReservationById(id);
     if (!reserva) throw new ApiError(404, 'Reserva no activa');
     if (reserva.userId !== actor.id && actor.parkingRole !== 'admin') throw new ApiError(403, 'Sin permiso para cancelar esta reserva');
-    await getPool().query("update parking_reservations set status = 'cancelada' where id = $1", [reserva.id]);
-    await getPool().query("update parking_spaces set status = 'disponible', reservation_id = null where id = $1", [reserva.espacioId]);
-    await logEvento(getPool(), 'cancelacion', { espacioId: reserva.espacioId, user: actor, placa: reserva.placa, notas: reserva.userId === actor.id ? '' : 'Cancelada por admin' });
+    await pool.query("update parking_reservations set status = 'cancelada' where id = $1", [reserva.id]);
+    await pool.query("update parking_spaces set status = 'disponible', reservation_id = null where id = $1", [reserva.espacioId]);
+    await logEvento(pool, 'cancelacion', { espacioId: reserva.espacioId, user: actor, placa: reserva.placa, notas: reserva.userId === actor.id ? '' : 'Cancelada por admin' });
   }
 
   async finalizePayment(reserva: Reservation, payment: PaymentRecord, recibo: { monto: number; horas: number; transaccion: string }): Promise<void> {
-    const client = await getPool().connect();
+    const client = await pool.connect();
     try {
       await client.query('begin');
       await client.query("update parking_reservations set status = 'finalizada', payment = $1 where id = $2", [JSON.stringify(payment), reserva.id]);
@@ -259,10 +259,10 @@ export class PgParqueoRepository implements ParqueoRepository {
   }
 
   async setReservationEmail(id: string, email: string): Promise<void> {
-    await getPool().query('update parking_reservations set email_qr = $1 where id = $2', [email, id]);
+    await pool.query('update parking_reservations set email_qr = $1 where id = $2', [email, id]);
   }
 
   async logEvento(type: string, input: LogEventoInput): Promise<void> {
-    await logEvento(getPool(), type, input);
+    await logEvento(pool, type, input);
   }
 }

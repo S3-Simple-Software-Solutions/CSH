@@ -1,4 +1,3 @@
-import { USE_DB } from '../../core/db';
 import {
   CreateReservationInput,
   EventActor,
@@ -40,17 +39,11 @@ export interface ParqueoRepository {
   logEvento(type: string, input: LogEventoInput): Promise<void>;
 }
 
+import { PgParqueoRepository } from './parqueo.repository.pg';
+
 let instance: ParqueoRepository | null = null;
 
-export async function getParqueoRepository(): Promise<ParqueoRepository> {
-  if (!instance) {
-    if (USE_DB) {
-      const { PgParqueoRepository } = await import('./parqueo.repository.pg');
-      instance = new PgParqueoRepository();
-    } else {
-      const { JsonParqueoRepository } = await import('./parqueo.repository.json');
-      instance = new JsonParqueoRepository();
-    }
-  }
+export function getParqueoRepository(): ParqueoRepository {
+  if (!instance) instance = new PgParqueoRepository();
   return instance;
 }

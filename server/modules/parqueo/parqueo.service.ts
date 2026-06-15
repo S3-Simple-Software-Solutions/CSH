@@ -26,14 +26,14 @@ function validateEmail(email: string): void {
 }
 
 export async function getPublicEstado() {
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   return { tarifa: TARIFA_HORA, espacios: await repo.publicEstado() };
 }
 
 export async function consultaPublica(rawPlate: unknown) {
   const plate = normalizePlate(rawPlate);
   if (!plate || plate.length > 12) throw new ApiError(400, 'Ingresa una placa valida');
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   const reserva = await repo.getActiveReservationByPlate(plate);
   if (!reserva) throw new ApiError(404, 'No hay parqueo activo para esa placa');
   const { horas, monto } = montoDe(reserva);
@@ -57,7 +57,7 @@ export async function occupyPublic(body: { espacioId: string; placa: unknown; em
   validatePlate(plate);
   validateEmail(email);
   validateDuration(duracion);
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   const reserva = await repo.occupyPublic({ espacioId: body.espacioId, placa: plate, email, duracion });
   let emailSent = false;
   let emailError = '';
@@ -84,7 +84,7 @@ export async function occupyPublic(body: { espacioId: string; placa: unknown; em
 
 export async function reenviarPublico(rawPlate: unknown) {
   const plate = normalizePlate(rawPlate);
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   const reserva = await repo.getActiveReservationByPlate(plate);
   if (!reserva) throw new ApiError(404, 'No hay parqueo activo para esa placa');
   const email = reservaEmail(reserva);
@@ -96,7 +96,7 @@ export async function reenviarPublico(rawPlate: unknown) {
 
 export async function pagarPublico(body: { placa: unknown; pago?: any }): Promise<Recibo> {
   const plate = normalizePlate(body.placa);
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   const reserva = await repo.getActiveReservationByPlate(plate);
   if (!reserva) throw new ApiError(404, 'No hay parqueo activo para esa placa');
   const email = reservaEmail(reserva);
@@ -117,12 +117,12 @@ export async function pagarPublico(body: { placa: unknown; pago?: any }): Promis
 }
 
 export async function adminEstado() {
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   return repo.adminEstado();
 }
 
 export async function adminEventos(opts: { limit: number; offset: number; plate?: string }) {
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   return repo.listEventos(opts);
 }
 
@@ -131,34 +131,34 @@ export async function adminReservar(body: { espacioId: string; placa: unknown; d
   const duracion = Number(body.duracion);
   validatePlate(plate);
   validateDuration(duracion);
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   return repo.reservar({ espacioId: body.espacioId, placa: plate, duracion, user });
 }
 
 export async function adminOcupar(reservaId: string, actor: Actor) {
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   await repo.ocupar(reservaId, actor);
 }
 
 export async function adminLiberar(espacioId: string, actor: Actor) {
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   await repo.liberar(espacioId, actor);
 }
 
 export async function adminExtender(reservaId: string, rawMinutos: unknown, actor: Actor) {
   const minutos = Number(rawMinutos);
   if (!Number.isFinite(minutos) || minutos < 5 || minutos > 720) throw new ApiError(400, 'Minutos invalidos (5-720)');
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   await repo.extender(reservaId, minutos, actor);
 }
 
 export async function adminCancelar(id: string, actor: Actor) {
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   await repo.cancelar(id, actor);
 }
 
 export async function adminEnviarQr(reservaId: string, rawEmail: unknown, actor: Actor) {
-  const repo = await getParqueoRepository();
+  const repo = getParqueoRepository();
   const reserva = await repo.getActiveReservationById(reservaId);
   if (!reserva) throw new ApiError(404, 'Reserva no activa');
   if (reserva.userId !== actor.id && actor.parkingRole !== 'admin') throw new ApiError(403, 'Sin permiso sobre esta reserva');

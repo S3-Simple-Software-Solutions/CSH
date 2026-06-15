@@ -1,18 +1,7 @@
-import fs from 'fs';
-import { USE_DB, getPool, query } from '../../core/db';
-import { PARQUEO_FILE } from '../../config/constants';
-import { initParqueoJsonShape } from './parqueo.repository.json';
-import { ParqueoData } from './parqueo.types';
+import { pool, query } from '../../core/db';
 
 export async function ensureParqueoSchema(): Promise<void> {
-  if (!USE_DB) {
-    // JSON mode: ensure the data file exists with the initial 400-space shape.
-    if (!fs.existsSync(PARQUEO_FILE)) {
-      fs.writeFileSync(PARQUEO_FILE, `${JSON.stringify(initParqueoJsonShape(), null, 2)}\n`);
-    }
-    return;
-  }
-  await getPool().query(`
+  await pool.query(`
     create table if not exists parking_spaces (
       id text primary key,
       floor integer not null,
@@ -53,40 +42,19 @@ export async function ensureParqueoSchema(): Promise<void> {
 }
 
 async function seedParking(): Promise<void> {
-  let data: ParqueoData = initParqueoJsonShape();
-  if (fs.existsSync(PARQUEO_FILE)) {
-    try {
-      data = JSON.parse(fs.readFileSync(PARQUEO_FILE, 'utf8'));
-    } catch {
-      /* keep generated shape */
-    }
-  }
-  const client = await getPool().connect();
+  const client = await pool.connect();
   try {
     await client.query('begin');
-    for (const e of data.espacios || []) {
-      await client.query(
-        'insert into parking_spaces (id, floor, zone, num, type, status, reservation_id) values ($1,$2,$3,$4,$5,$6,$7) on conflict do nothing',
-        [e.id, (e as any).piso || (e as any).floor, (e as any).zona || (e as any).zone, e.num, (e as any).tipo || (e as any).type || 'regular', (e as any).estado || (e as any).status || 'disponible', (e as any).reservaId || (e as any).reservation_id || null],
-      );
-    }
-    for (const r of data.reservas || []) {
-      await client.query(
-        `insert into parking_reservations (id, space_id, user_id, user_name, plate, role, status, starts_at, ends_at, code, qr_data, email_qr, payment)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict do nothing`,
-        [r.id, r.espacioId, r.userId || null, r.userName || 'Invitado', r.placa, r.rol || 'invitado', r.estado, r.inicio, r.fin, r.codigo || `CSH-${r.id}`, r.qrData || '', r.emailQr || null, r.pago ? JSON.stringify(r.pago) : null],
-      );
-    }
-    for (const e of data.eventos || []) {
-      await client.query('insert into parking_events (type, space_id, user_id, user_name, plate, notes, created_at) values ($1,$2,$3,$4,$5,$6,$7)', [
-        e.tipo,
-        e.espacioId || null,
-        e.userId || null,
-        e.userName || '',
-        e.placa || '',
-        e.notas || '',
-        e.timestamp || new Date().toISOString(),
-      ]);
+    for (const floor of [1, 2]) {
+      for (const zone of ['A', 'B']) {
+        for (let num = 1; num <= 100; num++) {
+          const id = `P${floor}-${zone}${String(num).padStart(3, '0')}`;
+          await client.query(
+            'insert into parking_spaces (id, floor, zone, num, type, status, reservation_id) values ($1,$2,$3,$4,$5,$6,$7) on conflict do nothing',
+            [id, floor, zone, num, 'regular', 'disponible', null],
+          );
+        }
+      }
     }
     await client.query('commit');
   } catch (err) {
