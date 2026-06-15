@@ -65,7 +65,27 @@ jobs:
             npm ci
             echo "── building ──"
             npm run build
+            echo "── ensuring service unit (ExecStart=npm start -> node dist-server/index.js) ──"
+            mkdir -p ~/.config/systemd/user
+            cat > ~/.config/systemd/user/csh.service <<'UNIT'
+          [Unit]
+          Description=CSH Herediano app
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory=/home/tony/Desktop/APP_CSH
+          EnvironmentFile=/home/tony/Desktop/APP_CSH/.env
+          ExecStart=/bin/bash -lc 'npm start'
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=default.target
+          UNIT
+            systemctl --user daemon-reload
             echo "── restarting ──"
+            systemctl --user enable csh.service
             systemctl --user restart csh.service
             systemctl --user status csh.service --no-pager
           ENDSSH
