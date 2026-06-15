@@ -1,4 +1,5 @@
 cache/
+dist-server/
 server.log
 *.log
 .env

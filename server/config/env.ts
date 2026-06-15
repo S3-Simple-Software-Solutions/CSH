@@ -1,0 +1,32 @@
+import 'dotenv/config';
+
+function num(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function bool(value: string | undefined): boolean {
+  return String(value || '').toLowerCase() === 'true';
+}
+
+export const env = {
+  PORT: num(process.env.PORT, 8088),
+  HOST: '0.0.0.0',
+  DATABASE_URL: process.env.DATABASE_URL || '',
+  USE_DB: Boolean(process.env.DATABASE_URL),
+  SECRET: process.env.HEREDIANO_SECRET || 'cambie-esta-clave-herediano-secret-2026',
+  SESSION_HOURS: num(process.env.HEREDIANO_SESSION_HOURS, 12),
+  ADMIN_SESSION_HOURS: num(process.env.HEREDIANO_ADMIN_SESSION_HOURS, 8),
+  AUTH_USER: process.env.HEREDIANO_USER || 'admin',
+  AUTH_PASS: process.env.HEREDIANO_PASS || 'herediano2026',
+  ADMIN_USER: process.env.HEREDIANO_ADMIN_USER || 'admin',
+  ADMIN_EMAIL: process.env.HEREDIANO_ADMIN_EMAIL || 'admin@herediano.com',
+  ADMIN_PASS: process.env.HEREDIANO_ADMIN_PASS || '',
+  MAIL_FROM: process.env.HEREDIANO_MAIL_FROM || '"Club Sport Herediano" <herediano@milocalhost.work>',
+  MAIL_APP_URL: process.env.HEREDIANO_APP_URL || 'https://herediano.milocalhost.work',
+  SMTP_HOST: process.env.HEREDIANO_SMTP_HOST || process.env.SMTP_HOST || '127.0.0.1',
+  SMTP_PORT: num(process.env.HEREDIANO_SMTP_PORT || process.env.SMTP_PORT, 1587),
+  SMTP_SECURE: bool(process.env.HEREDIANO_SMTP_SECURE || process.env.SMTP_SECURE),
+  SMTP_USER: process.env.HEREDIANO_SMTP_USER || process.env.SMTP_USER || '',
+  SMTP_PASS: process.env.HEREDIANO_SMTP_PASS || process.env.SMTP_PASS || '',
+};

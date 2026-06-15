@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
+    "lib": ["ES2023"],
+    "outDir": "dist-server",
+    "rootDir": "server",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "declaration": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["server/**/*.ts"]
+}

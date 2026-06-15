@@ -2,12 +2,15 @@
   "name": "app_csh",
   "version": "1.0.0",
   "description": "Cached Club Sport Herediano proxy with login, admin shell, and parking management module.",
-  "main": "server.js",
+  "main": "dist-server/index.js",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
-    "start": "node server.js",
-    "check": "node --check server.js && npm run build"
+    "dev:server": "tsx watch server/index.ts",
+    "build:client": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run build:client && npm run build:server",
+    "start": "node dist-server/index.js",
+    "check": "tsc -p tsconfig.server.json --noEmit && npm run build:client"
   },
   "repository": {
     "type": "git",
@@ -31,5 +34,14 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "vite": "^8.0.16"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.3",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.20.0",
+    "@types/qrcode": "^1.5.6",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
   }
 }
