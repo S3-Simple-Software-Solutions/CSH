@@ -10,6 +10,7 @@ export interface Noticia {
   categoria: CategoriaNoticia;
   fuente: string;
   resumen: string;
+  cuerpo: string;
   imagenPath: string | null;
   estado: EstadoNoticia;
   fecha: string;
@@ -23,6 +24,7 @@ export interface NoticiaRow {
   categoria: string;
   fuente: string;
   resumen: string;
+  cuerpo: string;
   imagen_path: string | null;
   estado: string;
   fecha: string;

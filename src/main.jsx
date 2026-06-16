@@ -13,6 +13,7 @@ import Historia from './pages/Historia.jsx';
 import Plantilla from './pages/Plantilla.jsx';
 import Calendario from './pages/Calendario.jsx';
 import Noticias from './pages/Noticias.jsx';
+import NoticiaDetalle from './pages/NoticiaDetalle.jsx';
 import Socios from './pages/Socios.jsx';
 import Contacto from './pages/Contacto.jsx';
 
@@ -25,6 +26,7 @@ const router = createBrowserRouter([
       { path: '/plantilla', element: <Plantilla /> },
       { path: '/calendario', element: <Calendario /> },
       { path: '/noticias', element: <Noticias /> },
+      { path: '/noticias/:slug', element: <NoticiaDetalle /> },
       { path: '/socios', element: <Socios /> },
       { path: '/contacto', element: <Contacto /> },
     ],

@@ -11,6 +11,7 @@ function NoticiaModal({ noticia, onClose, onSaved }) {
     categoria: noticia?.categoria ?? 'Noticias',
     fuente: noticia?.fuente ?? '',
     resumen: noticia?.resumen ?? '',
+    cuerpo: noticia?.cuerpo ?? '',
     fecha: noticia?.fecha ? noticia.fecha.slice(0, 10) : new Date().toISOString().slice(0, 10),
     estado: noticia?.estado ?? 'borrador',
   });
@@ -73,7 +74,9 @@ function NoticiaModal({ noticia, onClose, onSaved }) {
         <label>Fuente</label>
         <input value={form.fuente} onChange={(e) => setForm({ ...form, fuente: e.target.value })} placeholder="Prensa Herediano" />
         <label>Resumen</label>
-        <textarea rows={4} value={form.resumen} onChange={(e) => setForm({ ...form, resumen: e.target.value })} placeholder="Breve descripción de la noticia…" />
+        <textarea rows={3} value={form.resumen} onChange={(e) => setForm({ ...form, resumen: e.target.value })} placeholder="Breve descripción que aparece en las cards y como intro del artículo…" />
+        <label>Cuerpo del artículo</label>
+        <textarea rows={10} value={form.cuerpo} onChange={(e) => setForm({ ...form, cuerpo: e.target.value })} placeholder="Escribí el texto completo de la noticia. Separá los párrafos con una línea en blanco." style={{ fontFamily: 'inherit', lineHeight: '1.6' }} />
         <label>Portada</label>
         {preview && <img src={preview} alt="preview" className="img-preview" />}
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />

@@ -26,6 +26,17 @@ noticiasRouter.get('/api/noticias', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+noticiasRouter.get('/api/noticias/:slug', async (req, res, next) => {
+  try {
+    const noticia = await findNoticiaBySlug(String(req.params.slug));
+    if (!noticia || noticia.estado !== 'publicado') throw new ApiError(404, 'Noticia no encontrada');
+    const relacionadas = (await findNoticiasPublicadas(noticia.categoria))
+      .filter((n) => n.id !== noticia.id)
+      .slice(0, 3);
+    res.json({ ok: true, noticia, relacionadas });
+  } catch (err) { next(err); }
+});
+
 // ── Admin CRUD ────────────────────────────────────────────────────────────────
 
 noticiasRouter.get('/admin/api/noticias', requireAdmin, async (_req, res, next) => {
@@ -37,7 +48,7 @@ noticiasRouter.get('/admin/api/noticias', requireAdmin, async (_req, res, next) 
 
 noticiasRouter.post('/admin/api/noticias', requireAdmin, async (req, res, next) => {
   try {
-    const { titulo, categoria, fuente, resumen, estado, fecha } = req.body;
+    const { titulo, categoria, fuente, resumen, cuerpo, estado, fecha } = req.body;
     if (!titulo || !categoria) throw new ApiError(400, 'titulo y categoria son obligatorios');
     const slug = slugify(titulo);
     const existing = await findNoticiaBySlug(slug);
@@ -48,6 +59,7 @@ noticiasRouter.post('/admin/api/noticias', requireAdmin, async (req, res, next) 
       categoria: String(categoria).trim(),
       fuente: String(fuente || 'Prensa CSH').trim(),
       resumen: String(resumen || '').trim(),
+      cuerpo: String(cuerpo || '').trim(),
       imagenPath: null,
       estado: String(estado || 'borrador'),
       fecha: String(fecha || new Date().toISOString().slice(0, 10)),
@@ -60,12 +72,13 @@ noticiasRouter.patch('/admin/api/noticias/:id', requireAdmin, async (req, res, n
   try {
     const noticia = await findNoticiaById(String(req.params.id));
     if (!noticia) throw new ApiError(404, 'Noticia no encontrada');
-    const { titulo, categoria, fuente, resumen, estado, fecha } = req.body;
+    const { titulo, categoria, fuente, resumen, cuerpo, estado, fecha } = req.body;
     const updated = await updateNoticia(noticia.id, {
       ...(titulo !== undefined && { titulo: String(titulo).trim() }),
       ...(categoria !== undefined && { categoria: String(categoria).trim() }),
       ...(fuente !== undefined && { fuente: String(fuente).trim() }),
       ...(resumen !== undefined && { resumen: String(resumen).trim() }),
+      ...(cuerpo !== undefined && { cuerpo: String(cuerpo).trim() }),
       ...(estado !== undefined && { estado: String(estado) }),
       ...(fecha !== undefined && { fecha: String(fecha) }),
     });

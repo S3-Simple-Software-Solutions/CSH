@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 // Encabezado de sección reutilizable.
 export function SectionHeader({ eyebrow, title, sub, center }) {
@@ -41,11 +42,11 @@ export function PlayerCard({ p }) {
   );
 }
 
-// Tarjeta de noticia.
-export function NewsCard({ n }) {
+// Tarjeta de noticia. Si tiene slug, es un link a la página de detalle.
+export function NewsCard({ n, linked = true }) {
   const fecha = new Date(n.fecha).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' });
-  return (
-    <article className="news-card">
+  const inner = (
+    <>
       <div className="news-thumb">
         {n.imagen ? <img src={n.imagen} alt={n.titulo} loading="lazy" /> : <div className="news-noimg">CSH</div>}
         <span className="news-cat">{n.categoria}</span>
@@ -55,8 +56,12 @@ export function NewsCard({ n }) {
         <p>{n.resumen}</p>
         <small className="muted">{fecha} · {n.fuente}</small>
       </div>
-    </article>
+    </>
   );
+  if (linked && n.slug) {
+    return <Link to={`/noticias/${n.slug}`} className="news-card">{inner}</Link>;
+  }
+  return <article className="news-card">{inner}</article>;
 }
 
 // Muro de patrocinadores.
