@@ -49,14 +49,6 @@ const FLOW_ARROW_SIZE = {
   'split-left-right': { w: 0.060, h: 0.052 },
   'u-turn-right': { w: 0.052, h: 0.060 },
 };
-const FLOW_ARROW_PATHS = {
-  straight: ['M8 50 H88'],
-  'turn-left': ['M78 88 V61 C78 39 62 26 38 26 H12'],
-  'turn-right': ['M22 88 V61 C22 39 38 26 62 26 H88'],
-  'split-up-right': ['M28 86 V22', 'M28 56 Q28 40 45 40 H80'],
-  'split-left-right': ['M50 86 V60 Q50 40 25 40 H16', 'M50 60 Q50 40 75 40 H84'],
-  'u-turn-right': ['M20 86 V42 Q20 18 50 18 Q82 18 82 50 V78'],
-};
 const FLOW_ARROW_CAPS = {
   straight: [{ x: 8, y: 50, edge: 'vertical' }, { x: 88, y: 50, edge: 'vertical' }],
   'turn-left': [{ x: 78, y: 88, edge: 'horizontal' }, { x: 12, y: 26, edge: 'vertical' }],
@@ -68,7 +60,6 @@ const FLOW_ARROW_CAPS = {
 const FLOW_ROAD_HALF_WIDTH_PX = 8.5;
 const FLOW_ARROW_SNAP_PX = 18;
 const FLOW_DIRECTION_ARROW = { w: 0.024, h: 0.034 };
-const FLOW_ROAD_VIEW_W = 1000;
 
 function flowArrowKind(kind) {
   return FLOW_ARROW_TYPE_IDS.has(kind) ? kind : 'straight';
@@ -135,35 +126,6 @@ function FlowArrowControlSvg({ kind, editable }) {
       {editable && connectors.map((pt, idx) => (
         <circle key={`${idx}-${pt.x}-${pt.y}`} className="flow-connector" cx={pt.x} cy={pt.y} r="3.8" />
       ))}
-    </svg>
-  );
-}
-
-function flowRoadTransform(arrow, size, aspect = 1.5) {
-  const viewH = FLOW_ROAD_VIEW_W / aspect;
-  const width = FLOW_ROAD_VIEW_W * size.w;
-  const height = viewH * size.h;
-  const x = Number(arrow.x || 0) * FLOW_ROAD_VIEW_W;
-  const y = Number(arrow.y || 0) * viewH;
-  return `translate(${x} ${y}) rotate(${Number(arrow.r || 0)}) scale(${width / 100} ${height / 100}) translate(-50 -50)`;
-}
-
-function FlowRoadLayer({ arrows, aspect = 1.5 }) {
-  const viewH = FLOW_ROAD_VIEW_W / aspect;
-  const roads = arrows.flatMap((arrow) => {
-    const kind = flowArrowKind(arrow.kind);
-    const size = flowArrowRoadSize(arrow, arrows, aspect);
-    const transform = flowRoadTransform(arrow, size, aspect);
-    return (FLOW_ARROW_PATHS[kind] || FLOW_ARROW_PATHS.straight).map((d, idx) => ({ id: `${arrow.id}-${idx}`, d, transform }));
-  });
-  return (
-    <svg className="flow-road-layer" viewBox={`0 0 ${FLOW_ROAD_VIEW_W} ${viewH}`} preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <g className="flow-road-body">
-        {roads.map((road) => <path key={`${road.id}-body`} d={road.d} transform={road.transform} />)}
-      </g>
-      <g className="flow-road-centerline">
-        {roads.map((road) => <path key={`${road.id}-center`} d={road.d} transform={road.transform} />)}
-      </g>
     </svg>
   );
 }
@@ -476,7 +438,6 @@ function snapFlowArrow(arrow, x, y, arrows, bounds, aspect = 1.5) {
 function FlowArrows({ arrows, editable = false, selected = null, onPointerDown, aspect = 1.5 }) {
   return (
     <>
-      <FlowRoadLayer arrows={arrows} aspect={aspect} />
       {arrows.map((arrow) => {
         const kind = flowArrowKind(arrow.kind);
         const size = flowArrowRoadSize(arrow, arrows, aspect);
