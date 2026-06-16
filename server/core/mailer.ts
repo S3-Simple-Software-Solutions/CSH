@@ -1,8 +1,12 @@
+import fs from 'fs';
+import path from 'path';
 import nodemailer from 'nodemailer';
 import { env } from '../config/env';
-import { OFFICIAL_SPONSORS, SITE_LOGO_PATH } from '../config/constants';
+import { OFFICIAL_SPONSORS, SITE_LOGO_PATH, ROOT_DIR } from '../config/constants';
 import { escapeHtml } from './http';
-import { getCachedAsset } from './cache';
+
+const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
+const CT_BY_EXT: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
 
 export interface MailAttachment {
   filename: string;
@@ -45,7 +49,7 @@ export function emailShell(_title: string, kicker: string, body: string): string
   return `<!doctype html><html lang="es"><body style="margin:0;background:#0a0908;padding:24px;font-family:Inter,Manrope,Arial,sans-serif;color:#f7f1df"><div style="max-width:620px;margin:0 auto;background:#13100e;border:1px solid rgba(201,169,97,.45);border-radius:8px;overflow:hidden"><div style="background:#d62828;padding:24px 28px;text-align:center"><img src="cid:csh-shield" width="72" alt="Club Sport Herediano" style="display:block;margin:0 auto 12px"><h1 style="margin:0;color:#f7f1df;font-family:Impact,'Arial Black',Arial,sans-serif;font-size:32px;letter-spacing:.04em;text-transform:uppercase">Herediano</h1><p style="margin:6px 0 0;color:#ffe7e7;font-size:13px;letter-spacing:.16em;text-transform:uppercase">${kicker}</p></div><div style="padding:28px">${body}<div style="border-top:1px solid rgba(201,169,97,.35);padding-top:18px;text-align:center"><p style="margin:0 0 10px;color:#c9a961;font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:800">Patrocinadores oficiales</p><div>${sponsorHtml()}</div></div></div><div style="padding:14px 28px;background:#0a0908;color:#aa9d84;text-align:center;font-size:12px">Mensaje automatico. No respondas a este correo.</div></div></body></html>`;
 }
 
-async function getInlineAssetAttachment({
+function getInlineAssetAttachment({
   reqPath,
   cid,
   filename,
@@ -53,13 +57,14 @@ async function getInlineAssetAttachment({
   reqPath: string;
   cid: string;
   filename: string;
-}): Promise<MailAttachment | null> {
+}): MailAttachment | null {
   try {
-    const entry = await getCachedAsset(reqPath);
+    const filePath = path.join(PUBLIC_DIR, reqPath);
+    const content = fs.readFileSync(filePath);
     return {
       filename,
-      content: entry.body,
-      contentType: entry.meta.ct || 'image/png',
+      content,
+      contentType: CT_BY_EXT[path.extname(filePath).toLowerCase()] || 'image/png',
       cid,
       contentDisposition: 'inline',
     };
@@ -70,9 +75,7 @@ async function getInlineAssetAttachment({
 }
 
 export async function commonMailAttachments(): Promise<MailAttachment[]> {
-  const shield = await getInlineAssetAttachment({ reqPath: SITE_LOGO_PATH, cid: 'csh-shield', filename: 'escudo-herediano.png' });
-  const sponsors = await Promise.all(
-    OFFICIAL_SPONSORS.map((s) => getInlineAssetAttachment({ reqPath: s.path, cid: s.cid, filename: `${s.cid}.png` })),
-  );
+  const shield = getInlineAssetAttachment({ reqPath: SITE_LOGO_PATH, cid: 'csh-shield', filename: 'escudo-herediano.png' });
+  const sponsors = OFFICIAL_SPONSORS.map((s) => getInlineAssetAttachment({ reqPath: s.path, cid: s.cid, filename: `${s.cid}.png` }));
   return [shield, ...sponsors].filter((a): a is MailAttachment => Boolean(a));
 }

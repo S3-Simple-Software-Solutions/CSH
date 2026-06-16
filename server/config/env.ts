@@ -26,6 +26,7 @@ export const env = {
   AUTH_PASS: process.env.HEREDIANO_PASS || 'herediano2026',
   ADMIN_USER: process.env.HEREDIANO_ADMIN_USER || 'admin',
   ADMIN_EMAIL: process.env.HEREDIANO_ADMIN_EMAIL || 'admin@herediano.com',
+  CONTACT_EMAIL: process.env.HEREDIANO_CONTACT_EMAIL || 'servicioalcliente@herediano.com',
   ADMIN_PASS: process.env.HEREDIANO_ADMIN_PASS || '',
   MAIL_FROM: process.env.HEREDIANO_MAIL_FROM || '"Club Sport Herediano" <herediano@milocalhost.work>',
   MAIL_APP_URL: process.env.HEREDIANO_APP_URL || 'https://herediano.milocalhost.work',

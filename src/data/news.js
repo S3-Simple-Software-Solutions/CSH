@@ -1,0 +1,88 @@
+// Noticias — snapshot del sitio oficial (jun 2026).
+// Las que tienen imagen descargada usan /brand/news/*; el resto van sin portada.
+
+export const categories = ['Todas', 'Noticias', 'Refuerzos', 'Comunicados', 'Crónicas', 'Cantera', 'Femenino', 'Entradas'];
+
+export const news = [
+  {
+    slug: 'farmacia-jireh-llega-al-nuevo-eladio-rosabal-cordero',
+    titulo: 'Farmacia Jireh llega al nuevo ESTADIO Eladio Rosabal Cordero',
+    categoria: 'Noticias',
+    fecha: '2026-06-12',
+    fuente: 'Prensa CSH',
+    imagen: '/brand/news/img-2373.png',
+    resumen: 'Un nuevo aliado comercial se suma al renovado templo florense de cara a la temporada.',
+  },
+  {
+    slug: 'carta-de-jafet-soto-hacia-el-club-sport-herediano-en-su-105-aniversario',
+    titulo: 'Carta de Jafet Soto hacia el Club Sport Herediano en su 105 aniversario',
+    categoria: 'Comunicados',
+    fecha: '2026-06-12',
+    fuente: 'Prensa CSH',
+    imagen: '/brand/news/celebraci-n.jpeg',
+    resumen: 'El gerente deportivo dirige unas palabras a la afición rojiamarilla en una fecha histórica.',
+  },
+  {
+    slug: 'cronograma-de-actividades-aniversario-12-de-junio',
+    titulo: 'CRONOGRAMA DE ACTIVIDADES 12 de junio: 105 ANIVERSARIO',
+    categoria: 'Noticias',
+    fecha: '2026-06-10',
+    fuente: 'Prensa CSH',
+    imagen: '/brand/news/dsc06400.jpg',
+    resumen: 'Todas las actividades programadas para celebrar los 105 años del Team.',
+  },
+  {
+    slug: 'reggy-rivera-bienvenido-al-campeon-nacional',
+    titulo: 'Reggy Rivera: Bienvenido al Campeón Nacional',
+    categoria: 'Refuerzos',
+    fecha: '2026-05-26',
+    fuente: 'Prensa CSH',
+    imagen: '/brand/news/reggy.jpeg',
+    resumen: 'El club incorpora a un nuevo refuerzo para encarar la temporada.',
+  },
+  {
+    slug: 'abner-hudson-bienvenido-al-campeon-nacional',
+    titulo: 'Abner Hudson: Bienvenido al Campeón Nacional',
+    categoria: 'Refuerzos',
+    fecha: '2026-05-26',
+    fuente: 'Prensa CSH',
+    imagen: '/brand/news/abner.jpeg',
+    resumen: 'Otra cara nueva se suma al plantel campeón.',
+  },
+  {
+    slug: 'llega-la-ii-edicion-del-campa-fut-y-recreacion-junto-a-solo-cracks',
+    titulo: 'Llega la II Edición del Campa FUT y Recreación junto a Solo Cracks',
+    categoria: 'Noticias',
+    fecha: '2026-06-05',
+    fuente: 'Prensa CSH',
+    imagen: '/brand/news/whatsapp-image-2026-06-05-at-10-50-28-am.jpeg',
+    resumen: 'Una nueva edición del campamento recreativo para los más pequeños.',
+  },
+  {
+    slug: 'aaron-suarez-bienvenido-al-campeon-nacional',
+    titulo: 'Aarón Suárez: Bienvenido al Campeón Nacional',
+    categoria: 'Refuerzos',
+    fecha: '2026-05-19',
+    fuente: 'Prensa CSH',
+    imagen: null,
+    resumen: 'El campeón nacional sigue reforzándose con miras a los nuevos retos.',
+  },
+  {
+    slug: 'ariel-arauz-regresa-al-campeon-nacional',
+    titulo: 'Ariel Arauz regresa al Campeón Nacional',
+    categoria: 'Noticias',
+    fecha: '2026-05-19',
+    fuente: 'Prensa CSH',
+    imagen: null,
+    resumen: 'Un viejo conocido vuelve a vestir la rojiamarilla.',
+  },
+  {
+    slug: 'comunicado-oficial-lineamientos-para-final-nacional',
+    titulo: 'Comunicado oficial: Lineamientos para final Nacional',
+    categoria: 'Comunicados',
+    fecha: '2026-05-18',
+    fuente: 'Prensa CSH',
+    imagen: null,
+    resumen: 'Información oficial del club de cara a la gran final del campeonato.',
+  },
+];
