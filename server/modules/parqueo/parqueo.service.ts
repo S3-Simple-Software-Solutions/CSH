@@ -3,7 +3,8 @@ import { ApiError } from '../../core/errors';
 import { getParqueoRepository } from './parqueo.repository';
 import { sendParkingQrEmail, sendPaymentReceiptEmail } from './parqueo.mail';
 import { maskedReservaEmail, montoDe, reservaEmail } from './parqueo.helpers';
-import { croquisFloors } from './parqueo.layout';
+import { croquisFloors, floorPlanMeta } from './parqueo.layout';
+import { LayoutGeometry } from './parqueo.repository';
 import { PaymentRecord, Recibo } from './parqueo.types';
 
 type Actor = { id: string; name: string; parkingRole: string };
@@ -31,8 +32,53 @@ export async function getPublicEstado() {
   return { tarifa: TARIFA_HORA, espacios: await repo.publicEstado() };
 }
 
-export function getCroquis() {
-  return { floors: croquisFloors() };
+const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
+const MIN_SIZE = 0.004;
+
+export async function getCroquis() {
+  const repo = getParqueoRepository();
+  const layout = await repo.getLayout();
+  // Fallback al layout calculado si aún no se ha sembrado la geometría editable.
+  if (!layout.length) return { floors: croquisFloors() };
+  const floors = floorPlanMeta().map((m) => ({
+    piso: m.piso,
+    plan: m.plan,
+    aspect: m.aspect,
+    stalls: layout
+      .filter((s) => s.piso === m.piso)
+      .map((s) => ({ id: s.id, x: s.x, y: s.y, w: s.w, h: s.h, zona: s.zona })),
+  }));
+  return { floors };
+}
+
+export async function saveCroquis(floors: unknown, actor: Actor) {
+  if (actor.parkingRole !== 'admin') throw new ApiError(403, 'Solo administradores pueden editar el croquis');
+  if (!Array.isArray(floors)) throw new ApiError(400, 'Formato de croquis invalido');
+  const stalls: LayoutGeometry[] = [];
+  const seen = new Set<string>();
+  for (const fl of floors) {
+    for (const st of (fl?.stalls || [])) {
+      const x = Number(st.x);
+      const y = Number(st.y);
+      const w = Number(st.w);
+      const h = Number(st.h);
+      if (typeof st.id !== 'string' || ![x, y, w, h].every(Number.isFinite)) throw new ApiError(400, 'Geometria de plaza invalida');
+      if (seen.has(st.id)) continue;
+      seen.add(st.id);
+      const cx = clamp01(x);
+      const cy = clamp01(y);
+      stalls.push({ id: st.id, x: cx, y: cy, w: Math.min(Math.max(w, MIN_SIZE), 1 - cx), h: Math.min(Math.max(h, MIN_SIZE), 1 - cy) });
+    }
+  }
+  if (!stalls.length) throw new ApiError(400, 'No hay plazas para guardar');
+  await getParqueoRepository().saveLayout(stalls);
+  return { guardadas: stalls.length };
+}
+
+export async function resetCroquis(actor: Actor) {
+  if (actor.parkingRole !== 'admin') throw new ApiError(403, 'Solo administradores pueden editar el croquis');
+  await getParqueoRepository().resetLayout();
+  return getCroquis();
 }
 
 export async function consultaPublica(rawPlate: unknown) {

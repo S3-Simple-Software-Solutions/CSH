@@ -22,6 +22,24 @@ export interface LogEventoInput {
   notas?: string;
 }
 
+export interface LayoutStall {
+  id: string;
+  piso: number;
+  zona: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface LayoutGeometry {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface ParqueoRepository {
   publicEstado(): Promise<PublicSpace[]>;
   adminEstado(): Promise<{ espacios: Space[]; reservas: Reservation[] }>;
@@ -37,6 +55,9 @@ export interface ParqueoRepository {
   finalizePayment(reserva: Reservation, payment: PaymentRecord, recibo: { monto: number; horas: number; transaccion: string }): Promise<void>;
   setReservationEmail(id: string, email: string): Promise<void>;
   logEvento(type: string, input: LogEventoInput): Promise<void>;
+  getLayout(): Promise<LayoutStall[]>;
+  saveLayout(stalls: LayoutGeometry[]): Promise<void>;
+  resetLayout(): Promise<void>;
 }
 
 import { PgParqueoRepository } from './parqueo.repository.pg';

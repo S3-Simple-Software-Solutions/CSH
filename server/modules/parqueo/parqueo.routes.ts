@@ -13,8 +13,12 @@ parqueoRouter.get('/api/parqueo/publico/estado', async (_req, res, next) => {
   }
 });
 
-parqueoRouter.get('/api/parqueo/croquis', (_req, res) => {
-  res.json({ ok: true, ...parqueo.getCroquis() });
+parqueoRouter.get('/api/parqueo/croquis', async (_req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.getCroquis()) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 parqueoRouter.post('/api/parqueo/publico/consulta', async (req, res, next) => {
@@ -50,6 +54,22 @@ parqueoRouter.post('/api/parqueo/publico/pagar', async (req, res, next) => {
 });
 
 // ---- Rutas admin ----
+parqueoRouter.put('/admin/api/parqueo/croquis', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.saveCroquis(req.body.floors, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+parqueoRouter.post('/admin/api/parqueo/croquis/reset', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.resetCroquis(req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 parqueoRouter.get('/admin/api/parqueo/estado', requireAdmin, async (_req, res, next) => {
   try {
     res.json({ ok: true, ...(await parqueo.adminEstado()) });

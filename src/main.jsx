@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BadgePercent, CalendarDays, Car, Check, Clock, Globe, LogOut, Mail, Moon, Plus, QrCode, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Truck, Users, UtensilsCrossed } from 'lucide-react';
 import QRCode from 'qrcode';
@@ -185,6 +185,146 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
   );
 }
 
+// Editor visual del croquis: permite mover y redimensionar las plazas sobre el
+// plano y persistir la geometría. Solo se monta para administradores de parqueo.
+function PlanoEditor({ floor, onClose, onSaved }) {
+  const [floors, setFloors] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const svgRef = useRef(null);
+  const drag = useRef(null);
+
+  useEffect(() => { api('/api/parqueo/croquis').then((d) => d.ok && setFloors(d.floors)); }, []);
+
+  const fl = floors?.find((f) => f.piso === floor);
+
+  function frac(e) {
+    const r = svgRef.current.getBoundingClientRect();
+    return { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height };
+  }
+  function updateStall(id, patch) {
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: f.stalls.map((s) => (s.id === id ? { ...s, ...patch } : s)) })));
+    setDirty(true);
+  }
+  function startDrag(e, st, mode) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelected(st.id);
+    const start = frac(e);
+    drag.current = { mode, id: st.id, fx: start.fx, fy: start.fy, geom: { x: st.x, y: st.y, w: st.w, h: st.h } };
+    const onMove = (ev) => {
+      const d = drag.current;
+      if (!d) return;
+      const { fx, fy } = frac(ev);
+      if (d.mode === 'move') {
+        updateStall(d.id, {
+          x: Math.min(Math.max(d.geom.x + (fx - d.fx), 0), 1 - d.geom.w),
+          y: Math.min(Math.max(d.geom.y + (fy - d.fy), 0), 1 - d.geom.h),
+        });
+      } else {
+        updateStall(d.id, {
+          w: Math.min(Math.max(d.geom.w + (fx - d.fx), 0.004), 1 - d.geom.x),
+          h: Math.min(Math.max(d.geom.h + (fy - d.fy), 0.004), 1 - d.geom.y),
+        });
+      }
+    };
+    const onUp = () => {
+      drag.current = null;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  async function save() {
+    setSaving(true);
+    setMsg(null);
+    const data = await api('/admin/api/parqueo/croquis', { method: 'PUT', body: JSON.stringify({ floors }) });
+    setSaving(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    setDirty(false);
+    setMsg({ type: 'ok', text: `Croquis guardado (${data.guardadas} plazas).` });
+    onSaved?.();
+  }
+  async function reset() {
+    if (!window.confirm('¿Restaurar el layout original del croquis? Se perderán los ajustes manuales.')) return;
+    setSaving(true);
+    setMsg(null);
+    const data = await api('/admin/api/parqueo/croquis/reset', { method: 'POST' });
+    setSaving(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    setFloors(data.floors);
+    setDirty(false);
+    setSelected(null);
+    setMsg({ type: 'ok', text: 'Layout restaurado al original.' });
+    onSaved?.();
+  }
+
+  if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
+  const sel = fl.stalls.find((s) => s.id === selected);
+  const pct = (v) => Math.round(v * 1000) / 10;
+  const setField = (k, val) => updateStall(selected, { [k]: Math.min(Math.max(Number(val) / 100, 0), 1) });
+
+  return (
+    <div className="plano-editor">
+      <div className="editor-bar">
+        <span className="hint">Arrastra una plaza para moverla; usa la esquina inferior derecha para redimensionar.</span>
+        <div className="editor-actions">
+          <button className="btn ghost" onClick={reset} disabled={saving}>Restaurar layout</button>
+          <button className="btn ghost" onClick={onClose} disabled={saving}>Cerrar</button>
+          <button className="btn" onClick={save} disabled={saving || !dirty}><Check size={16} />{saving ? 'Guardando...' : 'Guardar cambios'}</button>
+        </div>
+      </div>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      <div className="plano-wrap">
+        <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
+          <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
+          <svg ref={svgRef} className="plano-overlay editing" viewBox="0 0 1 1" preserveAspectRatio="none">
+            {fl.stalls.map((st) => (
+              <g key={st.id}>
+                <rect
+                  className={`pstall editable${selected === st.id ? ' selected' : ''}`}
+                  x={st.x}
+                  y={st.y}
+                  width={st.w}
+                  height={st.h}
+                  vectorEffect="non-scaling-stroke"
+                  onPointerDown={(e) => startDrag(e, st, 'move')}
+                >
+                  <title>{st.id}</title>
+                </rect>
+                {selected === st.id && (
+                  <rect
+                    className="pstall-handle"
+                    x={Math.max(st.x + st.w - 0.012, st.x)}
+                    y={Math.max(st.y + st.h - 0.012, st.y)}
+                    width={0.012}
+                    height={0.012}
+                    vectorEffect="non-scaling-stroke"
+                    onPointerDown={(e) => startDrag(e, st, 'resize')}
+                  />
+                )}
+              </g>
+            ))}
+          </svg>
+        </div>
+      </div>
+      {sel && (
+        <div className="editor-props">
+          <b>{sel.id}</b>
+          <label>X %<input type="number" step="0.1" value={pct(sel.x)} onChange={(e) => setField('x', e.target.value)} /></label>
+          <label>Y %<input type="number" step="0.1" value={pct(sel.y)} onChange={(e) => setField('y', e.target.value)} /></label>
+          <label>Ancho %<input type="number" step="0.1" value={pct(sel.w)} onChange={(e) => setField('w', e.target.value)} /></label>
+          <label>Alto %<input type="number" step="0.1" value={pct(sel.h)} onChange={(e) => setField('h', e.target.value)} /></label>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ParkingGrid({ spaces, floor, onSpace, admin = false, reservations = [], me }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -363,7 +503,7 @@ function ReservationResult({ lookup, onResend, onPay }) {
   );
 }
 
-function Toolbar({ floor, setFloor, stats }) {
+function Toolbar({ floor, setFloor, stats, children }) {
   return (
     <div className="toolbar">
       <div className="tabs">
@@ -376,6 +516,7 @@ function Toolbar({ floor, setFloor, stats }) {
         <span><i className="wine" />Tiempo vencido</span>
         <span>{stats}</span>
       </div>
+      {children && <div className="toolbar-extra">{children}</div>}
     </div>
   );
 }
@@ -686,6 +827,8 @@ function AdminParking({ user }) {
   const [events, setEvents] = useState([]);
   const [floor, setFloor] = useState(1);
   const [modal, setModal] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const canEdit = user.parkingRole === 'admin';
   const refresh = async () => {
     const data = await api('/admin/api/parqueo/estado');
     if (data.ok) setState({ espacios: data.espacios, reservas: data.reservas });
@@ -705,8 +848,12 @@ function AdminParking({ user }) {
   return (
     <main className="page">
       <p className="eyebrow">Zonas y reservas</p><h1>Gestion de parqueo</h1>
-      <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`} />
-      <PlanoCroquis spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin onSpace={(space, reservation) => setModal({ space, reservation })} />
+      <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`}>
+        {canEdit && !editing && <button className="btn ghost" onClick={() => setEditing(true)}>Editar plazas</button>}
+      </Toolbar>
+      {editing
+        ? <PlanoEditor floor={floor} onClose={() => setEditing(false)} onSaved={refresh} />
+        : <PlanoCroquis spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin onSpace={(space, reservation) => setModal({ space, reservation })} />}
       <section className="events"><h2>Log de eventos</h2><div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Tipo</th><th>Espacio</th><th>Placa</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>{events.map((e) => <tr key={e.id}><td>{fmtFullDate(e.timestamp)}</td><td>{e.tipo}</td><td>{e.espacioId}</td><td>{e.placa}</td><td>{e.userName}</td><td>{e.notas}</td></tr>)}</tbody></table></div></section>
       {modal && <AdminSpaceModal modal={modal} user={user} onClose={() => setModal(null)} afterAction={afterAction} />}
     </main>

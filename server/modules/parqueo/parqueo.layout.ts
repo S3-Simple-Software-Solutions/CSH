@@ -103,6 +103,12 @@ export function buildStalls(): Stall[] {
   return out;
 }
 
+// Metadatos estáticos de cada plano (imagen y proporción). La geometría de las
+// plazas es editable y vive en la base de datos; esto no.
+export function floorPlanMeta() {
+  return FLOOR_PLANS.map((fp) => ({ piso: fp.piso, plan: fp.plan, aspect: fp.aspect }));
+}
+
 // Geometría que consume el frontend para dibujar el overlay.
 export function croquisFloors() {
   const stalls = buildStalls();

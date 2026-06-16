@@ -11,7 +11,8 @@ import {
   Reservation,
   Space,
 } from './parqueo.types';
-import { ListEventosOptions, LogEventoInput, ParqueoRepository } from './parqueo.repository';
+import { LayoutGeometry, LayoutStall, ListEventosOptions, LogEventoInput, ParqueoRepository } from './parqueo.repository';
+import { seedParkingLayout } from './parqueo.schema';
 
 const activeWhere = "status in ('reservado','ocupado')";
 
@@ -264,5 +265,39 @@ export class PgParqueoRepository implements ParqueoRepository {
 
   async logEvento(type: string, input: LogEventoInput): Promise<void> {
     await logEvento(pool, type, input);
+  }
+
+  async getLayout(): Promise<LayoutStall[]> {
+    const rows = await query<any>('select * from parking_layout order by floor, stall_id');
+    return rows.map((r) => ({ id: r.stall_id, piso: r.floor, zona: r.zona, x: Number(r.x), y: Number(r.y), w: Number(r.w), h: Number(r.h) }));
+  }
+
+  async saveLayout(stalls: LayoutGeometry[]): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      for (const s of stalls) {
+        await client.query('update parking_layout set x = $1, y = $2, w = $3, h = $4 where stall_id = $5', [s.x, s.y, s.w, s.h, s.id]);
+      }
+      await client.query('commit');
+    } catch (err) {
+      try {
+        await client.query('rollback');
+      } catch {
+        /* noop */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async resetLayout(): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await seedParkingLayout(client);
+    } finally {
+      client.release();
+    }
   }
 }
