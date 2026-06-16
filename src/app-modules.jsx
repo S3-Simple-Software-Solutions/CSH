@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, Moon, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Truck, Users, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, Moon, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Truck, Users, UtensilsCrossed } from 'lucide-react';
 import QRCode from 'qrcode';
 import sotano1Img from './croquis/sotano-1.png';
 import sotano2Img from './croquis/sotano-2.png';
@@ -35,26 +35,27 @@ const FLOW_ARROW_TYPES = [
 ];
 const FLOW_ARROW_TYPE_IDS = new Set(FLOW_ARROW_TYPES.map((type) => type.id));
 const FLOW_ARROW_LABELS = Object.fromEntries(FLOW_ARROW_TYPES.map((type) => [type.id, type.label]));
+const FLOW_TURN_FLIP = { 'turn-left': 'turn-right', 'turn-right': 'turn-left' };
 const FLOW_ARROW_SIZE = {
   straight: { w: 0.070, h: 0.020 },
-  'turn-left': { w: 0.050, h: 0.055 },
-  'turn-right': { w: 0.050, h: 0.055 },
+  'turn-left': { w: 0.060, h: 0.060 },
+  'turn-right': { w: 0.060, h: 0.060 },
   'split-up-right': { w: 0.052, h: 0.058 },
   'split-left-right': { w: 0.060, h: 0.052 },
   'u-turn-right': { w: 0.052, h: 0.060 },
 };
 const FLOW_ARROW_PATHS = {
   straight: ['M8 50 H88'],
-  'turn-left': ['M78 86 V56 Q78 26 46 26 H20'],
-  'turn-right': ['M22 86 V56 Q22 26 54 26 H80'],
+  'turn-left': ['M78 88 V61 C78 39 62 26 38 26 H12'],
+  'turn-right': ['M22 88 V61 C22 39 38 26 62 26 H88'],
   'split-up-right': ['M28 86 V22', 'M28 56 Q28 40 45 40 H80'],
   'split-left-right': ['M50 86 V60 Q50 40 25 40 H16', 'M50 60 Q50 40 75 40 H84'],
   'u-turn-right': ['M20 86 V42 Q20 18 50 18 Q82 18 82 50 V78'],
 };
 const FLOW_ARROW_CAPS = {
   straight: [{ x: 8, y: 50, edge: 'vertical' }, { x: 88, y: 50, edge: 'vertical' }],
-  'turn-left': [{ x: 78, y: 86, edge: 'horizontal' }, { x: 20, y: 26, edge: 'vertical' }],
-  'turn-right': [{ x: 22, y: 86, edge: 'horizontal' }, { x: 80, y: 26, edge: 'vertical' }],
+  'turn-left': [{ x: 78, y: 88, edge: 'horizontal' }, { x: 12, y: 26, edge: 'vertical' }],
+  'turn-right': [{ x: 22, y: 88, edge: 'horizontal' }, { x: 88, y: 26, edge: 'vertical' }],
   'split-up-right': [{ x: 28, y: 86, edge: 'horizontal' }, { x: 28, y: 22, edge: 'horizontal' }, { x: 80, y: 40, edge: 'vertical' }],
   'split-left-right': [{ x: 50, y: 86, edge: 'horizontal' }, { x: 16, y: 40, edge: 'vertical' }, { x: 84, y: 40, edge: 'vertical' }],
   'u-turn-right': [{ x: 20, y: 86, edge: 'horizontal' }, { x: 82, y: 78, edge: 'horizontal' }],
@@ -65,6 +66,10 @@ const FLOW_DIRECTION_ARROW = { w: 0.024, h: 0.034 };
 
 function flowArrowKind(kind) {
   return FLOW_ARROW_TYPE_IDS.has(kind) ? kind : 'straight';
+}
+
+function isTurnArrowKind(kind) {
+  return Boolean(FLOW_TURN_FLIP[flowArrowKind(kind)]);
 }
 
 function flowArrowSize(kind) {
@@ -690,6 +695,14 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     await saveArrowPatch(selectedArrowItem.id, { kind: safeKind });
   }
 
+  async function flipTurnDirection() {
+    if (!selectedArrowItem) return;
+    const flippedKind = FLOW_TURN_FLIP[flowArrowKind(selectedArrowItem.kind)];
+    if (!flippedKind) return;
+    setArrowKind(flippedKind);
+    await saveArrowPatch(selectedArrowItem.id, { kind: flippedKind });
+  }
+
   async function removeArrow(id) {
     if (!window.confirm('¿Borrar esta flecha de circulación?')) return;
     setBusy(true);
@@ -804,6 +817,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
             <span>{FLOW_ARROW_LABELS[flowArrowKind(selectedArrowItem?.kind)] || 'Flecha'} · {normalizeRotation(selectedArrowItem?.r || 0)}°</span>
             <button className="btn ghost icon-only" onClick={() => rotateArrow(-45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la izquierda" aria-label="Girar flecha a la izquierda"><RotateCcw size={16} /></button>
             <button className="btn ghost icon-only" onClick={() => rotateArrow(45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la derecha" aria-label="Girar flecha a la derecha"><RotateCw size={16} /></button>
+            {isTurnArrowKind(selectedArrowItem?.kind) && <button className="btn ghost" onClick={flipTurnDirection} disabled={busy || !selectedArrowItem} title="Cambiar curva izquierda/derecha"><ArrowLeftRight size={16} />Cambiar lado</button>}
             <button className="btn ghost danger" onClick={() => removeArrow(selectedArrow)} disabled={busy}><Trash2 size={16} />Borrar flecha</button>
             <button className="btn ghost" onClick={() => setSelectedArrow(null)} disabled={busy}>Deseleccionar</button>
           </>
