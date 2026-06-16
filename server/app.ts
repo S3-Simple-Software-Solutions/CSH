@@ -9,6 +9,10 @@ import { entradasRouter } from './modules/entradas/entradas.routes';
 import { usuariosRouter } from './modules/usuarios/usuarios.routes';
 import { webRouter } from './modules/web/web.routes';
 import { contactoRouter } from './modules/contacto/contacto.routes';
+import { jugadoresRouter } from './modules/jugadores/jugadores.routes';
+import { noticiasRouter } from './modules/noticias/noticias.routes';
+import { partidosRouter } from './modules/partidos/partidos.routes';
+import { sponsorsRouter } from './modules/sponsors/sponsors.routes';
 
 // Rutas que NO deben caer en el fallback de la SPA (las maneja el backend).
 const API_PREFIXES = ['/api', '/admin/api', '/admin/sign-in', '/admin/logout', '/site-assets', '/__login'];
@@ -27,6 +31,10 @@ export function createApp() {
   app.use(usuariosRouter);
   app.use(webRouter);
   app.use(contactoRouter);
+  app.use(jugadoresRouter);
+  app.use(noticiasRouter);
+  app.use(partidosRouter);
+  app.use(sponsorsRouter);
 
   // Assets estáticos: brand/favicon (public/) y bundle compilado de la SPA (dist/).
   app.use(express.static(PUBLIC_DIR, { maxAge: '1y' }));
