@@ -167,7 +167,7 @@ input:focus, select:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb
   cursor: pointer;
 }
 .tabs button.active { border-color: var(--gold); color: var(--paper); background: rgba(201,169,97,.12); }
-.legend { display: flex; gap: 16px; color: var(--muted); font-size: 12px; flex-wrap: wrap; align-items: center; }
+.legend { display: flex; gap: 16px; color: var(--muted); font-size: 12px; flex: 1 1 auto; flex-wrap: wrap; align-items: center; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .green { background: var(--green); } .blue { background: #2563eb; } .orange { background: var(--orange); } .red { background: var(--red); } .wine { background: #5b0e1c; }
@@ -555,7 +555,7 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .plano-loading { margin-top: 18px; padding: 40px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; }
 
 /* ───────── Editor del croquis (marcar espacios con clic) ───────── */
-.toolbar-extra { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar-extra { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .toolbar-extra .btn { min-height: 38px; margin-top: 0; padding: 0 12px; }
 .plano-editor { margin-top: 18px; }
 .editor-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
