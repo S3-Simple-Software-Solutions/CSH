@@ -63,7 +63,7 @@ const FLOW_ARROW_CONNECTORS = {
   'split-left-right': [{ x: 50, y: 86 }, { x: 16, y: 40 }, { x: 84, y: 40 }],
   'u-turn-right': [{ x: 20, y: 86 }, { x: 82, y: 78 }],
 };
-const FLOW_ARROW_SNAP_PX = 14;
+const FLOW_ARROW_SNAP_PX = 18;
 
 function flowArrowKind(kind) {
   return FLOW_ARROW_TYPE_IDS.has(kind) ? kind : 'straight';
@@ -88,6 +88,7 @@ function FlowArrowSvg({ id, kind, editable }) {
   const marker = `flow-arrow-head-${markerSafeId(id)}`;
   const paths = FLOW_ARROW_PATHS[safeKind] || FLOW_ARROW_PATHS.straight;
   const indicatorPaths = FLOW_ARROW_INDICATOR_PATHS[safeKind] || FLOW_ARROW_INDICATOR_PATHS.straight;
+  const connectors = FLOW_ARROW_CONNECTORS[safeKind] || FLOW_ARROW_CONNECTORS.straight;
   return (
     <svg className="flow-arrow-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
       <defs>
@@ -101,10 +102,15 @@ function FlowArrowSvg({ id, kind, editable }) {
       <g className="flow-arrow-shadow">
         {paths.map((d) => <path key={`${d}-shadow`} d={d} />)}
       </g>
+      <g className="flow-road-ports">
+        {connectors.map((pt, idx) => (
+          <circle key={`${idx}-${pt.x}-${pt.y}-port`} className="flow-road-port" cx={pt.x} cy={pt.y} r="5.4" />
+        ))}
+      </g>
       <g className="flow-arrow-main">
         {indicatorPaths.map((d) => <path key={d} d={d} markerEnd={`url(#${marker})`} />)}
       </g>
-      {editable && (FLOW_ARROW_CONNECTORS[safeKind] || FLOW_ARROW_CONNECTORS.straight).map((pt, idx) => (
+      {editable && connectors.map((pt, idx) => (
         <circle key={`${idx}-${pt.x}-${pt.y}`} className="flow-connector" cx={pt.x} cy={pt.y} r="3.8" />
       ))}
     </svg>
@@ -676,7 +682,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const count = visibleStalls.length;
   const editorHint = addingArrow
     ? 'Hacé clic en el plano para ubicar la nueva flecha de circulación.'
-    : 'Hacé clic en el plano para marcar una plaza. Arrastrá plazas o flechas para moverlas; seleccioná una flecha para cambiar dirección.';
+    : 'Hacé clic para marcar una plaza. Arrastrá flechas desde sus puntas para unir tramos de calle; seleccionalas para cambiar dirección.';
 
   return (
     <div className="plano-editor">

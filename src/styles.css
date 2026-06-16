@@ -473,6 +473,13 @@ tr:last-child td { border-bottom: 0; }
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, .76)) drop-shadow(0 1px 2px rgba(0, 0, 0, .44));
 }
+.flow-road-port {
+  fill: rgba(255, 255, 255, .72);
+  stroke: rgba(42, 42, 42, .42);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, .75));
+}
 .flow-arrow-main path {
   fill: none;
   stroke: rgba(255, 205, 64, .92);
@@ -483,9 +490,10 @@ tr:last-child td { border-bottom: 0; }
 }
 .flow-arrow-head { fill: rgba(255, 205, 64, .92); }
 .flow-connector {
-  fill: rgba(255, 255, 255, .9);
+  fill: rgba(255, 205, 64, .92);
   stroke: rgba(43, 30, 0, .72);
-  stroke-width: 1.4;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
 }
 .plano-overlay.editing .flow-arrow.editable {
   z-index: 3;
@@ -496,6 +504,14 @@ tr:last-child td { border-bottom: 0; }
 .plano-overlay.editing .flow-arrow.editable:hover,
 .plano-overlay.editing .flow-arrow.editable.selected {
   filter: drop-shadow(0 0 5px rgba(201, 169, 97, .9));
+}
+.plano-overlay.editing .flow-arrow.editable .flow-road-port {
+  fill: rgba(255, 255, 255, .86);
+  stroke: rgba(43, 30, 0, .58);
+}
+.plano-overlay.editing .flow-arrow.editable.selected .flow-road-port {
+  fill: rgba(255, 248, 218, .94);
+  stroke: rgba(201, 169, 97, .92);
 }
 .plano-overlay.editing .flow-arrow.editable:active { cursor: grabbing; }
 .plano-overlay.editing .flow-arrow.editable:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
