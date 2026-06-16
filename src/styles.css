@@ -454,44 +454,58 @@ tr:last-child td { border-bottom: 0; }
   overflow: visible;
 }
 .flow-arrow-svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.flow-arrow-dots path {
+.flow-road-body path {
   fill: none;
-  stroke: rgba(42, 42, 42, .36);
-  stroke-width: 14;
-  stroke-linecap: round;
+  stroke: rgba(115, 124, 122, .74);
+  stroke-width: 17;
+  stroke-linecap: butt;
   stroke-linejoin: round;
-  stroke-dasharray: 0 5.8;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 1px rgba(255, 255, 255, .55));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .38));
 }
-.flow-arrow-shadow path {
+.flow-road-centerline path {
   fill: none;
-  stroke: rgba(255, 255, 255, .66);
-  stroke-width: 11;
-  stroke-linecap: round;
+  stroke: rgba(255, 255, 255, .95);
+  stroke-width: 2.8;
+  stroke-linecap: butt;
   stroke-linejoin: round;
+  stroke-dasharray: 13 13;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, .76)) drop-shadow(0 1px 2px rgba(0, 0, 0, .44));
 }
 .flow-road-port {
-  fill: rgba(255, 255, 255, .72);
-  stroke: rgba(42, 42, 42, .42);
+  opacity: 0;
+  fill: rgba(255, 255, 255, .88);
+  stroke: rgba(36, 42, 42, .72);
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 1px rgba(255, 255, 255, .75));
 }
-.flow-arrow-main path {
-  fill: none;
-  stroke: rgba(255, 205, 64, .92);
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.flow-direction-arrow {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  transform: translate(-50%, -50%) rotate(var(--rot));
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .38));
+}
+.flow-direction-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.flow-direction-outline {
+  fill: rgba(250, 250, 250, .96);
+  stroke: rgba(255, 255, 255, .95);
+  stroke-width: 3;
   vector-effect: non-scaling-stroke;
 }
-.flow-arrow-head { fill: rgba(255, 205, 64, .92); }
+.flow-direction-left { fill: rgba(16, 90, 188, .96); }
+.flow-direction-right { fill: rgba(55, 145, 230, .96); }
+.flow-direction-left,
+.flow-direction-right {
+  stroke: rgba(11, 68, 152, .42);
+  stroke-width: .8;
+  vector-effect: non-scaling-stroke;
+}
 .flow-connector {
-  fill: rgba(255, 205, 64, .92);
-  stroke: rgba(43, 30, 0, .72);
+  fill: rgba(255, 255, 255, .92);
+  stroke: rgba(11, 68, 152, .8);
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
@@ -506,12 +520,14 @@ tr:last-child td { border-bottom: 0; }
   filter: drop-shadow(0 0 5px rgba(201, 169, 97, .9));
 }
 .plano-overlay.editing .flow-arrow.editable .flow-road-port {
-  fill: rgba(255, 255, 255, .86);
-  stroke: rgba(43, 30, 0, .58);
+  opacity: 1;
+  fill: rgba(255, 255, 255, .9);
+  stroke: rgba(11, 68, 152, .78);
 }
 .plano-overlay.editing .flow-arrow.editable.selected .flow-road-port {
-  fill: rgba(255, 248, 218, .94);
-  stroke: rgba(201, 169, 97, .92);
+  opacity: 1;
+  fill: rgba(219, 238, 255, .96);
+  stroke: rgba(36, 112, 204, .95);
 }
 .plano-overlay.editing .flow-arrow.editable:active { cursor: grabbing; }
 .plano-overlay.editing .flow-arrow.editable:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
