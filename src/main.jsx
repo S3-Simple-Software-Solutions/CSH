@@ -169,28 +169,43 @@ function clusterAxis(stalls, axis, threshold) {
 
 function buildSpotLayout(stalls, aspect = 1.5) {
   const visible = stalls.filter((s) => s.utilizado !== false);
+  const rowClusters = clusterAxis(visible, 'y', 0.019);
+  const colClusters = clusterAxis(visible, 'x', 0.026);
+  const rowById = new Map();
+  const colById = new Map();
+  rowClusters.forEach((cluster) => cluster.items.forEach((st) => rowById.set(st.id, cluster)));
+  colClusters.forEach((cluster) => cluster.items.forEach((st) => colById.set(st.id, cluster)));
   const oriented = visible.map((st) => {
-    const rowPitch = visible
-      .filter((o) => o.id !== st.id && Math.abs(o.y - st.y) < 0.017)
-      .map((o) => Math.abs(o.x - st.x))
-      .filter((d) => d > 0.004)
-      .sort((a, b) => a - b)[0] || Infinity;
-    const colPitch = visible
-      .filter((o) => o.id !== st.id && Math.abs(o.x - st.x) < 0.023)
-      .map((o) => Math.abs(o.y - st.y))
-      .filter((d) => d > 0.004)
-      .sort((a, b) => a - b)[0] || Infinity;
-    const vertical = rowPitch < colPitch;
+    const rowScore = rowById.get(st.id)?.items.length || 0;
+    const colScore = colById.get(st.id)?.items.length || 0;
+    let vertical = rowScore >= colScore;
+    if (rowScore < 4 && colScore < 4) {
+      const rowPitch = visible
+        .filter((o) => o.id !== st.id && Math.abs(o.y - st.y) < 0.017)
+        .map((o) => Math.abs(o.x - st.x))
+        .filter((d) => d > 0.004)
+        .sort((a, b) => a - b)[0] || Infinity;
+      const colPitch = visible
+        .filter((o) => o.id !== st.id && Math.abs(o.x - st.x) < 0.023)
+        .map((o) => Math.abs(o.y - st.y))
+        .filter((d) => d > 0.004)
+        .sort((a, b) => a - b)[0] || Infinity;
+      vertical = rowPitch < colPitch;
+    }
     return { ...st, vertical };
   });
   const byId = new Map(oriented.map((st) => [st.id, { ...st }]));
-  clusterAxis(oriented.filter((st) => st.vertical), 'y', 0.018).forEach((cluster) => {
-    const y = median(cluster.items.map((st) => st.y));
-    cluster.items.forEach((st) => { byId.get(st.id).y = y; });
+  rowClusters.forEach((cluster) => {
+    const items = cluster.items.filter((st) => byId.get(st.id)?.vertical);
+    if (items.length < 2) return;
+    const y = median(items.map((st) => st.y));
+    items.forEach((st) => { byId.get(st.id).y = y; });
   });
-  clusterAxis(oriented.filter((st) => !st.vertical), 'x', 0.026).forEach((cluster) => {
-    const x = median(cluster.items.map((st) => st.x));
-    cluster.items.forEach((st) => { byId.get(st.id).x = x; });
+  colClusters.forEach((cluster) => {
+    const items = cluster.items.filter((st) => !byId.get(st.id)?.vertical);
+    if (items.length < 2) return;
+    const x = median(items.map((st) => st.x));
+    items.forEach((st) => { byId.get(st.id).x = x; });
   });
   const shortW = STALL_SHORT_W;
   const shortH = (shortW * aspect);
