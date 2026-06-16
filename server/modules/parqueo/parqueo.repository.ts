@@ -31,6 +31,11 @@ export interface CroquisDot {
   x: number;
   y: number;
   utilizado: boolean;
+  nombre: string | null;
+  tipo: string;
+  ancho: number | null;
+  alto: number | null;
+  discapacitado: boolean;
 }
 
 export interface AddEspacioInput {
@@ -38,6 +43,14 @@ export interface AddEspacioInput {
   zona: string;
   x: number;
   y: number;
+}
+
+export interface UpdateEspacioInput {
+  nombre: string | null;
+  tipo: string;
+  ancho: number | null;
+  alto: number | null;
+  discapacitado: boolean;
 }
 
 export interface ParqueoRepository {
@@ -57,6 +70,7 @@ export interface ParqueoRepository {
   logEvento(type: string, input: LogEventoInput): Promise<void>;
   croquisDots(): Promise<CroquisDot[]>;
   addEspacio(input: AddEspacioInput): Promise<Space>;
+  updateEspacio(id: string, input: UpdateEspacioInput): Promise<Space>;
   moveEspacio(id: string, x: number, y: number): Promise<void>;
   removeEspacio(id: string): Promise<void>;
   clearEspacios(): Promise<void>;

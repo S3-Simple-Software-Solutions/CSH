@@ -11,7 +11,7 @@ import {
   Reservation,
   Space,
 } from './parqueo.types';
-import { AddEspacioInput, CroquisDot, ListEventosOptions, LogEventoInput, ParqueoRepository } from './parqueo.repository';
+import { AddEspacioInput, CroquisDot, ListEventosOptions, LogEventoInput, ParqueoRepository, UpdateEspacioInput } from './parqueo.repository';
 
 const activeWhere = "status in ('reservado','ocupado')";
 const activeReservationWhere = "r.status in ('reservado','ocupado')";
@@ -27,6 +27,10 @@ function toSpace(row: any): Space {
     estado: row.status,
     reservaId: row.reservation_id,
     utilizado: Boolean(row.utilizado ?? (row.pos_x !== null && row.pos_y !== null)),
+    nombre: row.name || null,
+    ancho: row.spot_width == null ? null : Number(row.spot_width),
+    alto: row.spot_height == null ? null : Number(row.spot_height),
+    discapacitado: Boolean(row.accessible),
   };
 }
 
@@ -81,6 +85,11 @@ export class PgParqueoRepository implements ParqueoRepository {
       estado: r.status,
       reserva: r.starts_at ? { inicio: r.starts_at.toISOString(), fin: r.ends_at.toISOString() } : null,
       utilizado: Boolean(r.utilizado),
+      nombre: r.name || null,
+      tipo: r.type,
+      ancho: r.spot_width == null ? null : Number(r.spot_width),
+      alto: r.spot_height == null ? null : Number(r.spot_height),
+      discapacitado: Boolean(r.accessible),
     }));
   }
 
@@ -334,8 +343,21 @@ export class PgParqueoRepository implements ParqueoRepository {
   }
 
   async croquisDots(): Promise<CroquisDot[]> {
-    const rows = await query<any>('select id, floor, zone, num, pos_x, pos_y, utilizado from parking_spaces where utilizado = true and pos_x is not null and pos_y is not null order by floor, num');
-    return rows.map((r) => ({ id: r.id, piso: r.floor, zona: r.zone, num: r.num, x: Number(r.pos_x), y: Number(r.pos_y), utilizado: Boolean(r.utilizado) }));
+    const rows = await query<any>('select id, floor, zone, num, type, pos_x, pos_y, utilizado, name, spot_width, spot_height, accessible from parking_spaces where utilizado = true and pos_x is not null and pos_y is not null order by floor, num');
+    return rows.map((r) => ({
+      id: r.id,
+      piso: r.floor,
+      zona: r.zone,
+      num: r.num,
+      x: Number(r.pos_x),
+      y: Number(r.pos_y),
+      utilizado: Boolean(r.utilizado),
+      nombre: r.name || null,
+      tipo: r.type,
+      ancho: r.spot_width == null ? null : Number(r.spot_width),
+      alto: r.spot_height == null ? null : Number(r.spot_height),
+      discapacitado: Boolean(r.accessible),
+    }));
   }
 
   async addEspacio({ piso, zona, x, y }: AddEspacioInput): Promise<Space> {
@@ -347,11 +369,11 @@ export class PgParqueoRepository implements ParqueoRepository {
       const idRows = await client.query("select coalesce(max(nullif(regexp_replace(id, '\\D', '', 'g'), '')::bigint), 0) + 1 as next from parking_spaces");
       const id = `P-${String(Number(idRows.rows[0].next)).padStart(4, '0')}`;
       await client.query(
-        'insert into parking_spaces (id, floor, zone, num, type, status, reservation_id, pos_x, pos_y, utilizado) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-        [id, piso, zona, num, 'regular', 'disponible', null, x, y, true],
+        'insert into parking_spaces (id, floor, zone, num, type, status, reservation_id, pos_x, pos_y, utilizado, accessible) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+        [id, piso, zona, num, 'regular', 'disponible', null, x, y, true, false],
       );
       await client.query('commit');
-      return { id, piso, zona, num, tipo: 'regular', estado: 'disponible', reservaId: null, utilizado: true };
+      return { id, piso, zona, num, tipo: 'regular', estado: 'disponible', reservaId: null, utilizado: true, nombre: null, ancho: null, alto: null, discapacitado: false };
     } catch (err) {
       try {
         await client.query('rollback');
@@ -362,6 +384,24 @@ export class PgParqueoRepository implements ParqueoRepository {
     } finally {
       client.release();
     }
+  }
+
+  async updateEspacio(id: string, { nombre, tipo, ancho, alto, discapacitado }: UpdateEspacioInput): Promise<Space> {
+    const rows = await query<any>(
+      `
+        update parking_spaces
+        set name = $1,
+            type = $2,
+            spot_width = $3,
+            spot_height = $4,
+            accessible = $5
+        where id = $6
+        returning *
+      `,
+      [nombre, tipo, ancho, alto, discapacitado, id],
+    );
+    if (!rows[0]) throw new ApiError(404, 'El espacio no existe');
+    return toSpace(rows[0]);
   }
 
   async moveEspacio(id: string, x: number, y: number): Promise<void> {

@@ -50,6 +50,20 @@ function validFloor(piso: unknown): number {
   return p;
 }
 
+function validNullableDimension(value: unknown, label: string): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0.006 || n > 0.12) throw new ApiError(400, `${label} invalido`);
+  return n;
+}
+
+function validSpotName(value: unknown): string | null {
+  const name = String(value || '').trim();
+  if (!name) return null;
+  if (name.length > 32) throw new ApiError(400, 'Nombre demasiado largo');
+  return name;
+}
+
 export async function getCroquis() {
   const repo = getParqueoRepository();
   const dots = await repo.croquisDots();
@@ -57,7 +71,19 @@ export async function getCroquis() {
     piso: m.piso,
     plan: m.plan,
     aspect: m.aspect,
-    stalls: dots.filter((d) => d.piso === m.piso).map((d) => ({ id: d.id, x: d.x, y: d.y, zona: d.zona, num: d.num, utilizado: d.utilizado })),
+    stalls: dots.filter((d) => d.piso === m.piso).map((d) => ({
+      id: d.id,
+      x: d.x,
+      y: d.y,
+      zona: d.zona,
+      num: d.num,
+      utilizado: d.utilizado,
+      nombre: d.nombre,
+      tipo: d.tipo,
+      ancho: d.ancho,
+      alto: d.alto,
+      discapacitado: d.discapacitado,
+    })),
   }));
   return { floors };
 }
@@ -76,6 +102,19 @@ export async function moveEspacio(id: string, body: { x: unknown; y: unknown }, 
   const { x, y } = validPoint(body.x, body.y);
   await getParqueoRepository().moveEspacio(id, x, y);
   return { id, x, y };
+}
+
+export async function updateEspacio(id: string, body: { nombre?: unknown; discapacitado?: unknown; ancho?: unknown; alto?: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const discapacitado = body.discapacitado === true || String(body.discapacitado).toLowerCase() === 'true';
+  const espacio = await getParqueoRepository().updateEspacio(id, {
+    nombre: validSpotName(body.nombre),
+    tipo: discapacitado ? 'discapacitado' : 'regular',
+    ancho: validNullableDimension(body.ancho, 'Ancho'),
+    alto: validNullableDimension(body.alto, 'Alto'),
+    discapacitado,
+  });
+  return { espacio };
 }
 
 export async function removeEspacio(id: string, actor: Actor) {

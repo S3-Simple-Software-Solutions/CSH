@@ -7,6 +7,10 @@ export interface Space {
   estado: 'disponible' | 'reservado' | 'ocupado';
   reservaId: string | null;
   utilizado: boolean;
+  nombre: string | null;
+  ancho: number | null;
+  alto: number | null;
+  discapacitado: boolean;
 }
 
 export interface Reservation {
@@ -58,6 +62,11 @@ export interface PublicSpace {
   estado: string;
   reserva: { inicio: string; fin: string } | null;
   utilizado: boolean;
+  nombre: string | null;
+  tipo: string;
+  ancho: number | null;
+  alto: number | null;
+  discapacitado: boolean;
 }
 
 export interface EventActor {

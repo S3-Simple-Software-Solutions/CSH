@@ -70,6 +70,14 @@ parqueoRouter.put('/admin/api/parqueo/espacio/:id/pos', requireAdmin, async (req
   }
 });
 
+parqueoRouter.put('/admin/api/parqueo/espacio/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.updateEspacio(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 parqueoRouter.delete('/admin/api/parqueo/espacio/:id', requireAdmin, async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await parqueo.removeEspacio(String(req.params.id), req.adminUser!)) });

@@ -16,11 +16,22 @@ export async function ensureParqueoSchema(): Promise<void> {
       reservation_id text,
       pos_x double precision,
       pos_y double precision,
-      utilizado boolean not null default false
+      utilizado boolean not null default false,
+      name text,
+      spot_width double precision,
+      spot_height double precision,
+      accessible boolean not null default false
     );
     alter table parking_spaces add column if not exists pos_x double precision;
     alter table parking_spaces add column if not exists pos_y double precision;
     alter table parking_spaces add column if not exists utilizado boolean not null default false;
+    alter table parking_spaces add column if not exists name text;
+    alter table parking_spaces add column if not exists spot_width double precision;
+    alter table parking_spaces add column if not exists spot_height double precision;
+    alter table parking_spaces add column if not exists accessible boolean not null default false;
+    update parking_spaces
+      set accessible = true
+      where lower(type) in ('discapacitado','discapacitados','accessible','disabled') and accessible = false;
     update parking_spaces
       set utilizado = (pos_x is not null and pos_y is not null)
       where utilizado is distinct from (pos_x is not null and pos_y is not null);

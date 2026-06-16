@@ -228,7 +228,10 @@ function buildSpotLayout(stalls, aspect = 1.5) {
   const shortW = STALL_SHORT_W;
   const shortH = (shortW * aspect);
   byId.forEach((spot) => {
-    if (spot.vertical) {
+    if (spot.ancho && spot.alto) {
+      spot.w = spot.ancho;
+      spot.h = spot.alto;
+    } else if (spot.vertical) {
       spot.w = shortW;
       spot.h = clamp(shortH * STALL_LONG_RATIO, 0.04, 0.05);
     } else {
@@ -283,14 +286,15 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
             const session = reservation || space?.reserva;
             const expired = session && new Date(session.fin).getTime() <= now;
             const mine = reservation && reservation.userId === me?.id;
+            const spotName = st.nombre || st.id;
             const label = admin && reservation
-              ? `${st.id} · ${reservation.placa}${expired ? ' · vencido' : ''}`
-              : `${st.id} · ${expired ? 'tiempo vencido' : estado}`;
+              ? `${spotName} · ${reservation.placa}${expired ? ' · vencido' : ''}`
+              : `${spotName} · ${expired ? 'tiempo vencido' : estado}`;
             return (
               <button
                 key={st.id}
                 type="button"
-                className={`pspot ${estado}${expired ? ' vencido' : ''}${mine ? ' mine' : ''}`}
+                className={`pspot ${estado}${st.discapacitado ? ' accessible' : ''}${expired ? ' vencido' : ''}${mine ? ' mine' : ''}`}
                 style={spotStyle(st, spotLayout)}
                 title={label}
                 onClick={() => space && onSpace?.(space, reservation)}
@@ -308,6 +312,7 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
 function PlanoEditor({ floor, onClose, onSaved }) {
   const [floors, setFloors] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const overlayRef = useRef(null);
@@ -320,6 +325,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const fl = floors?.find((f) => f.piso === floor);
   const visibleStalls = useMemo(() => (fl?.stalls || []).filter((st) => st.utilizado !== false), [fl]);
   const spotLayout = useMemo(() => buildSpotLayout(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
+  const selectedStall = visibleStalls.find((st) => st.id === selected) || null;
 
   function frac(e) {
     const r = overlayRef.current.getBoundingClientRect();
@@ -379,6 +385,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     setBusy(false);
     if (!data.ok) return setMsg({ type: 'error', text: data.error });
     setSelected(null);
+    setEditTarget(null);
     await reload();
     onSaved?.();
   }
@@ -418,9 +425,9 @@ function PlanoEditor({ floor, onClose, onSaved }) {
               <button
                 key={st.id}
                 type="button"
-                className={`pspot editable${selected === st.id ? ' selected' : ''}`}
+                className={`pspot editable${st.discapacitado ? ' accessible' : ''}${selected === st.id ? ' selected' : ''}`}
                 style={spotStyle(st, spotLayout)}
-                title={st.id}
+                title={st.nombre || st.id}
                 onPointerDown={(e) => startDrag(e, st)}
                 onClick={(e) => e.stopPropagation()}
               />
@@ -432,13 +439,83 @@ function PlanoEditor({ floor, onClose, onSaved }) {
         <span>{count} espacio{count === 1 ? '' : 's'} en Sótano -{floor}</span>
         {selected && (
           <>
-            <b>{selected}</b>
+            <b>{selectedStall?.nombre || selected}</b>
+            <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy}>Editar plaza</button>
             <button className="btn ghost danger" onClick={() => removeDot(selected)} disabled={busy}>Borrar espacio</button>
             <button className="btn ghost" onClick={() => setSelected(null)} disabled={busy}>Deseleccionar</button>
           </>
         )}
       </div>
+      {editTarget && (
+        <EditSpaceModal
+          stall={editTarget}
+          layout={spotLayout}
+          onClose={() => setEditTarget(null)}
+          onSaved={async () => {
+            setEditTarget(null);
+            await reload();
+            onSaved?.();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function pctValue(value) {
+  return String(Math.round(Number(value || 0) * 1000) / 10);
+}
+
+function EditSpaceModal({ stall, layout, onClose, onSaved }) {
+  const current = layout.get(stall.id) || { w: stall.ancho || 0.032, h: stall.alto || 0.022 };
+  const [form, setForm] = useState({
+    nombre: stall.nombre || '',
+    discapacitado: Boolean(stall.discapacitado),
+    ancho: pctValue(stall.ancho || current.w),
+    alto: pctValue(stall.alto || current.h),
+  });
+  const [msg, setMsg] = useState(null);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setMsg(null);
+    const ancho = Number(form.ancho) / 100;
+    const alto = Number(form.alto) / 100;
+    if (!Number.isFinite(ancho) || !Number.isFinite(alto) || ancho <= 0 || alto <= 0) return setMsg({ type: 'error', text: 'Ingresa un tamano valido.' });
+    setSaving(true);
+    const data = await api(`/admin/api/parqueo/espacio/${encodeURIComponent(stall.id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ nombre: form.nombre, discapacitado: form.discapacitado, ancho, alto }),
+    });
+    setSaving(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    await onSaved?.(data.espacio);
+  }
+  async function resetSize() {
+    setMsg(null);
+    setSaving(true);
+    const data = await api(`/admin/api/parqueo/espacio/${encodeURIComponent(stall.id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ nombre: form.nombre, discapacitado: form.discapacitado, ancho: null, alto: null }),
+    });
+    setSaving(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    await onSaved?.(data.espacio);
+  }
+  return (
+    <Modal title={`Editar plaza ${stall.id}`} onClose={onClose}>
+      <label>Nombre</label>
+      <input value={form.nombre} maxLength={32} placeholder={stall.id} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+      <label className="check-row"><input type="checkbox" checked={form.discapacitado} onChange={(e) => setForm({ ...form, discapacitado: e.target.checked })} /> Plaza de discapacitados</label>
+      <div className="two">
+        <div><label>Ancho (%)</label><input type="number" min="0.6" max="12" step="0.1" value={form.ancho} onChange={(e) => setForm({ ...form, ancho: e.target.value })} /></div>
+        <div><label>Alto (%)</label><input type="number" min="0.6" max="12" step="0.1" value={form.alto} onChange={(e) => setForm({ ...form, alto: e.target.value })} /></div>
+      </div>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      <div className="actions left">
+        <button className="btn" onClick={save} disabled={saving}>{saving ? 'Guardando...' : 'Guardar plaza'}</button>
+        <button className="btn ghost" onClick={resetSize} disabled={saving}>Tamano automatico</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -628,6 +705,7 @@ function Toolbar({ floor, setFloor, stats, children }) {
       </div>
       <div className="legend">
         <span><i className="green" />Disponible</span>
+        <span><i className="blue" />Discapacitados</span>
         <span><i className="orange" />Reservado</span>
         <span><i className="red" />Ocupado</span>
         <span><i className="wine" />Tiempo vencido</span>
