@@ -6,6 +6,7 @@ export interface Space {
   tipo: string;
   estado: 'disponible' | 'reservado' | 'ocupado';
   reservaId: string | null;
+  utilizado: boolean;
 }
 
 export interface Reservation {
@@ -56,6 +57,7 @@ export interface PublicSpace {
   num: number;
   estado: string;
   reserva: { inicio: string; fin: string } | null;
+  utilizado: boolean;
 }
 
 export interface EventActor {

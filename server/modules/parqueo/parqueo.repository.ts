@@ -22,22 +22,22 @@ export interface LogEventoInput {
   notas?: string;
 }
 
-export interface LayoutStall {
+// Un espacio en el croquis es un punto (dot) ubicado sobre el plano.
+export interface CroquisDot {
   id: string;
+  piso: number;
+  zona: string;
+  num: number;
+  x: number;
+  y: number;
+  utilizado: boolean;
+}
+
+export interface AddEspacioInput {
   piso: number;
   zona: string;
   x: number;
   y: number;
-  w: number;
-  h: number;
-}
-
-export interface LayoutGeometry {
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 export interface ParqueoRepository {
@@ -55,9 +55,11 @@ export interface ParqueoRepository {
   finalizePayment(reserva: Reservation, payment: PaymentRecord, recibo: { monto: number; horas: number; transaccion: string }): Promise<void>;
   setReservationEmail(id: string, email: string): Promise<void>;
   logEvento(type: string, input: LogEventoInput): Promise<void>;
-  getLayout(): Promise<LayoutStall[]>;
-  saveLayout(stalls: LayoutGeometry[]): Promise<void>;
-  resetLayout(): Promise<void>;
+  croquisDots(): Promise<CroquisDot[]>;
+  addEspacio(input: AddEspacioInput): Promise<Space>;
+  moveEspacio(id: string, x: number, y: number): Promise<void>;
+  removeEspacio(id: string): Promise<void>;
+  clearEspacios(): Promise<void>;
 }
 
 import { PgParqueoRepository } from './parqueo.repository.pg';

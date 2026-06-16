@@ -11,13 +11,23 @@ import {
   Reservation,
   Space,
 } from './parqueo.types';
-import { LayoutGeometry, LayoutStall, ListEventosOptions, LogEventoInput, ParqueoRepository } from './parqueo.repository';
-import { seedParkingLayout } from './parqueo.schema';
+import { AddEspacioInput, CroquisDot, ListEventosOptions, LogEventoInput, ParqueoRepository } from './parqueo.repository';
 
 const activeWhere = "status in ('reservado','ocupado')";
+const activeReservationWhere = "r.status in ('reservado','ocupado')";
+const activeUsedWhere = `${activeReservationWhere} and s.utilizado = true`;
 
 function toSpace(row: any): Space {
-  return { id: row.id, piso: row.floor, zona: row.zone, num: row.num, tipo: row.type, estado: row.status, reservaId: row.reservation_id };
+  return {
+    id: row.id,
+    piso: row.floor,
+    zona: row.zone,
+    num: row.num,
+    tipo: row.type,
+    estado: row.status,
+    reservaId: row.reservation_id,
+    utilizado: Boolean(row.utilizado ?? (row.pos_x !== null && row.pos_y !== null)),
+  };
 }
 
 function toReservation(row: any): Reservation {
@@ -60,6 +70,7 @@ export class PgParqueoRepository implements ParqueoRepository {
       select s.*, r.starts_at, r.ends_at
       from parking_spaces s
       left join parking_reservations r on r.id = s.reservation_id and r.status in ('reservado','ocupado')
+      where s.utilizado = true
       order by s.floor, s.zone, s.num
     `);
     return rows.map((r) => ({
@@ -69,12 +80,21 @@ export class PgParqueoRepository implements ParqueoRepository {
       num: r.num,
       estado: r.status,
       reserva: r.starts_at ? { inicio: r.starts_at.toISOString(), fin: r.ends_at.toISOString() } : null,
+      utilizado: Boolean(r.utilizado),
     }));
   }
 
   async adminEstado(): Promise<{ espacios: Space[]; reservas: Reservation[] }> {
-    const espacios = (await query<any>('select * from parking_spaces order by floor, zone, num')).map(toSpace);
-    const reservas = (await query<any>(`select * from parking_reservations where ${activeWhere} order by starts_at desc`)).map(toReservation);
+    const espacios = (await query<any>('select * from parking_spaces where utilizado = true order by floor, zone, num')).map(toSpace);
+    const reservas = (
+      await query<any>(`
+        select r.*
+        from parking_reservations r
+        join parking_spaces s on s.id = r.space_id
+        where ${activeUsedWhere}
+        order by r.starts_at desc
+      `)
+    ).map(toReservation);
     return { espacios, reservas };
   }
 
@@ -98,12 +118,31 @@ export class PgParqueoRepository implements ParqueoRepository {
   }
 
   async getActiveReservationByPlate(plate: string): Promise<Reservation | null> {
-    const rows = await query<any>(`select * from parking_reservations where ${activeWhere} and plate = $1 order by starts_at desc limit 1`, [plate]);
+    const rows = await query<any>(
+      `
+        select r.*
+        from parking_reservations r
+        join parking_spaces s on s.id = r.space_id
+        where ${activeUsedWhere} and r.plate = $1
+        order by r.starts_at desc
+        limit 1
+      `,
+      [plate],
+    );
     return rows[0] ? toReservation(rows[0]) : null;
   }
 
   async getActiveReservationById(id: string): Promise<Reservation | null> {
-    const rows = await query<any>(`select * from parking_reservations where ${activeWhere} and id = $1 limit 1`, [id]);
+    const rows = await query<any>(
+      `
+        select r.*
+        from parking_reservations r
+        join parking_spaces s on s.id = r.space_id
+        where ${activeUsedWhere} and r.id = $1
+        limit 1
+      `,
+      [id],
+    );
     return rows[0] ? toReservation(rows[0]) : null;
   }
 
@@ -117,11 +156,24 @@ export class PgParqueoRepository implements ParqueoRepository {
         await client.query('rollback');
         throw new ApiError(404, 'El espacio no existe');
       }
+      if (!space.utilizado) {
+        await client.query('rollback');
+        throw new ApiError(404, 'El espacio no esta marcado en el croquis');
+      }
       if (space.status !== 'disponible') {
         await client.query('rollback');
         throw new ApiError(409, 'El espacio no esta disponible');
       }
-      const exists = await client.query(`select id from parking_reservations where ${activeWhere} and plate = $1 limit 1`, [placa]);
+      const exists = await client.query(
+        `
+          select r.id
+          from parking_reservations r
+          join parking_spaces s on s.id = r.space_id
+          where ${activeUsedWhere} and r.plate = $1
+          limit 1
+        `,
+        [placa],
+      );
       if (exists.rows[0]) {
         await client.query('rollback');
         throw new ApiError(409, 'Esa placa ya tiene un espacio activo');
@@ -162,12 +214,25 @@ export class PgParqueoRepository implements ParqueoRepository {
         await client.query('rollback');
         throw new ApiError(404, 'El espacio no existe');
       }
+      if (!space.utilizado) {
+        await client.query('rollback');
+        throw new ApiError(404, 'El espacio no esta marcado en el croquis');
+      }
       if (space.status !== 'disponible') {
         await client.query('rollback');
         throw new ApiError(409, 'El espacio no esta disponible');
       }
       if (!isAdmin) {
-        const mine = await client.query(`select id from parking_reservations where ${activeWhere} and user_id = $1 limit 1`, [user.id]);
+        const mine = await client.query(
+          `
+            select r.id
+            from parking_reservations r
+            join parking_spaces s on s.id = r.space_id
+            where ${activeUsedWhere} and r.user_id = $1
+            limit 1
+          `,
+          [user.id],
+        );
         if (mine.rows[0]) {
           await client.query('rollback');
           throw new ApiError(409, 'Ya tienes una reserva activa');
@@ -211,6 +276,7 @@ export class PgParqueoRepository implements ParqueoRepository {
     const rows = await query<any>('select * from parking_spaces where id = $1', [espacioId]);
     const space = rows[0];
     if (!space) throw new ApiError(404, 'El espacio no existe');
+    if (!space.utilizado) throw new ApiError(404, 'El espacio no esta marcado en el croquis');
     const reserva = space.reservation_id ? await this.getActiveReservationById(space.reservation_id) : null;
     if (!reserva) throw new ApiError(409, 'El espacio no tiene reserva activa');
     if (reserva.userId !== actor.id && actor.parkingRole !== 'admin') throw new ApiError(403, 'Sin permiso para liberar este espacio');
@@ -267,18 +333,51 @@ export class PgParqueoRepository implements ParqueoRepository {
     await logEvento(pool, type, input);
   }
 
-  async getLayout(): Promise<LayoutStall[]> {
-    const rows = await query<any>('select * from parking_layout order by floor, stall_id');
-    return rows.map((r) => ({ id: r.stall_id, piso: r.floor, zona: r.zona, x: Number(r.x), y: Number(r.y), w: Number(r.w), h: Number(r.h) }));
+  async croquisDots(): Promise<CroquisDot[]> {
+    const rows = await query<any>('select id, floor, zone, num, pos_x, pos_y, utilizado from parking_spaces where utilizado = true and pos_x is not null and pos_y is not null order by floor, num');
+    return rows.map((r) => ({ id: r.id, piso: r.floor, zona: r.zone, num: r.num, x: Number(r.pos_x), y: Number(r.pos_y), utilizado: Boolean(r.utilizado) }));
   }
 
-  async saveLayout(stalls: LayoutGeometry[]): Promise<void> {
+  async addEspacio({ piso, zona, x, y }: AddEspacioInput): Promise<Space> {
     const client = await pool.connect();
     try {
       await client.query('begin');
-      for (const s of stalls) {
-        await client.query('update parking_layout set x = $1, y = $2, w = $3, h = $4 where stall_id = $5', [s.x, s.y, s.w, s.h, s.id]);
+      const nextRows = await client.query('select coalesce(max(num), 0) + 1 as next from parking_spaces where floor = $1', [piso]);
+      const num = Number(nextRows.rows[0].next);
+      const idRows = await client.query("select coalesce(max(nullif(regexp_replace(id, '\\D', '', 'g'), '')::bigint), 0) + 1 as next from parking_spaces");
+      const id = `P-${String(Number(idRows.rows[0].next)).padStart(4, '0')}`;
+      await client.query(
+        'insert into parking_spaces (id, floor, zone, num, type, status, reservation_id, pos_x, pos_y, utilizado) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        [id, piso, zona, num, 'regular', 'disponible', null, x, y, true],
+      );
+      await client.query('commit');
+      return { id, piso, zona, num, tipo: 'regular', estado: 'disponible', reservaId: null, utilizado: true };
+    } catch (err) {
+      try {
+        await client.query('rollback');
+      } catch {
+        /* noop */
       }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async moveEspacio(id: string, x: number, y: number): Promise<void> {
+    const res = await pool.query('update parking_spaces set pos_x = $1, pos_y = $2, utilizado = true where id = $3', [x, y, id]);
+    if (!res.rowCount) throw new ApiError(404, 'El espacio no existe');
+  }
+
+  async removeEspacio(id: string): Promise<void> {
+    const rows = await query<any>('select * from parking_spaces where id = $1', [id]);
+    if (!rows[0]) throw new ApiError(404, 'El espacio no existe');
+    if (rows[0].status !== 'disponible') throw new ApiError(409, 'No se puede borrar un espacio con reserva activa');
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query("delete from parking_reservations where space_id = $1 and status not in ('reservado','ocupado')", [id]);
+      await client.query('delete from parking_spaces where id = $1', [id]);
       await client.query('commit');
     } catch (err) {
       try {
@@ -292,10 +391,20 @@ export class PgParqueoRepository implements ParqueoRepository {
     }
   }
 
-  async resetLayout(): Promise<void> {
+  async clearEspacios(): Promise<void> {
     const client = await pool.connect();
     try {
-      await seedParkingLayout(client);
+      await client.query('begin');
+      await client.query('delete from parking_reservations');
+      await client.query('delete from parking_spaces');
+      await client.query('commit');
+    } catch (err) {
+      try {
+        await client.query('rollback');
+      } catch {
+        /* noop */
+      }
+      throw err;
     } finally {
       client.release();
     }

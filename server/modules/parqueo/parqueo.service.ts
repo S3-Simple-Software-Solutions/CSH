@@ -3,8 +3,7 @@ import { ApiError } from '../../core/errors';
 import { getParqueoRepository } from './parqueo.repository';
 import { sendParkingQrEmail, sendPaymentReceiptEmail } from './parqueo.mail';
 import { maskedReservaEmail, montoDe, reservaEmail } from './parqueo.helpers';
-import { croquisFloors, floorPlanMeta } from './parqueo.layout';
-import { LayoutGeometry } from './parqueo.repository';
+import { floorPlanMeta } from './parqueo.layout';
 import { PaymentRecord, Recibo } from './parqueo.types';
 
 type Actor = { id: string; name: string; parkingRole: string };
@@ -33,51 +32,61 @@ export async function getPublicEstado() {
 }
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
-const MIN_SIZE = 0.004;
+
+function requireParkingAdmin(actor: Actor): void {
+  if (actor.parkingRole !== 'admin') throw new ApiError(403, 'Solo administradores pueden editar el croquis');
+}
+
+function validPoint(x: unknown, y: unknown): { x: number; y: number } {
+  const px = Number(x);
+  const py = Number(y);
+  if (!Number.isFinite(px) || !Number.isFinite(py)) throw new ApiError(400, 'Coordenadas invalidas');
+  return { x: clamp01(px), y: clamp01(py) };
+}
+
+function validFloor(piso: unknown): number {
+  const p = Number(piso);
+  if (!floorPlanMeta().some((m) => m.piso === p)) throw new ApiError(400, 'Piso invalido');
+  return p;
+}
 
 export async function getCroquis() {
   const repo = getParqueoRepository();
-  const layout = await repo.getLayout();
-  // Fallback al layout calculado si aún no se ha sembrado la geometría editable.
-  if (!layout.length) return { floors: croquisFloors() };
+  const dots = await repo.croquisDots();
   const floors = floorPlanMeta().map((m) => ({
     piso: m.piso,
     plan: m.plan,
     aspect: m.aspect,
-    stalls: layout
-      .filter((s) => s.piso === m.piso)
-      .map((s) => ({ id: s.id, x: s.x, y: s.y, w: s.w, h: s.h, zona: s.zona })),
+    stalls: dots.filter((d) => d.piso === m.piso).map((d) => ({ id: d.id, x: d.x, y: d.y, zona: d.zona, num: d.num, utilizado: d.utilizado })),
   }));
   return { floors };
 }
 
-export async function saveCroquis(floors: unknown, actor: Actor) {
-  if (actor.parkingRole !== 'admin') throw new ApiError(403, 'Solo administradores pueden editar el croquis');
-  if (!Array.isArray(floors)) throw new ApiError(400, 'Formato de croquis invalido');
-  const stalls: LayoutGeometry[] = [];
-  const seen = new Set<string>();
-  for (const fl of floors) {
-    for (const st of (fl?.stalls || [])) {
-      const x = Number(st.x);
-      const y = Number(st.y);
-      const w = Number(st.w);
-      const h = Number(st.h);
-      if (typeof st.id !== 'string' || ![x, y, w, h].every(Number.isFinite)) throw new ApiError(400, 'Geometria de plaza invalida');
-      if (seen.has(st.id)) continue;
-      seen.add(st.id);
-      const cx = clamp01(x);
-      const cy = clamp01(y);
-      stalls.push({ id: st.id, x: cx, y: cy, w: Math.min(Math.max(w, MIN_SIZE), 1 - cx), h: Math.min(Math.max(h, MIN_SIZE), 1 - cy) });
-    }
-  }
-  if (!stalls.length) throw new ApiError(400, 'No hay plazas para guardar');
-  await getParqueoRepository().saveLayout(stalls);
-  return { guardadas: stalls.length };
+export async function addEspacio(body: { piso: unknown; x: unknown; y: unknown; zona?: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const piso = validFloor(body.piso);
+  const { x, y } = validPoint(body.x, body.y);
+  const zona = String(body.zona || 'A').trim().slice(0, 12) || 'A';
+  const espacio = await getParqueoRepository().addEspacio({ piso, zona, x, y });
+  return { espacio };
 }
 
-export async function resetCroquis(actor: Actor) {
-  if (actor.parkingRole !== 'admin') throw new ApiError(403, 'Solo administradores pueden editar el croquis');
-  await getParqueoRepository().resetLayout();
+export async function moveEspacio(id: string, body: { x: unknown; y: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const { x, y } = validPoint(body.x, body.y);
+  await getParqueoRepository().moveEspacio(id, x, y);
+  return { id, x, y };
+}
+
+export async function removeEspacio(id: string, actor: Actor) {
+  requireParkingAdmin(actor);
+  await getParqueoRepository().removeEspacio(id);
+  return { id };
+}
+
+export async function clearCroquis(actor: Actor) {
+  requireParkingAdmin(actor);
+  await getParqueoRepository().clearEspacios();
   return getCroquis();
 }
 

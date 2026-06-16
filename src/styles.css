@@ -427,26 +427,40 @@ tr:last-child td { border-bottom: 0; }
 .plano { position: relative; width: 100%; max-width: 1180px; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .plano img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
 .plano-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
-.pstall { fill: var(--green); fill-opacity: .58; stroke: #0a0908; stroke-opacity: .5; stroke-width: 1px; cursor: pointer; transition: fill-opacity .12s, stroke .12s; }
-.pstall.reservado { fill: var(--orange); }
-.pstall.ocupado { fill: var(--red); }
-.pstall.vencido { fill: #7f1d1d; }
-.pstall.mine { stroke: var(--gold); stroke-width: 2px; }
-.pstall:hover { fill-opacity: .92; stroke: var(--gold); stroke-width: 2px; }
+/* Cada espacio es un punto (dot) ubicado por su centro sobre el plano. */
+.pdot {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(10, 9, 8, .65);
+  background: var(--green);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+  cursor: pointer;
+  transition: transform .1s, box-shadow .1s;
+}
+.pdot.reservado { background: var(--orange); }
+.pdot.ocupado { background: var(--red); }
+.pdot.vencido { background: #7f1d1d; }
+.pdot.mine { border-color: var(--gold); }
+.pdot:hover { transform: translate(-50%, -50%) scale(1.25); box-shadow: 0 0 0 3px rgba(201, 169, 97, .4); }
+html[data-theme='light'] .pdot { border-color: rgba(34, 28, 21, .55); }
 .plano-loading { margin-top: 18px; padding: 40px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; }
-html[data-theme='light'] .pstall { stroke: rgba(34,28,21,.55); }
 
-/* ───────── Editor de plazas (croquis editable) ───────── */
+/* ───────── Editor del croquis (marcar espacios con clic) ───────── */
 .toolbar-extra { display: flex; gap: 8px; }
 .plano-editor { margin-top: 18px; }
 .editor-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
-.editor-bar .hint { color: var(--muted); font-size: 13px; }
+.editor-bar .hint { color: var(--muted); font-size: 13px; max-width: 60ch; }
 .editor-actions { display: flex; gap: 8px; }
-.plano-overlay.editing .pstall.editable { fill: var(--gold); fill-opacity: .35; stroke: var(--gold); stroke-opacity: .8; cursor: grab; }
-.plano-overlay.editing .pstall.editable:hover { fill-opacity: .6; }
-.plano-overlay.editing .pstall.editable.selected { fill-opacity: .7; stroke-width: 2px; }
-.plano-overlay.editing .pstall-handle { fill: var(--gold); stroke: #0a0908; stroke-opacity: .6; cursor: nwse-resize; }
-.editor-props { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; }
-.editor-props b { font-family: monospace; }
-.editor-props label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
-.editor-props input { width: 80px; padding: 6px 8px; }
+.plano-overlay.editing { cursor: crosshair; }
+.plano-overlay.editing .pdot.editable { background: var(--gold); border-color: rgba(10, 9, 8, .7); cursor: grab; }
+.plano-overlay.editing .pdot.editable:active { cursor: grabbing; }
+.plano-overlay.editing .pdot.editable.selected { box-shadow: 0 0 0 4px rgba(201, 169, 97, .5); transform: translate(-50%, -50%) scale(1.2); }
+.editor-props { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
+.editor-props b { font-family: monospace; color: var(--paper); }
+.btn.ghost.danger { color: var(--red); border-color: rgba(214, 40, 40, .5); }
+.btn.ghost.danger:hover { background: rgba(214, 40, 40, .12); border-color: var(--red); }

@@ -53,18 +53,34 @@ parqueoRouter.post('/api/parqueo/publico/pagar', async (req, res, next) => {
   }
 });
 
-// ---- Rutas admin ----
-parqueoRouter.put('/admin/api/parqueo/croquis', requireAdmin, async (req, res, next) => {
+// ---- Rutas admin: edición del croquis (puntos/dots) ----
+parqueoRouter.post('/admin/api/parqueo/espacio', requireAdmin, async (req, res, next) => {
   try {
-    res.json({ ok: true, ...(await parqueo.saveCroquis(req.body.floors, req.adminUser!)) });
+    res.json({ ok: true, ...(await parqueo.addEspacio(req.body, req.adminUser!)) });
   } catch (err) {
     next(err);
   }
 });
 
-parqueoRouter.post('/admin/api/parqueo/croquis/reset', requireAdmin, async (req, res, next) => {
+parqueoRouter.put('/admin/api/parqueo/espacio/:id/pos', requireAdmin, async (req, res, next) => {
   try {
-    res.json({ ok: true, ...(await parqueo.resetCroquis(req.adminUser!)) });
+    res.json({ ok: true, ...(await parqueo.moveEspacio(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+parqueoRouter.delete('/admin/api/parqueo/espacio/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.removeEspacio(String(req.params.id), req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+parqueoRouter.post('/admin/api/parqueo/croquis/clear', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.clearCroquis(req.adminUser!)) });
   } catch (err) {
     next(err);
   }

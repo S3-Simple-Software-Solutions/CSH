@@ -153,8 +153,8 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
     <div className="plano-wrap">
       <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
         <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
-        <svg className="plano-overlay" viewBox="0 0 1 1" preserveAspectRatio="none">
-          {fl.stalls.map((st) => {
+        <div className="plano-overlay">
+          {fl.stalls.filter((st) => st.utilizado !== false).map((st) => {
             const space = spaceById.get(st.id);
             const estado = space ? space.estado : 'disponible';
             const reservation = space ? resById.get(space.reservaId) : null;
@@ -165,21 +165,17 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
               ? `${st.id} · ${reservation.placa}${expired ? ' · vencido' : ''}`
               : `${st.id} · ${expired ? 'tiempo vencido' : estado}`;
             return (
-              <rect
+              <button
                 key={st.id}
-                className={`pstall ${estado}${expired ? ' vencido' : ''}${mine ? ' mine' : ''}`}
-                x={st.x}
-                y={st.y}
-                width={st.w}
-                height={st.h}
-                vectorEffect="non-scaling-stroke"
+                type="button"
+                className={`pdot ${estado}${expired ? ' vencido' : ''}${mine ? ' mine' : ''}`}
+                style={{ left: `${st.x * 100}%`, top: `${st.y * 100}%` }}
+                title={label}
                 onClick={() => space && onSpace?.(space, reservation)}
-              >
-                <title>{label}</title>
-              </rect>
+              />
             );
           })}
-        </svg>
+        </div>
       </div>
     </div>
   );
@@ -190,137 +186,133 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
 function PlanoEditor({ floor, onClose, onSaved }) {
   const [floors, setFloors] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const svgRef = useRef(null);
+  const overlayRef = useRef(null);
   const drag = useRef(null);
+  const suppressClick = useRef(false);
 
-  useEffect(() => { api('/api/parqueo/croquis').then((d) => d.ok && setFloors(d.floors)); }, []);
+  const reload = () => api('/api/parqueo/croquis').then((d) => d.ok && setFloors(d.floors));
+  useEffect(() => { reload(); }, []);
 
   const fl = floors?.find((f) => f.piso === floor);
 
   function frac(e) {
-    const r = svgRef.current.getBoundingClientRect();
-    return { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height };
+    const r = overlayRef.current.getBoundingClientRect();
+    return { x: Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1), y: Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1) };
   }
-  function updateStall(id, patch) {
-    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: f.stalls.map((s) => (s.id === id ? { ...s, ...patch } : s)) })));
-    setDirty(true);
+  // Refleja un cambio de posición en el estado local sin recargar todo el croquis.
+  function patchDot(id, x, y) {
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: f.stalls.map((s) => (s.id === id ? { ...s, x, y } : s)) })));
   }
-  function startDrag(e, st, mode) {
+
+  async function addDot(e) {
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    if (e.target !== overlayRef.current || busy) return;
+    const { x, y } = frac(e);
+    setBusy(true);
+    setMsg(null);
+    const data = await api('/admin/api/parqueo/espacio', { method: 'POST', body: JSON.stringify({ piso: floor, x, y }) });
+    setBusy(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    await reload();
+    setSelected(data.espacio.id);
+    onSaved?.();
+  }
+
+  function startDrag(e, st) {
     e.preventDefault();
     e.stopPropagation();
     setSelected(st.id);
-    const start = frac(e);
-    drag.current = { mode, id: st.id, fx: start.fx, fy: start.fy, geom: { x: st.x, y: st.y, w: st.w, h: st.h } };
+    drag.current = { id: st.id, moved: false };
     const onMove = (ev) => {
-      const d = drag.current;
-      if (!d) return;
-      const { fx, fy } = frac(ev);
-      if (d.mode === 'move') {
-        updateStall(d.id, {
-          x: Math.min(Math.max(d.geom.x + (fx - d.fx), 0), 1 - d.geom.w),
-          y: Math.min(Math.max(d.geom.y + (fy - d.fy), 0), 1 - d.geom.h),
-        });
-      } else {
-        updateStall(d.id, {
-          w: Math.min(Math.max(d.geom.w + (fx - d.fx), 0.004), 1 - d.geom.x),
-          h: Math.min(Math.max(d.geom.h + (fy - d.fy), 0.004), 1 - d.geom.y),
-        });
-      }
+      if (!drag.current) return;
+      drag.current.moved = true;
+      const { x, y } = frac(ev);
+      patchDot(st.id, x, y);
     };
-    const onUp = () => {
-      drag.current = null;
+    const onUp = async (ev) => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      const moved = drag.current?.moved;
+      drag.current = null;
+      if (!moved) return;
+      // El arrastre termina con un click; evitá que dispare un addDot.
+      suppressClick.current = true;
+      const { x, y } = frac(ev);
+      const data = await api(`/admin/api/parqueo/espacio/${encodeURIComponent(st.id)}/pos`, { method: 'PUT', body: JSON.stringify({ x, y }) });
+      if (!data.ok) { setMsg({ type: 'error', text: data.error }); reload(); return; }
+      onSaved?.();
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   }
 
-  async function save() {
-    setSaving(true);
+  async function removeDot(id) {
+    setBusy(true);
     setMsg(null);
-    const data = await api('/admin/api/parqueo/croquis', { method: 'PUT', body: JSON.stringify({ floors }) });
-    setSaving(false);
+    const data = await api(`/admin/api/parqueo/espacio/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    setBusy(false);
     if (!data.ok) return setMsg({ type: 'error', text: data.error });
-    setDirty(false);
-    setMsg({ type: 'ok', text: `Croquis guardado (${data.guardadas} plazas).` });
+    setSelected(null);
+    await reload();
     onSaved?.();
   }
-  async function reset() {
-    if (!window.confirm('¿Restaurar el layout original del croquis? Se perderán los ajustes manuales.')) return;
-    setSaving(true);
+
+  async function clearAll() {
+    if (!window.confirm('¿Vaciar el plano? Se borrarán TODOS los espacios y sus reservas. Esta acción no se puede deshacer.')) return;
+    setBusy(true);
     setMsg(null);
-    const data = await api('/admin/api/parqueo/croquis/reset', { method: 'POST' });
-    setSaving(false);
+    const data = await api('/admin/api/parqueo/croquis/clear', { method: 'POST' });
+    setBusy(false);
     if (!data.ok) return setMsg({ type: 'error', text: data.error });
     setFloors(data.floors);
-    setDirty(false);
     setSelected(null);
-    setMsg({ type: 'ok', text: 'Layout restaurado al original.' });
+    setMsg({ type: 'ok', text: 'Plano vaciado. Hacé clic para marcar los espacios.' });
     onSaved?.();
   }
 
   if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
-  const sel = fl.stalls.find((s) => s.id === selected);
-  const pct = (v) => Math.round(v * 1000) / 10;
-  const setField = (k, val) => updateStall(selected, { [k]: Math.min(Math.max(Number(val) / 100, 0), 1) });
+  const count = fl.stalls.length;
 
   return (
     <div className="plano-editor">
       <div className="editor-bar">
-        <span className="hint">Arrastra una plaza para moverla; usa la esquina inferior derecha para redimensionar.</span>
+        <span className="hint">Hacé clic en el plano para marcar un espacio (aparece un punto). Arrastrá un punto para moverlo; seleccionalo para borrarlo.</span>
         <div className="editor-actions">
-          <button className="btn ghost" onClick={reset} disabled={saving}>Restaurar layout</button>
-          <button className="btn ghost" onClick={onClose} disabled={saving}>Cerrar</button>
-          <button className="btn" onClick={save} disabled={saving || !dirty}><Check size={16} />{saving ? 'Guardando...' : 'Guardar cambios'}</button>
+          <button className="btn ghost danger" onClick={clearAll} disabled={busy}>Vaciar plano</button>
+          <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
         </div>
       </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <div className="plano-wrap">
         <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
           <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
-          <svg ref={svgRef} className="plano-overlay editing" viewBox="0 0 1 1" preserveAspectRatio="none">
-            {fl.stalls.map((st) => (
-              <g key={st.id}>
-                <rect
-                  className={`pstall editable${selected === st.id ? ' selected' : ''}`}
-                  x={st.x}
-                  y={st.y}
-                  width={st.w}
-                  height={st.h}
-                  vectorEffect="non-scaling-stroke"
-                  onPointerDown={(e) => startDrag(e, st, 'move')}
-                >
-                  <title>{st.id}</title>
-                </rect>
-                {selected === st.id && (
-                  <rect
-                    className="pstall-handle"
-                    x={Math.max(st.x + st.w - 0.012, st.x)}
-                    y={Math.max(st.y + st.h - 0.012, st.y)}
-                    width={0.012}
-                    height={0.012}
-                    vectorEffect="non-scaling-stroke"
-                    onPointerDown={(e) => startDrag(e, st, 'resize')}
-                  />
-                )}
-              </g>
+          <div ref={overlayRef} className="plano-overlay editing" onClick={addDot}>
+            {fl.stalls.filter((st) => st.utilizado !== false).map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                className={`pdot editable${selected === st.id ? ' selected' : ''}`}
+                style={{ left: `${st.x * 100}%`, top: `${st.y * 100}%` }}
+                title={st.id}
+                onPointerDown={(e) => startDrag(e, st)}
+                onClick={(e) => e.stopPropagation()}
+              />
             ))}
-          </svg>
+          </div>
         </div>
       </div>
-      {sel && (
-        <div className="editor-props">
-          <b>{sel.id}</b>
-          <label>X %<input type="number" step="0.1" value={pct(sel.x)} onChange={(e) => setField('x', e.target.value)} /></label>
-          <label>Y %<input type="number" step="0.1" value={pct(sel.y)} onChange={(e) => setField('y', e.target.value)} /></label>
-          <label>Ancho %<input type="number" step="0.1" value={pct(sel.w)} onChange={(e) => setField('w', e.target.value)} /></label>
-          <label>Alto %<input type="number" step="0.1" value={pct(sel.h)} onChange={(e) => setField('h', e.target.value)} /></label>
-        </div>
-      )}
+      <div className="editor-props">
+        <span>{count} espacio{count === 1 ? '' : 's'} en Sótano -{floor}</span>
+        {selected && (
+          <>
+            <b>{selected}</b>
+            <button className="btn ghost danger" onClick={() => removeDot(selected)} disabled={busy}>Borrar espacio</button>
+            <button className="btn ghost" onClick={() => setSelected(null)} disabled={busy}>Deseleccionar</button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
