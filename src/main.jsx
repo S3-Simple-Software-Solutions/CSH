@@ -140,43 +140,75 @@ function ExpirationBar({ start, end }) {
   return <span className="exp"><i className={cls} style={{ width: `${pct * 100}%` }} /></span>;
 }
 
-const STALL_PIXEL_RATIO = 2.15;
+const STALL_LONG_RATIO = 2.22;
+const STALL_SHORT_W = 0.0145;
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 
-function buildSpotGeometry(stalls, aspect = 1.5) {
-  const byId = new Map();
+function median(values) {
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function clusterAxis(stalls, axis, threshold) {
+  const clusters = [];
+  stalls
+    .slice()
+    .sort((a, b) => a[axis] - b[axis])
+    .forEach((st) => {
+      const last = clusters[clusters.length - 1];
+      if (!last || Math.abs(st[axis] - last.center) > threshold) {
+        clusters.push({ center: st[axis], items: [st] });
+        return;
+      }
+      last.items.push(st);
+      last.center = median(last.items.map((item) => item[axis]));
+    });
+  return clusters;
+}
+
+function buildSpotLayout(stalls, aspect = 1.5) {
   const visible = stalls.filter((s) => s.utilizado !== false);
-  visible.forEach((st) => {
-    const sameRow = visible
-      .filter((o) => o.id !== st.id && Math.abs(o.y - st.y) < 0.018)
+  const oriented = visible.map((st) => {
+    const rowPitch = visible
+      .filter((o) => o.id !== st.id && Math.abs(o.y - st.y) < 0.017)
       .map((o) => Math.abs(o.x - st.x))
       .filter((d) => d > 0.004)
-      .sort((a, b) => a - b);
-    const sameCol = visible
-      .filter((o) => o.id !== st.id && Math.abs(o.x - st.x) < 0.024)
+      .sort((a, b) => a - b)[0] || Infinity;
+    const colPitch = visible
+      .filter((o) => o.id !== st.id && Math.abs(o.x - st.x) < 0.023)
       .map((o) => Math.abs(o.y - st.y))
       .filter((d) => d > 0.004)
-      .sort((a, b) => a - b);
-    const rowPitch = sameRow[0] || Infinity;
-    const colPitch = sameCol[0] || Infinity;
-    const vertical = rowPitch < colPitch || (rowPitch < Infinity && colPitch === Infinity);
-    let w;
-    let h;
-    if (vertical) {
-      w = clamp((Number.isFinite(rowPitch) ? rowPitch : 0.016) * 0.84, 0.011, 0.026);
-      h = clamp(w * aspect * STALL_PIXEL_RATIO, 0.036, 0.07);
+      .sort((a, b) => a - b)[0] || Infinity;
+    const vertical = rowPitch < colPitch;
+    return { ...st, vertical };
+  });
+  const byId = new Map(oriented.map((st) => [st.id, { ...st }]));
+  clusterAxis(oriented.filter((st) => st.vertical), 'y', 0.018).forEach((cluster) => {
+    const y = median(cluster.items.map((st) => st.y));
+    cluster.items.forEach((st) => { byId.get(st.id).y = y; });
+  });
+  clusterAxis(oriented.filter((st) => !st.vertical), 'x', 0.026).forEach((cluster) => {
+    const x = median(cluster.items.map((st) => st.x));
+    cluster.items.forEach((st) => { byId.get(st.id).x = x; });
+  });
+  const shortW = STALL_SHORT_W;
+  const shortH = (shortW * aspect);
+  byId.forEach((spot) => {
+    if (spot.vertical) {
+      spot.w = shortW;
+      spot.h = clamp(shortH * STALL_LONG_RATIO, 0.04, 0.05);
     } else {
-      h = clamp((Number.isFinite(colPitch) ? colPitch : 0.038) * 0.82, 0.026, 0.046);
-      w = clamp((h * STALL_PIXEL_RATIO) / aspect, 0.038, 0.066);
+      spot.w = clamp(shortW * STALL_LONG_RATIO, 0.03, 0.035);
+      spot.h = shortH;
     }
-    byId.set(st.id, { w, h });
   });
   return byId;
 }
 
-function spotStyle(st, geometry) {
-  const g = geometry.get(st.id) || { w: 0.05, h: 0.034 };
-  return { left: `${st.x * 100}%`, top: `${st.y * 100}%`, width: `${g.w * 100}%`, height: `${g.h * 100}%` };
+function spotStyle(st, layout) {
+  const g = layout.get(st.id) || { x: st.x, y: st.y, w: 0.032, h: 0.022 };
+  return { left: `${g.x * 100}%`, top: `${g.y * 100}%`, width: `${g.w * 100}%`, height: `${g.h * 100}%` };
 }
 
 function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = [], me }) {
@@ -188,7 +220,7 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
   const spaceById = useMemo(() => new Map(spaces.map((s) => [s.id, s])), [spaces]);
   const resById = useMemo(() => new Map(reservations.map((r) => [r.id, r])), [reservations]);
   const visibleStalls = useMemo(() => (fl?.stalls || []).filter((st) => st.utilizado !== false), [fl]);
-  const spotGeometry = useMemo(() => buildSpotGeometry(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
+  const spotLayout = useMemo(() => buildSpotLayout(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
   if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
   return (
     <div className="plano-wrap">
@@ -210,7 +242,7 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
                 key={st.id}
                 type="button"
                 className={`pspot ${estado}${expired ? ' vencido' : ''}${mine ? ' mine' : ''}`}
-                style={spotStyle(st, spotGeometry)}
+                style={spotStyle(st, spotLayout)}
                 title={label}
                 onClick={() => space && onSpace?.(space, reservation)}
               />
@@ -238,7 +270,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
 
   const fl = floors?.find((f) => f.piso === floor);
   const visibleStalls = useMemo(() => (fl?.stalls || []).filter((st) => st.utilizado !== false), [fl]);
-  const spotGeometry = useMemo(() => buildSpotGeometry(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
+  const spotLayout = useMemo(() => buildSpotLayout(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
 
   function frac(e) {
     const r = overlayRef.current.getBoundingClientRect();
@@ -337,7 +369,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
                 key={st.id}
                 type="button"
                 className={`pspot editable${selected === st.id ? ' selected' : ''}`}
-                style={spotStyle(st, spotGeometry)}
+                style={spotStyle(st, spotLayout)}
                 title={st.id}
                 onPointerDown={(e) => startDrag(e, st)}
                 onClick={(e) => e.stopPropagation()}
