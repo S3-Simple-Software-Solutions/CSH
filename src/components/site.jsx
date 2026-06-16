@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { timeAgo } from '../utils/time.js';
 
 // Encabezado de sección reutilizable.
 export function SectionHeader({ eyebrow, title, sub, center }) {
@@ -43,8 +44,8 @@ export function PlayerCard({ p }) {
 }
 
 // Tarjeta de noticia. Si tiene slug, es un link a la página de detalle.
-export function NewsCard({ n, linked = true }) {
-  const fecha = new Date(n.fecha).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' });
+export function NewsCard({ n, linked = true, showResumen = true }) {
+  const fecha = timeAgo(n.fecha);
   const inner = (
     <>
       <div className="news-thumb">
@@ -53,7 +54,7 @@ export function NewsCard({ n, linked = true }) {
       </div>
       <div className="news-body">
         <h3>{n.titulo}</h3>
-        <p>{n.resumen}</p>
+        {showResumen && <p>{n.resumen}</p>}
         <small className="muted">{fecha} · {n.fuente}</small>
       </div>
     </>

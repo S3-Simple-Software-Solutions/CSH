@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Share2, Copy, Check } from 'lucide-react';
+import { Share2, Copy, Check, Mail } from 'lucide-react';
 import { NewsCard } from '../components/site.jsx';
+import { timeAgo } from '../utils/time.js';
 
 function ShareButtons({ titulo, url }) {
   const [copied, setCopied] = useState(false);
@@ -18,13 +19,47 @@ function ShareButtons({ titulo, url }) {
 
   return (
     <div className="share-bar">
-      <span className="share-label"><Share2 size={14} /> Compartir</span>
+      <span className="share-label"><Share2 size={14} /> Compartir nota</span>
       <a href={waUrl} target="_blank" rel="noopener noreferrer" className="share-btn wa">WhatsApp</a>
       <a href={fbUrl} target="_blank" rel="noopener noreferrer" className="share-btn fb">Facebook</a>
       <a href={xUrl} target="_blank" rel="noopener noreferrer" className="share-btn x">X</a>
       <button className="share-btn copy" onClick={copyLink}>
         {copied ? <><Check size={13} /> Copiado</> : <><Copy size={13} /> Copiar link</>}
       </button>
+    </div>
+  );
+}
+
+function NewsletterCTA() {
+  const [email, setEmail] = useState('');
+  const [done, setDone] = useState(false);
+
+  function submit(e) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setDone(true);
+  }
+
+  return (
+    <div className="newsletter-cta">
+      <Mail size={18} className="newsletter-icon" />
+      <div className="newsletter-body">
+        <strong>Newsletter</strong>
+        <p>Noticias e info oficial del Team, sin spam.</p>
+      </div>
+      {done ? (
+        <span className="newsletter-thanks">¡Gracias! Te avisaremos.</span>
+      ) : (
+        <form className="newsletter-form" onSubmit={submit}>
+          <input
+            type="email"
+            placeholder="tu@correo.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <button type="submit" className="btn">OK</button>
+        </form>
+      )}
     </div>
   );
 }
@@ -63,7 +98,7 @@ export default function NoticiaDetalle() {
     );
   }
 
-  const fecha = new Date(noticia.fecha).toLocaleDateString('es-CR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const fecha = timeAgo(noticia.fecha);
   const pageUrl = typeof window !== 'undefined' ? window.location.href : '';
   const parrafos = noticia.cuerpo ? noticia.cuerpo.split(/\n\n+/).filter(Boolean) : [];
 
@@ -83,7 +118,7 @@ export default function NoticiaDetalle() {
           <span>/</span>
           <Link to="/noticias">Noticias</Link>
           <span>/</span>
-          <span>{noticia.titulo}</span>
+          <span>{noticia.categoria}</span>
         </nav>
 
         {/* Header */}
@@ -103,14 +138,17 @@ export default function NoticiaDetalle() {
 
         {/* Compartir */}
         <ShareButtons titulo={noticia.titulo} url={pageUrl} />
+
+        {/* Newsletter */}
+        <NewsletterCTA />
       </article>
 
-      {/* Te puede interesar */}
+      {/* Más del Team */}
       {relacionadas.length > 0 && (
         <section className="page section">
-          <h2 className="noticia-relacionadas-title">Te puede interesar</h2>
+          <h2 className="noticia-relacionadas-title">Más del Team</h2>
           <div className="news-grid">
-            {relacionadas.map((n) => <NewsCard key={n.id} n={n} />)}
+            {relacionadas.map((n) => <NewsCard key={n.id} n={n} showResumen={false} />)}
           </div>
         </section>
       )}
