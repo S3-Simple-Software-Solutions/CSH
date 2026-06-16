@@ -274,7 +274,10 @@ function FlowArrows({ arrows, editable = false, selected = null, onPointerDown }
             aria-label={editable ? 'Mover flecha de circulación' : undefined}
             onPointerDown={editable ? (e) => onPointerDown?.(e, arrow) : undefined}
             onClick={editable ? (e) => e.stopPropagation() : undefined}
-          />
+          >
+            <span className="flow-road-axis" aria-hidden="true" />
+            <span className="flow-arrow-glyph" aria-hidden="true" />
+          </Tag>
         );
       })}
     </>
