@@ -27,7 +27,8 @@ const PLAN_FLOW_ARROWS = {
 
 const FLOW_ARROW_TYPES = [
   { id: 'straight', label: 'Recta' },
-  { id: 'turn-right', label: 'Curva derecha' },
+  { id: 'turn-left', label: 'Doblar izquierda' },
+  { id: 'turn-right', label: 'Doblar derecha' },
   { id: 'split-up-right', label: 'Recta + derecha' },
   { id: 'split-left-right', label: 'Doble salida' },
   { id: 'u-turn-right', label: 'Retorno' },
@@ -36,6 +37,7 @@ const FLOW_ARROW_TYPE_IDS = new Set(FLOW_ARROW_TYPES.map((type) => type.id));
 const FLOW_ARROW_LABELS = Object.fromEntries(FLOW_ARROW_TYPES.map((type) => [type.id, type.label]));
 const FLOW_ARROW_SIZE = {
   straight: { w: 0.070, h: 0.020 },
+  'turn-left': { w: 0.050, h: 0.055 },
   'turn-right': { w: 0.050, h: 0.055 },
   'split-up-right': { w: 0.052, h: 0.058 },
   'split-left-right': { w: 0.060, h: 0.052 },
@@ -43,18 +45,21 @@ const FLOW_ARROW_SIZE = {
 };
 const FLOW_ARROW_PATHS = {
   straight: ['M8 50 H88'],
+  'turn-left': ['M78 86 V56 Q78 26 46 26 H20'],
   'turn-right': ['M22 86 V56 Q22 26 54 26 H80'],
   'split-up-right': ['M28 86 V22', 'M28 56 Q28 40 45 40 H80'],
   'split-left-right': ['M50 86 V60 Q50 40 25 40 H16', 'M50 60 Q50 40 75 40 H84'],
   'u-turn-right': ['M20 86 V42 Q20 18 50 18 Q82 18 82 50 V78'],
 };
-const FLOW_ARROW_CONNECTORS = {
-  straight: [{ x: 8, y: 50 }, { x: 88, y: 50 }],
-  'turn-right': [{ x: 22, y: 86 }, { x: 80, y: 26 }],
-  'split-up-right': [{ x: 28, y: 86 }, { x: 28, y: 22 }, { x: 80, y: 40 }],
-  'split-left-right': [{ x: 50, y: 86 }, { x: 16, y: 40 }, { x: 84, y: 40 }],
-  'u-turn-right': [{ x: 20, y: 86 }, { x: 82, y: 78 }],
+const FLOW_ARROW_CAPS = {
+  straight: [{ x: 8, y: 50, edge: 'vertical' }, { x: 88, y: 50, edge: 'vertical' }],
+  'turn-left': [{ x: 78, y: 86, edge: 'horizontal' }, { x: 20, y: 26, edge: 'vertical' }],
+  'turn-right': [{ x: 22, y: 86, edge: 'horizontal' }, { x: 80, y: 26, edge: 'vertical' }],
+  'split-up-right': [{ x: 28, y: 86, edge: 'horizontal' }, { x: 28, y: 22, edge: 'horizontal' }, { x: 80, y: 40, edge: 'vertical' }],
+  'split-left-right': [{ x: 50, y: 86, edge: 'horizontal' }, { x: 16, y: 40, edge: 'vertical' }, { x: 84, y: 40, edge: 'vertical' }],
+  'u-turn-right': [{ x: 20, y: 86, edge: 'horizontal' }, { x: 82, y: 78, edge: 'horizontal' }],
 };
+const FLOW_ROAD_HALF_WIDTH_PX = 8.5;
 const FLOW_ARROW_SNAP_PX = 18;
 const FLOW_DIRECTION_ARROW = { w: 0.024, h: 0.034 };
 
@@ -95,10 +100,21 @@ function normalizeRotation(value) {
   return mod > 180 ? mod - 360 : mod;
 }
 
+function flowArrowCapMarkers(kind) {
+  const safeKind = flowArrowKind(kind);
+  const markerHalf = safeKind === 'straight' ? 38 : 16;
+  return (FLOW_ARROW_CAPS[safeKind] || FLOW_ARROW_CAPS.straight).flatMap((cap) => {
+    if (cap.edge === 'vertical') {
+      return [{ x: cap.x, y: cap.y - markerHalf }, { x: cap.x, y: cap.y + markerHalf }];
+    }
+    return [{ x: cap.x - markerHalf, y: cap.y }, { x: cap.x + markerHalf, y: cap.y }];
+  });
+}
+
 function FlowArrowSvg({ kind, editable }) {
   const safeKind = flowArrowKind(kind);
   const paths = FLOW_ARROW_PATHS[safeKind] || FLOW_ARROW_PATHS.straight;
-  const connectors = FLOW_ARROW_CONNECTORS[safeKind] || FLOW_ARROW_CONNECTORS.straight;
+  const connectors = flowArrowCapMarkers(safeKind);
   return (
     <svg className="flow-arrow-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
       <g className="flow-road-body">
@@ -362,41 +378,58 @@ function flowArrowsForFloor(fl) {
   }));
 }
 
-function flowArrowConnectorOffsetsPx(arrow, bounds) {
+function flowArrowCapOffsetGroupsPx(arrow, bounds, arrows = [], aspect = 1.5) {
   const kind = flowArrowKind(arrow.kind);
-  const size = flowArrowSize(kind);
+  const size = flowArrowRoadSize(arrow, arrows, aspect);
   const width = bounds.width * size.w;
   const height = bounds.height * size.h;
   const rotation = (Number(arrow.r || 0) * Math.PI) / 180;
   const cos = Math.cos(rotation);
   const sin = Math.sin(rotation);
-  return (FLOW_ARROW_CONNECTORS[kind] || FLOW_ARROW_CONNECTORS.straight).map((pt) => {
-    const localX = ((pt.x - 50) / 100) * width;
-    const localY = ((pt.y - 50) / 100) * height;
-    return {
-      x: localX * cos - localY * sin,
-      y: localX * sin + localY * cos,
-    };
+  return (FLOW_ARROW_CAPS[kind] || FLOW_ARROW_CAPS.straight).map((cap) => {
+    const localX = ((cap.x - 50) / 100) * width;
+    const localY = ((cap.y - 50) / 100) * height;
+    const corners = cap.edge === 'vertical'
+      ? [{ x: localX, y: localY - FLOW_ROAD_HALF_WIDTH_PX }, { x: localX, y: localY + FLOW_ROAD_HALF_WIDTH_PX }]
+      : [{ x: localX - FLOW_ROAD_HALF_WIDTH_PX, y: localY }, { x: localX + FLOW_ROAD_HALF_WIDTH_PX, y: localY }];
+    return corners.map((pt) => ({
+      x: pt.x * cos - pt.y * sin,
+      y: pt.x * sin + pt.y * cos,
+    }));
   });
 }
 
-function flowArrowConnectorPointsPx(arrow, bounds, x = arrow.x, y = arrow.y) {
+function flowArrowCapPointGroupsPx(arrow, bounds, x = arrow.x, y = arrow.y, arrows = [], aspect = 1.5) {
   const center = { x: Number(x) * bounds.width, y: Number(y) * bounds.height };
-  return flowArrowConnectorOffsetsPx(arrow, bounds).map((offset) => ({ x: center.x + offset.x, y: center.y + offset.y }));
+  return flowArrowCapOffsetGroupsPx(arrow, bounds, arrows, aspect).map((group) => group.map((offset) => ({ x: center.x + offset.x, y: center.y + offset.y })));
 }
 
-function snapFlowArrow(arrow, x, y, arrows, bounds) {
-  const offsets = flowArrowConnectorOffsetsPx(arrow, bounds);
+function midpoint(points) {
+  return {
+    x: points.reduce((sum, pt) => sum + pt.x, 0) / points.length,
+    y: points.reduce((sum, pt) => sum + pt.y, 0) / points.length,
+  };
+}
+
+function snapFlowArrow(arrow, x, y, arrows, bounds, aspect = 1.5) {
+  const movingArrow = { ...arrow, x, y };
+  const movingArrows = arrows.map((item) => (item.id === arrow.id ? movingArrow : item));
+  const offsetGroups = flowArrowCapOffsetGroupsPx(movingArrow, bounds, movingArrows, aspect);
   let best = null;
-  arrows
+  movingArrows
     .filter((other) => other.id !== arrow.id)
     .forEach((other) => {
-      flowArrowConnectorPointsPx(other, bounds).forEach((target) => {
-        offsets.forEach((offset) => {
-          const px = x * bounds.width + offset.x;
-          const py = y * bounds.height + offset.y;
-          const dist = Math.hypot(px - target.x, py - target.y);
-          if (dist <= FLOW_ARROW_SNAP_PX && (!best || dist < best.dist)) best = { dist, target, offset };
+      flowArrowCapPointGroupsPx(other, bounds, other.x, other.y, movingArrows, aspect).forEach((targetGroup) => {
+        offsetGroups.forEach((offsetGroup) => {
+          const sourceGroup = offsetGroup.map((offset) => ({ x: x * bounds.width + offset.x, y: y * bounds.height + offset.y }));
+          [targetGroup, targetGroup.slice().reverse()].forEach((orderedTargetGroup) => {
+            const distances = sourceGroup.map((source, idx) => Math.hypot(source.x - orderedTargetGroup[idx].x, source.y - orderedTargetGroup[idx].y));
+            const maxDist = Math.max(...distances);
+            const score = distances.reduce((sum, dist) => sum + dist, 0) / distances.length;
+            if (maxDist <= FLOW_ARROW_SNAP_PX && (!best || score < best.score)) {
+              best = { score, target: midpoint(orderedTargetGroup), offset: midpoint(offsetGroup) };
+            }
+          });
         });
       });
     });
@@ -611,7 +644,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
       drag.current.moved = true;
       const bounds = overlayRef.current.getBoundingClientRect();
       const point = frac(ev);
-      const snapped = snapFlowArrow(arrow, point.x, point.y, flowArrows, bounds);
+      const snapped = snapFlowArrow(arrow, point.x, point.y, flowArrows, bounds, fl.aspect);
       drag.current.x = snapped.x;
       drag.current.y = snapped.y;
       patchArrow(arrow.id, { x: snapped.x, y: snapped.y });
@@ -702,7 +735,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const count = visibleStalls.length;
   const editorHint = addingArrow
     ? 'Hacé clic en el plano para ubicar la nueva flecha de circulación.'
-    : 'Hacé clic para marcar una plaza. Arrastrá flechas desde sus puntas para unir tramos de calle; seleccionalas para cambiar dirección.';
+    : 'Hacé clic para marcar una plaza. Arrastrá flechas desde las esquinas del carril para unir tramos de calle; seleccionalas para cambiar dirección.';
 
   return (
     <div className="plano-editor">
