@@ -16,6 +16,7 @@ export async function ensureNoticiasSchema(): Promise<void> {
       creado_at timestamptz not null default now()
     );
     alter table noticias add column if not exists fuente text not null default 'Prensa CSH';
+    alter table noticias add column if not exists cuerpo text not null default '';
     create index if not exists idx_noticias_estado_fecha on noticias(estado, fecha desc);
   `);
 

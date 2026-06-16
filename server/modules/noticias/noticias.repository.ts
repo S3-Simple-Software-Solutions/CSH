@@ -9,6 +9,7 @@ function toNoticia(r: NoticiaRow): Noticia {
     categoria: r.categoria as Noticia['categoria'],
     fuente: r.fuente,
     resumen: r.resumen,
+    cuerpo: r.cuerpo ?? '',
     imagenPath: r.imagen_path,
     estado: r.estado as Noticia['estado'],
     fecha: r.fecha,
@@ -45,19 +46,19 @@ export async function findNoticiaBySlug(slug: string): Promise<Noticia | null> {
 
 export async function insertNoticia(fields: {
   id: string; slug: string; titulo: string; categoria: string;
-  fuente: string; resumen: string; imagenPath: string | null; estado: string; fecha: string;
+  fuente: string; resumen: string; cuerpo: string; imagenPath: string | null; estado: string; fecha: string;
 }): Promise<Noticia> {
   const rows = await query<NoticiaRow>(
-    `insert into noticias (id, slug, titulo, categoria, fuente, resumen, imagen_path, estado, fecha)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,
+    `insert into noticias (id, slug, titulo, categoria, fuente, resumen, cuerpo, imagen_path, estado, fecha)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
     [fields.id, fields.slug, fields.titulo, fields.categoria, fields.fuente,
-     fields.resumen, fields.imagenPath, fields.estado, fields.fecha],
+     fields.resumen, fields.cuerpo, fields.imagenPath, fields.estado, fields.fecha],
   );
   return toNoticia(rows[0]);
 }
 
 export async function updateNoticia(id: string, fields: Partial<{
-  titulo: string; categoria: string; fuente: string; resumen: string;
+  titulo: string; categoria: string; fuente: string; resumen: string; cuerpo: string;
   imagenPath: string | null; estado: string; fecha: string;
 }>): Promise<Noticia | null> {
   const sets: string[] = [];
@@ -67,6 +68,7 @@ export async function updateNoticia(id: string, fields: Partial<{
   if (fields.categoria !== undefined) { sets.push(`categoria=$${i++}`); vals.push(fields.categoria); }
   if (fields.fuente !== undefined) { sets.push(`fuente=$${i++}`); vals.push(fields.fuente); }
   if (fields.resumen !== undefined) { sets.push(`resumen=$${i++}`); vals.push(fields.resumen); }
+  if (fields.cuerpo !== undefined) { sets.push(`cuerpo=$${i++}`); vals.push(fields.cuerpo); }
   if (fields.imagenPath !== undefined) { sets.push(`imagen_path=$${i++}`); vals.push(fields.imagenPath); }
   if (fields.estado !== undefined) { sets.push(`estado=$${i++}`); vals.push(fields.estado); }
   if (fields.fecha !== undefined) { sets.push(`fecha=$${i++}`); vals.push(fields.fecha); }
