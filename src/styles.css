@@ -555,7 +555,8 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .plano-loading { margin-top: 18px; padding: 40px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; }
 
 /* ───────── Editor del croquis (marcar espacios con clic) ───────── */
-.toolbar-extra { display: flex; gap: 8px; }
+.toolbar-extra { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar-extra .btn { min-height: 38px; margin-top: 0; padding: 0 12px; }
 .plano-editor { margin-top: 18px; }
 .editor-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
 .editor-bar .hint { color: var(--muted); font-size: 13px; max-width: 60ch; }

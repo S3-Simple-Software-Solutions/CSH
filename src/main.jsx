@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BadgePercent, CalendarDays, Car, Check, Clock, Globe, LogOut, Mail, Moon, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Truck, Users, UtensilsCrossed } from 'lucide-react';
+import { BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, Moon, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Truck, Users, UtensilsCrossed } from 'lucide-react';
 import QRCode from 'qrcode';
 import sotano1Img from './croquis/sotano-1.png';
 import sotano2Img from './croquis/sotano-2.png';
@@ -443,7 +443,7 @@ function FlowArrows({ arrows, editable = false, selected = null, onPointerDown, 
   );
 }
 
-function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = [], me }) {
+function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = [], me, showFlow = true }) {
   const [floors, setFloors] = useState(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => { api('/api/parqueo/croquis').then((d) => d.ok && setFloors(d.floors)); }, []);
@@ -460,7 +460,7 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
       <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
         <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
         <div className="plano-overlay">
-          <FlowArrows arrows={flowArrows} aspect={fl.aspect} />
+          {showFlow && <FlowArrows arrows={flowArrows} aspect={fl.aspect} />}
           {visibleStalls.map((st) => {
             const space = spaceById.get(st.id);
             const estado = space ? space.estado : 'disponible';
@@ -929,6 +929,7 @@ function PublicParking() {
   const [spaces, setSpaces] = useState([]);
   const [floor, setFloor] = useState(1);
   const [selected, setSelected] = useState(null);
+  const [showFlow, setShowFlow] = useState(true);
   const [plate, setPlate] = useState('');
   const [lookup, setLookup] = useState(null);
   const [error, setError] = useState('');
@@ -985,8 +986,10 @@ function PublicParking() {
           <ReservationResult lookup={lookup} onResend={resend} onPay={() => setPaying(true)} />
         </section>
 
-        <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`} />
-        <PlanoCroquis spaces={spaces} floor={floor} onSpace={(space) => space.estado === 'disponible' && setSelected(space)} />
+        <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`}>
+          <FlowToggleButton showFlow={showFlow} setShowFlow={setShowFlow} />
+        </Toolbar>
+        <PlanoCroquis spaces={spaces} floor={floor} showFlow={showFlow} onSpace={(space) => space.estado === 'disponible' && setSelected(space)} />
       </main>
       {selected && <TakeSpaceModal space={selected} onClose={() => setSelected(null)} onDone={(m) => { setModal(m); setSelected(null); refresh(); }} />}
       {paying && lookup && <PaymentModal info={lookup} onClose={() => setPaying(false)} onDone={(receipt) => { setLookup({ receipt }); setPaying(false); refresh(); }} />}
@@ -1044,6 +1047,21 @@ function Toolbar({ floor, setFloor, stats, children }) {
       </div>
       {children && <div className="toolbar-extra">{children}</div>}
     </div>
+  );
+}
+
+function FlowToggleButton({ showFlow, setShowFlow }) {
+  return (
+    <button
+      type="button"
+      className={`btn ghost${showFlow ? ' active' : ''}`}
+      onClick={() => setShowFlow((value) => !value)}
+      aria-pressed={showFlow}
+      title={showFlow ? 'Ocultar flechas' : 'Mostrar flechas'}
+    >
+      {showFlow ? <EyeOff size={16} /> : <Eye size={16} />}
+      {showFlow ? 'Ocultar flechas' : 'Mostrar flechas'}
+    </button>
   );
 }
 
@@ -1354,6 +1372,7 @@ function AdminParking({ user }) {
   const [floor, setFloor] = useState(1);
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [showFlow, setShowFlow] = useState(true);
   const canEdit = user.parkingRole === 'admin';
   const refresh = async () => {
     const data = await api('/admin/api/parqueo/estado');
@@ -1375,11 +1394,12 @@ function AdminParking({ user }) {
     <main className="page">
       <p className="eyebrow">Zonas y reservas</p><h1>Gestion de parqueo</h1>
       <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`}>
+        {!editing && <FlowToggleButton showFlow={showFlow} setShowFlow={setShowFlow} />}
         {canEdit && !editing && <button className="btn ghost" onClick={() => setEditing(true)}>Editar plazas</button>}
       </Toolbar>
       {editing
         ? <PlanoEditor floor={floor} onClose={() => setEditing(false)} onSaved={refresh} />
-        : <PlanoCroquis spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin onSpace={(space, reservation) => setModal({ space, reservation })} />}
+        : <PlanoCroquis spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin showFlow={showFlow} onSpace={(space, reservation) => setModal({ space, reservation })} />}
       <section className="events"><h2>Log de eventos</h2><div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Tipo</th><th>Espacio</th><th>Placa</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>{events.map((e) => <tr key={e.id}><td>{fmtFullDate(e.timestamp)}</td><td>{e.tipo}</td><td>{e.espacioId}</td><td>{e.placa}</td><td>{e.userName}</td><td>{e.notas}</td></tr>)}</tbody></table></div></section>
       {modal && <AdminSpaceModal modal={modal} user={user} onClose={() => setModal(null)} afterAction={afterAction} />}
     </main>
