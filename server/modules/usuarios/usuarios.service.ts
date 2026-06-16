@@ -15,6 +15,18 @@ export function canManageCoupons(user: AdminUser | null | undefined): boolean {
   return Boolean(user && (user.couponRole === 'admin' || user.couponRole === 'patrocinador'));
 }
 
+export function canManageEvents(user: AdminUser | null | undefined): boolean {
+  return Boolean(user && user.eventsRole === 'admin');
+}
+
+export function canOperateGate(user: AdminUser | null | undefined): boolean {
+  return Boolean(user && (user.eventsRole === 'admin' || user.eventsRole === 'operador'));
+}
+
+export function canViewSales(user: AdminUser | null | undefined): boolean {
+  return Boolean(user && (user.eventsRole === 'admin' || user.eventsRole === 'operador' || user.eventsRole === 'comercial'));
+}
+
 export async function setAdminUserPassword(userId: string, password: string): Promise<void> {
   await pool.query(
     `insert into admin_passwords (user_id, password, updated_at)
@@ -37,6 +49,7 @@ export function listUsers() {
     status: u.status,
     parkingRole: u.parkingRole,
     couponRole: u.couponRole,
+    eventsRole: u.eventsRole,
     sponsor: u.sponsor,
   }));
 }

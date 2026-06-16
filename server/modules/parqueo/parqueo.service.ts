@@ -3,6 +3,7 @@ import { ApiError } from '../../core/errors';
 import { getParqueoRepository } from './parqueo.repository';
 import { sendParkingQrEmail, sendPaymentReceiptEmail } from './parqueo.mail';
 import { maskedReservaEmail, montoDe, reservaEmail } from './parqueo.helpers';
+import { croquisFloors } from './parqueo.layout';
 import { PaymentRecord, Recibo } from './parqueo.types';
 
 type Actor = { id: string; name: string; parkingRole: string };
@@ -28,6 +29,10 @@ function validateEmail(email: string): void {
 export async function getPublicEstado() {
   const repo = getParqueoRepository();
   return { tarifa: TARIFA_HORA, espacios: await repo.publicEstado() };
+}
+
+export function getCroquis() {
+  return { floors: croquisFloors() };
 }
 
 export async function consultaPublica(rawPlate: unknown) {

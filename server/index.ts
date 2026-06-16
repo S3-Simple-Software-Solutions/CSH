@@ -4,6 +4,7 @@ import { CACHE_DIR, DATA_DIR } from './config/constants';
 import { createApp } from './app';
 import { ensureUsuariosSchema } from './modules/usuarios/usuarios.schema';
 import { ensureParqueoSchema } from './modules/parqueo/parqueo.schema';
+import { ensureEntradasSchema } from './modules/entradas/entradas.schema';
 
 async function bootstrap(): Promise<void> {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -11,6 +12,7 @@ async function bootstrap(): Promise<void> {
 
   await ensureUsuariosSchema();
   await ensureParqueoSchema();
+  await ensureEntradasSchema();
 
   const app = createApp();
   app.listen(env.PORT, env.HOST, () => console.log(`Herediano React + PostgreSQL corriendo en http://${env.HOST}:${env.PORT}`));

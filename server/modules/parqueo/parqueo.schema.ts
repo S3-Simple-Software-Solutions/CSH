@@ -1,4 +1,5 @@
 import { pool, query } from '../../core/db';
+import { buildStalls } from './parqueo.layout';
 
 export async function ensureParqueoSchema(): Promise<void> {
   await pool.query(`
@@ -37,24 +38,25 @@ export async function ensureParqueoSchema(): Promise<void> {
       created_at timestamptz not null default now()
     );
   `);
+  // El layout de los planos (SÓTANO -1/-2) es la fuente de verdad. Si el conteo de
+  // plazas no coincide con el layout actual, se re-siembra (migra el grid sintético
+  // anterior de 400 plazas al croquis real).
+  const stalls = buildStalls();
   const count = Number((await query<{ count: number }>('select count(*)::int as count from parking_spaces'))[0].count);
-  if (count === 0) await seedParking();
+  if (count !== stalls.length) await reseedParking(stalls);
 }
 
-async function seedParking(): Promise<void> {
+async function reseedParking(stalls: ReturnType<typeof buildStalls>): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('begin');
-    for (const floor of [1, 2]) {
-      for (const zone of ['A', 'B']) {
-        for (let num = 1; num <= 100; num++) {
-          const id = `P${floor}-${zone}${String(num).padStart(3, '0')}`;
-          await client.query(
-            'insert into parking_spaces (id, floor, zone, num, type, status, reservation_id) values ($1,$2,$3,$4,$5,$6,$7) on conflict do nothing',
-            [id, floor, zone, num, 'regular', 'disponible', null],
-          );
-        }
-      }
+    await client.query('delete from parking_reservations');
+    await client.query('delete from parking_spaces');
+    for (const s of stalls) {
+      await client.query(
+        'insert into parking_spaces (id, floor, zone, num, type, status, reservation_id) values ($1,$2,$3,$4,$5,$6,$7)',
+        [s.id, s.piso, s.zona, s.num, 'regular', 'disponible', null],
+      );
     }
     await client.query('commit');
   } catch (err) {
