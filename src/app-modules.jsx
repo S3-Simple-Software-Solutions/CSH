@@ -274,7 +274,22 @@ function ExpirationBar({ start, end }) {
 
 const STALL_LONG_RATIO = 2.22;
 const STALL_SHORT_W = 0.0145;
+const LEGACY_STALL_SIZES = [
+  { w: 0.012, h: 0.0415 },
+  { w: 0.0285, h: 0.0175 },
+];
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+
+function uniformSpotSize(vertical, aspect = 1.5) {
+  const shortH = STALL_SHORT_W * aspect;
+  return vertical
+    ? { w: STALL_SHORT_W, h: shortH * STALL_LONG_RATIO }
+    : { w: STALL_SHORT_W * STALL_LONG_RATIO, h: shortH };
+}
+
+function isLegacySpotSize(w, h) {
+  return LEGACY_STALL_SIZES.some((size) => Math.abs(Number(w) - size.w) < 0.000001 && Math.abs(Number(h) - size.h) < 0.000001);
+}
 
 function median(values) {
   const sorted = values.slice().sort((a, b) => a - b);
@@ -339,18 +354,17 @@ function buildSpotLayout(stalls, aspect = 1.5) {
     const x = median(items.map((st) => st.x));
     items.forEach((st) => { byId.get(st.id).x = x; });
   });
-  const shortW = STALL_SHORT_W;
-  const shortH = (shortW * aspect);
   byId.forEach((spot) => {
-    if (spot.ancho && spot.alto) {
+    const autoSize = uniformSpotSize(spot.vertical, aspect);
+    if (spot.ancho && spot.alto && !isLegacySpotSize(spot.ancho, spot.alto)) {
       spot.w = spot.ancho;
       spot.h = spot.alto;
     } else if (spot.vertical) {
-      spot.w = shortW;
-      spot.h = clamp(shortH * STALL_LONG_RATIO, 0.04, 0.05);
+      spot.w = autoSize.w;
+      spot.h = autoSize.h;
     } else {
-      spot.w = clamp(shortW * STALL_LONG_RATIO, 0.03, 0.035);
-      spot.h = shortH;
+      spot.w = autoSize.w;
+      spot.h = autoSize.h;
     }
   });
   return byId;
@@ -838,8 +852,8 @@ function EditSpaceModal({ stall, layout, onClose, onSaved }) {
   const [form, setForm] = useState({
     nombre: stall.nombre || '',
     discapacitado: Boolean(stall.discapacitado),
-    ancho: pctValue(stall.ancho || current.w),
-    alto: pctValue(stall.alto || current.h),
+    ancho: pctValue(current.w),
+    alto: pctValue(current.h),
   });
   const [msg, setMsg] = useState(null);
   const [saving, setSaving] = useState(false);

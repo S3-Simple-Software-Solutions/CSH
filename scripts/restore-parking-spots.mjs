@@ -3,9 +3,13 @@ import pg from 'pg';
 
 const { Client } = pg;
 
+const PLAN_ASPECT = 1700 / 1134;
+const STALL_LONG_RATIO = 2.22;
+const STALL_SHORT_W = 0.0145;
+const STALL_SHORT_H = STALL_SHORT_W * PLAN_ASPECT;
 const SIZE = {
-  vertical: { w: 0.012, h: 0.0415 },
-  horizontal: { w: 0.0285, h: 0.0175 },
+  vertical: { w: STALL_SHORT_W, h: STALL_SHORT_H * STALL_LONG_RATIO },
+  horizontal: { w: STALL_SHORT_W * STALL_LONG_RATIO, h: STALL_SHORT_H },
 };
 
 function lerp(a, b, t) {
