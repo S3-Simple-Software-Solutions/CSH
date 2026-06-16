@@ -68,6 +68,7 @@ const FLOW_ARROW_CAPS = {
 const FLOW_ROAD_HALF_WIDTH_PX = 8.5;
 const FLOW_ARROW_SNAP_PX = 18;
 const FLOW_DIRECTION_ARROW = { w: 0.024, h: 0.034 };
+const FLOW_ROAD_VIEW_W = 1000;
 
 function flowArrowKind(kind) {
   return FLOW_ARROW_TYPE_IDS.has(kind) ? kind : 'straight';
@@ -121,18 +122,11 @@ function flowArrowCapMarkers(kind) {
   });
 }
 
-function FlowArrowSvg({ kind, editable }) {
+function FlowArrowControlSvg({ kind, editable }) {
   const safeKind = flowArrowKind(kind);
-  const paths = FLOW_ARROW_PATHS[safeKind] || FLOW_ARROW_PATHS.straight;
   const connectors = flowArrowCapMarkers(safeKind);
   return (
     <svg className="flow-arrow-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <g className="flow-road-body">
-        {paths.map((d) => <path key={`${d}-road`} d={d} />)}
-      </g>
-      <g className="flow-road-centerline">
-        {paths.map((d) => <path key={`${d}-center`} d={d} />)}
-      </g>
       <g className="flow-road-ports">
         {connectors.map((pt, idx) => (
           <circle key={`${idx}-${pt.x}-${pt.y}-port`} className="flow-road-port" cx={pt.x} cy={pt.y} r="5.4" />
@@ -141,6 +135,35 @@ function FlowArrowSvg({ kind, editable }) {
       {editable && connectors.map((pt, idx) => (
         <circle key={`${idx}-${pt.x}-${pt.y}`} className="flow-connector" cx={pt.x} cy={pt.y} r="3.8" />
       ))}
+    </svg>
+  );
+}
+
+function flowRoadTransform(arrow, size, aspect = 1.5) {
+  const viewH = FLOW_ROAD_VIEW_W / aspect;
+  const width = FLOW_ROAD_VIEW_W * size.w;
+  const height = viewH * size.h;
+  const x = Number(arrow.x || 0) * FLOW_ROAD_VIEW_W;
+  const y = Number(arrow.y || 0) * viewH;
+  return `translate(${x} ${y}) rotate(${Number(arrow.r || 0)}) scale(${width / 100} ${height / 100}) translate(-50 -50)`;
+}
+
+function FlowRoadLayer({ arrows, aspect = 1.5 }) {
+  const viewH = FLOW_ROAD_VIEW_W / aspect;
+  const roads = arrows.flatMap((arrow) => {
+    const kind = flowArrowKind(arrow.kind);
+    const size = flowArrowRoadSize(arrow, arrows, aspect);
+    const transform = flowRoadTransform(arrow, size, aspect);
+    return (FLOW_ARROW_PATHS[kind] || FLOW_ARROW_PATHS.straight).map((d, idx) => ({ id: `${arrow.id}-${idx}`, d, transform }));
+  });
+  return (
+    <svg className="flow-road-layer" viewBox={`0 0 ${FLOW_ROAD_VIEW_W} ${viewH}`} preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <g className="flow-road-body">
+        {roads.map((road) => <path key={`${road.id}-body`} d={road.d} transform={road.transform} />)}
+      </g>
+      <g className="flow-road-centerline">
+        {roads.map((road) => <path key={`${road.id}-center`} d={road.d} transform={road.transform} />)}
+      </g>
     </svg>
   );
 }
@@ -453,24 +476,25 @@ function snapFlowArrow(arrow, x, y, arrows, bounds, aspect = 1.5) {
 function FlowArrows({ arrows, editable = false, selected = null, onPointerDown, aspect = 1.5 }) {
   return (
     <>
+      <FlowRoadLayer arrows={arrows} aspect={aspect} />
       {arrows.map((arrow) => {
-        const Tag = editable ? 'button' : 'span';
         const kind = flowArrowKind(arrow.kind);
         const size = flowArrowRoadSize(arrow, arrows, aspect);
         return (
           <React.Fragment key={arrow.id}>
-            <Tag
-              type={editable ? 'button' : undefined}
-              className={`flow-arrow kind-${kind}${editable ? ' editable' : ''}${selected === arrow.id ? ' selected' : ''}`}
-              style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, width: `${size.w * 100}%`, height: `${size.h * 100}%`, '--rot': `${arrow.r}deg` }}
-              title={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
-              aria-hidden={editable ? undefined : 'true'}
-              aria-label={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
-              onPointerDown={editable ? (e) => onPointerDown?.(e, arrow) : undefined}
-              onClick={editable ? (e) => e.stopPropagation() : undefined}
-            >
-              <FlowArrowSvg kind={kind} editable={editable} />
-            </Tag>
+            {editable && (
+              <button
+                type="button"
+                className={`flow-arrow kind-${kind} editable${selected === arrow.id ? ' selected' : ''}`}
+                style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, width: `${size.w * 100}%`, height: `${size.h * 100}%`, '--rot': `${arrow.r}deg` }}
+                title={`Mover flecha: ${FLOW_ARROW_LABELS[kind]}`}
+                aria-label={`Mover flecha: ${FLOW_ARROW_LABELS[kind]}`}
+                onPointerDown={(e) => onPointerDown?.(e, arrow)}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <FlowArrowControlSvg kind={kind} editable />
+              </button>
+            )}
             <span
               className="flow-direction-arrow"
               style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, width: `${FLOW_DIRECTION_ARROW.w * 100}%`, height: `${FLOW_DIRECTION_ARROW.h * 100}%`, '--rot': `${arrow.r}deg` }}
