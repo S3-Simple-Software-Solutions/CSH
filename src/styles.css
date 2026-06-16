@@ -454,29 +454,60 @@ tr:last-child td { border-bottom: 0; }
   overflow: visible;
 }
 .flow-arrow-svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.flow-arrow-shadow path {
+.flow-road-body path {
   fill: none;
-  stroke: rgba(255, 255, 255, .94);
-  stroke-width: 7;
-  stroke-linecap: round;
+  stroke: rgba(115, 124, 122, .74);
+  stroke-width: 17;
+  stroke-linecap: butt;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, .92)) drop-shadow(0 1px 2px rgba(0, 0, 0, .62));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .38));
 }
-.flow-arrow-main path {
+.flow-road-centerline path {
   fill: none;
-  stroke: rgba(255, 205, 64, .92);
-  stroke-width: 2.4;
-  stroke-linecap: round;
+  stroke: rgba(255, 255, 255, .95);
+  stroke-width: 2.8;
+  stroke-linecap: butt;
   stroke-linejoin: round;
+  stroke-dasharray: 13 13;
   vector-effect: non-scaling-stroke;
 }
-.flow-arrow-head-shadow { fill: rgba(255, 255, 255, .94); }
-.flow-arrow-head { fill: rgba(255, 205, 64, .92); }
+.flow-road-port {
+  opacity: 0;
+  fill: rgba(255, 255, 255, .88);
+  stroke: rgba(36, 42, 42, .72);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, .75));
+}
+.flow-direction-arrow {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  transform: translate(-50%, -50%) rotate(var(--rot));
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .38));
+}
+.flow-direction-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.flow-direction-outline {
+  fill: rgba(250, 250, 250, .96);
+  stroke: rgba(255, 255, 255, .95);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+.flow-direction-left { fill: rgba(16, 90, 188, .96); }
+.flow-direction-right { fill: rgba(55, 145, 230, .96); }
+.flow-direction-left,
+.flow-direction-right {
+  stroke: rgba(11, 68, 152, .42);
+  stroke-width: .8;
+  vector-effect: non-scaling-stroke;
+}
 .flow-connector {
-  fill: rgba(255, 255, 255, .9);
-  stroke: rgba(43, 30, 0, .72);
-  stroke-width: 1.4;
+  fill: rgba(255, 255, 255, .92);
+  stroke: rgba(11, 68, 152, .8);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
 }
 .plano-overlay.editing .flow-arrow.editable {
   z-index: 3;
@@ -487,6 +518,16 @@ tr:last-child td { border-bottom: 0; }
 .plano-overlay.editing .flow-arrow.editable:hover,
 .plano-overlay.editing .flow-arrow.editable.selected {
   filter: drop-shadow(0 0 5px rgba(201, 169, 97, .9));
+}
+.plano-overlay.editing .flow-arrow.editable .flow-road-port {
+  opacity: 1;
+  fill: rgba(255, 255, 255, .9);
+  stroke: rgba(11, 68, 152, .78);
+}
+.plano-overlay.editing .flow-arrow.editable.selected .flow-road-port {
+  opacity: 1;
+  fill: rgba(219, 238, 255, .96);
+  stroke: rgba(36, 112, 204, .95);
 }
 .plano-overlay.editing .flow-arrow.editable:active { cursor: grabbing; }
 .plano-overlay.editing .flow-arrow.editable:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
@@ -514,7 +555,8 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .plano-loading { margin-top: 18px; padding: 40px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; }
 
 /* ───────── Editor del croquis (marcar espacios con clic) ───────── */
-.toolbar-extra { display: flex; gap: 8px; }
+.toolbar-extra { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar-extra .btn { min-height: 38px; margin-top: 0; padding: 0 12px; }
 .plano-editor { margin-top: 18px; }
 .editor-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
 .editor-bar .hint { color: var(--muted); font-size: 13px; max-width: 60ch; }

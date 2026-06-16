@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BadgePercent, CalendarDays, Car, Check, Clock, Globe, LogOut, Mail, Moon, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Truck, Users, UtensilsCrossed } from 'lucide-react';
+import { BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, Moon, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Truck, Users, UtensilsCrossed } from 'lucide-react';
 import QRCode from 'qrcode';
 import sotano1Img from './croquis/sotano-1.png';
 import sotano2Img from './croquis/sotano-2.png';
@@ -55,7 +55,8 @@ const FLOW_ARROW_CONNECTORS = {
   'split-left-right': [{ x: 50, y: 86 }, { x: 16, y: 40 }, { x: 84, y: 40 }],
   'u-turn-right': [{ x: 20, y: 86 }, { x: 82, y: 78 }],
 };
-const FLOW_ARROW_SNAP_PX = 14;
+const FLOW_ARROW_SNAP_PX = 18;
+const FLOW_DIRECTION_ARROW = { w: 0.024, h: 0.034 };
 
 function flowArrowKind(kind) {
   return FLOW_ARROW_TYPE_IDS.has(kind) ? kind : 'straight';
@@ -65,40 +66,65 @@ function flowArrowSize(kind) {
   return FLOW_ARROW_SIZE[flowArrowKind(kind)] || FLOW_ARROW_SIZE.straight;
 }
 
+function flowArrowRoadSize(arrow, arrows = [], aspect = 1.5) {
+  const base = flowArrowSize(arrow.kind);
+  if (flowArrowKind(arrow.kind) !== 'straight') return base;
+  const angle = (Number(arrow.r || 0) * Math.PI) / 180;
+  const dir = { x: Math.cos(angle), y: Math.sin(angle) };
+  const here = { x: Number(arrow.x || 0), y: Number(arrow.y || 0) / aspect };
+  const laneTolerance = Math.max(base.h / aspect, 0.012);
+  const connectedLength = arrows
+    .filter((other) => other.id !== arrow.id && flowArrowKind(other.kind) === 'straight')
+    .map((other) => {
+      const there = { x: Number(other.x || 0), y: Number(other.y || 0) / aspect };
+      const dx = there.x - here.x;
+      const dy = there.y - here.y;
+      const along = Math.abs(dx * dir.x + dy * dir.y);
+      const across = Math.abs(dx * -dir.y + dy * dir.x);
+      return across <= laneTolerance ? along : 0;
+    })
+    .filter((length) => length > base.w * 0.55)
+    .sort((a, b) => a - b)[0];
+  if (!connectedLength) return base;
+  return { ...base, w: clamp(connectedLength, base.w, 0.16) };
+}
+
 function normalizeRotation(value) {
   const n = Number(value) || 0;
   const mod = ((n % 360) + 360) % 360;
   return mod > 180 ? mod - 360 : mod;
 }
 
-function markerSafeId(id) {
-  return String(id || 'arrow').replace(/[^a-zA-Z0-9_-]/g, '-');
-}
-
-function FlowArrowSvg({ id, kind, editable }) {
+function FlowArrowSvg({ kind, editable }) {
   const safeKind = flowArrowKind(kind);
-  const marker = `flow-arrow-head-${markerSafeId(id)}`;
-  const markerShadow = `${marker}-shadow`;
   const paths = FLOW_ARROW_PATHS[safeKind] || FLOW_ARROW_PATHS.straight;
+  const connectors = FLOW_ARROW_CONNECTORS[safeKind] || FLOW_ARROW_CONNECTORS.straight;
   return (
     <svg className="flow-arrow-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <defs>
-        <marker id={markerShadow} viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="5.4" markerHeight="5.4" orient="auto-start-reverse">
-          <path className="flow-arrow-head-shadow" d="M0 0 L10 5 L0 10 Z" />
-        </marker>
-        <marker id={marker} viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="5.2" markerHeight="5.2" orient="auto-start-reverse">
-          <path className="flow-arrow-head" d="M0 0 L10 5 L0 10 Z" />
-        </marker>
-      </defs>
-      <g className="flow-arrow-shadow">
-        {paths.map((d) => <path key={`${d}-shadow`} d={d} markerEnd={`url(#${markerShadow})`} />)}
+      <g className="flow-road-body">
+        {paths.map((d) => <path key={`${d}-road`} d={d} />)}
       </g>
-      <g className="flow-arrow-main">
-        {paths.map((d) => <path key={d} d={d} markerEnd={`url(#${marker})`} />)}
+      <g className="flow-road-centerline">
+        {paths.map((d) => <path key={`${d}-center`} d={d} />)}
       </g>
-      {editable && (FLOW_ARROW_CONNECTORS[safeKind] || FLOW_ARROW_CONNECTORS.straight).map((pt, idx) => (
+      <g className="flow-road-ports">
+        {connectors.map((pt, idx) => (
+          <circle key={`${idx}-${pt.x}-${pt.y}-port`} className="flow-road-port" cx={pt.x} cy={pt.y} r="5.4" />
+        ))}
+      </g>
+      {editable && connectors.map((pt, idx) => (
         <circle key={`${idx}-${pt.x}-${pt.y}`} className="flow-connector" cx={pt.x} cy={pt.y} r="3.8" />
       ))}
+    </svg>
+  );
+}
+
+function DirectionArrowIcon() {
+  return (
+    <svg className="flow-direction-svg" viewBox="0 0 120 100" aria-hidden="true" focusable="false">
+      <path className="flow-direction-outline" d="M113 50 L17 9 Q9 6 6 14 L27 50 L6 86 Q9 94 17 91 Z" />
+      <path className="flow-direction-left" d="M101 50 L20 16 L40 50 Z" />
+      <path className="flow-direction-right" d="M101 50 L20 84 L40 50 Z" />
     </svg>
   );
 }
@@ -381,34 +407,42 @@ function snapFlowArrow(arrow, x, y, arrows, bounds) {
   };
 }
 
-function FlowArrows({ arrows, editable = false, selected = null, onPointerDown }) {
+function FlowArrows({ arrows, editable = false, selected = null, onPointerDown, aspect = 1.5 }) {
   return (
     <>
       {arrows.map((arrow) => {
         const Tag = editable ? 'button' : 'span';
         const kind = flowArrowKind(arrow.kind);
-        const size = flowArrowSize(kind);
+        const size = flowArrowRoadSize(arrow, arrows, aspect);
         return (
-          <Tag
-            key={arrow.id}
-            type={editable ? 'button' : undefined}
-            className={`flow-arrow kind-${kind}${editable ? ' editable' : ''}${selected === arrow.id ? ' selected' : ''}`}
-            style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, width: `${size.w * 100}%`, height: `${size.h * 100}%`, '--rot': `${arrow.r}deg` }}
-            title={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
-            aria-hidden={editable ? undefined : 'true'}
-            aria-label={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
-            onPointerDown={editable ? (e) => onPointerDown?.(e, arrow) : undefined}
-            onClick={editable ? (e) => e.stopPropagation() : undefined}
-          >
-            <FlowArrowSvg id={arrow.id} kind={kind} editable={editable} />
-          </Tag>
+          <React.Fragment key={arrow.id}>
+            <Tag
+              type={editable ? 'button' : undefined}
+              className={`flow-arrow kind-${kind}${editable ? ' editable' : ''}${selected === arrow.id ? ' selected' : ''}`}
+              style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, width: `${size.w * 100}%`, height: `${size.h * 100}%`, '--rot': `${arrow.r}deg` }}
+              title={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
+              aria-hidden={editable ? undefined : 'true'}
+              aria-label={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
+              onPointerDown={editable ? (e) => onPointerDown?.(e, arrow) : undefined}
+              onClick={editable ? (e) => e.stopPropagation() : undefined}
+            >
+              <FlowArrowSvg kind={kind} editable={editable} />
+            </Tag>
+            <span
+              className="flow-direction-arrow"
+              style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, width: `${FLOW_DIRECTION_ARROW.w * 100}%`, height: `${FLOW_DIRECTION_ARROW.h * 100}%`, '--rot': `${arrow.r}deg` }}
+              aria-hidden="true"
+            >
+              <DirectionArrowIcon />
+            </span>
+          </React.Fragment>
         );
       })}
     </>
   );
 }
 
-function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = [], me }) {
+function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = [], me, showFlow = true }) {
   const [floors, setFloors] = useState(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => { api('/api/parqueo/croquis').then((d) => d.ok && setFloors(d.floors)); }, []);
@@ -425,7 +459,7 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
       <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
         <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
         <div className="plano-overlay">
-          <FlowArrows arrows={flowArrows} />
+          {showFlow && <FlowArrows arrows={flowArrows} aspect={fl.aspect} />}
           {visibleStalls.map((st) => {
             const space = spaceById.get(st.id);
             const estado = space ? space.estado : 'disponible';
@@ -668,7 +702,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const count = visibleStalls.length;
   const editorHint = addingArrow
     ? 'Hacé clic en el plano para ubicar la nueva flecha de circulación.'
-    : 'Hacé clic en el plano para marcar una plaza. Arrastrá plazas o flechas para moverlas; seleccioná una flecha para cambiar dirección.';
+    : 'Hacé clic para marcar una plaza. Arrastrá flechas desde sus puntas para unir tramos de calle; seleccionalas para cambiar dirección.';
 
   return (
     <div className="plano-editor">
@@ -706,7 +740,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
         <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
           <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
           <div ref={overlayRef} className={`plano-overlay editing${addingArrow ? ' adding-arrow' : ''}`} onClick={handleOverlayClick}>
-            <FlowArrows arrows={flowArrows} editable selected={selectedArrow} onPointerDown={startArrowDrag} />
+            <FlowArrows arrows={flowArrows} editable selected={selectedArrow} onPointerDown={startArrowDrag} aspect={fl.aspect} />
             {visibleStalls.map((st) => (
               <button
                 key={st.id}
@@ -894,6 +928,7 @@ function PublicParking() {
   const [spaces, setSpaces] = useState([]);
   const [floor, setFloor] = useState(1);
   const [selected, setSelected] = useState(null);
+  const [showFlow, setShowFlow] = useState(true);
   const [plate, setPlate] = useState('');
   const [lookup, setLookup] = useState(null);
   const [error, setError] = useState('');
@@ -950,8 +985,10 @@ function PublicParking() {
           <ReservationResult lookup={lookup} onResend={resend} onPay={() => setPaying(true)} />
         </section>
 
-        <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`} />
-        <PlanoCroquis spaces={spaces} floor={floor} onSpace={(space) => space.estado === 'disponible' && setSelected(space)} />
+        <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`}>
+          <FlowToggleButton showFlow={showFlow} setShowFlow={setShowFlow} />
+        </Toolbar>
+        <PlanoCroquis spaces={spaces} floor={floor} showFlow={showFlow} onSpace={(space) => space.estado === 'disponible' && setSelected(space)} />
       </main>
       {selected && <TakeSpaceModal space={selected} onClose={() => setSelected(null)} onDone={(m) => { setModal(m); setSelected(null); refresh(); }} />}
       {paying && lookup && <PaymentModal info={lookup} onClose={() => setPaying(false)} onDone={(receipt) => { setLookup({ receipt }); setPaying(false); refresh(); }} />}
@@ -1009,6 +1046,21 @@ function Toolbar({ floor, setFloor, stats, children }) {
       </div>
       {children && <div className="toolbar-extra">{children}</div>}
     </div>
+  );
+}
+
+function FlowToggleButton({ showFlow, setShowFlow }) {
+  return (
+    <button
+      type="button"
+      className={`btn ghost${showFlow ? ' active' : ''}`}
+      onClick={() => setShowFlow((value) => !value)}
+      aria-pressed={showFlow}
+      title={showFlow ? 'Ocultar flechas' : 'Mostrar flechas'}
+    >
+      {showFlow ? <EyeOff size={16} /> : <Eye size={16} />}
+      {showFlow ? 'Ocultar flechas' : 'Mostrar flechas'}
+    </button>
   );
 }
 
@@ -1319,6 +1371,7 @@ function AdminParking({ user }) {
   const [floor, setFloor] = useState(1);
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [showFlow, setShowFlow] = useState(true);
   const canEdit = user.parkingRole === 'admin';
   const refresh = async () => {
     const data = await api('/admin/api/parqueo/estado');
@@ -1340,11 +1393,12 @@ function AdminParking({ user }) {
     <main className="page">
       <p className="eyebrow">Zonas y reservas</p><h1>Gestion de parqueo</h1>
       <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`}>
+        {!editing && <FlowToggleButton showFlow={showFlow} setShowFlow={setShowFlow} />}
         {canEdit && !editing && <button className="btn ghost" onClick={() => setEditing(true)}>Editar plazas</button>}
       </Toolbar>
       {editing
         ? <PlanoEditor floor={floor} onClose={() => setEditing(false)} onSaved={refresh} />
-        : <PlanoCroquis spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin onSpace={(space, reservation) => setModal({ space, reservation })} />}
+        : <PlanoCroquis spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin showFlow={showFlow} onSpace={(space, reservation) => setModal({ space, reservation })} />}
       <section className="events"><h2>Log de eventos</h2><div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Tipo</th><th>Espacio</th><th>Placa</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>{events.map((e) => <tr key={e.id}><td>{fmtFullDate(e.timestamp)}</td><td>{e.tipo}</td><td>{e.espacioId}</td><td>{e.placa}</td><td>{e.userName}</td><td>{e.notas}</td></tr>)}</tbody></table></div></section>
       {modal && <AdminSpaceModal modal={modal} user={user} onClose={() => setModal(null)} afterAction={afterAction} />}
     </main>
