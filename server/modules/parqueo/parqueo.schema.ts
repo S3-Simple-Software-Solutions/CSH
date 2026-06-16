@@ -66,13 +66,18 @@ export async function ensureParqueoSchema(): Promise<void> {
       plan text not null,
       pos_x double precision not null,
       pos_y double precision not null,
-      rotation double precision not null default 0
+      rotation double precision not null default 0,
+      arrow_type text not null default 'straight'
     );
+    alter table parking_flow_arrows add column if not exists arrow_type text not null default 'straight';
+    update parking_flow_arrows
+      set arrow_type = 'straight'
+      where arrow_type is null or arrow_type = '';
   `);
   for (const arrow of DEFAULT_FLOW_ARROWS) {
     await pool.query(
-      'insert into parking_flow_arrows (id, plan, pos_x, pos_y, rotation) values ($1,$2,$3,$4,$5) on conflict (id) do nothing',
-      [arrow.id, arrow.plan, arrow.x, arrow.y, arrow.r],
+      'insert into parking_flow_arrows (id, plan, pos_x, pos_y, rotation, arrow_type) values ($1,$2,$3,$4,$5,$6) on conflict (id) do nothing',
+      [arrow.id, arrow.plan, arrow.x, arrow.y, arrow.r, arrow.kind || 'straight'],
     );
   }
 }

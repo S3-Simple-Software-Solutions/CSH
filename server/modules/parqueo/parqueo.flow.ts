@@ -1,9 +1,13 @@
+export const FLOW_ARROW_KINDS = ['straight', 'turn-right', 'split-up-right', 'split-left-right', 'u-turn-right'] as const;
+export type FlowArrowKind = typeof FLOW_ARROW_KINDS[number];
+
 export interface DefaultFlowArrow {
   id: string;
   plan: string;
   x: number;
   y: number;
   r: number;
+  kind?: FlowArrowKind;
 }
 
 const arrows = {
@@ -26,5 +30,5 @@ const arrows = {
 };
 
 export const DEFAULT_FLOW_ARROWS: DefaultFlowArrow[] = Object.entries(arrows).flatMap(([plan, list]) =>
-  list.map((arrow, index) => ({ id: `${plan}-arrow-${String(index + 1).padStart(2, '0')}`, plan, ...arrow })),
+  list.map((arrow, index) => ({ id: `${plan}-arrow-${String(index + 1).padStart(2, '0')}`, plan, kind: 'straight', ...arrow })),
 );

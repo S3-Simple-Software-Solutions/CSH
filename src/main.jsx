@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BadgePercent, CalendarDays, Car, Check, Clock, Globe, LogOut, Mail, Moon, Plus, QrCode, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Truck, Users, UtensilsCrossed } from 'lucide-react';
+import { BadgePercent, CalendarDays, Car, Check, Clock, Globe, LogOut, Mail, Moon, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Truck, Users, UtensilsCrossed } from 'lucide-react';
 import QRCode from 'qrcode';
 import sotano1Img from './croquis/sotano-1.png';
 import sotano2Img from './croquis/sotano-2.png';
@@ -25,6 +25,84 @@ const PLAN_FLOW_ARROWS = {
     { x: 0.864, y: 0.328, r: 90 }, { x: 0.864, y: 0.501, r: 90 }, { x: 0.864, y: 0.663, r: 90 }, { x: 0.846, y: 0.706, r: 180 },
   ],
 };
+
+const FLOW_ARROW_TYPES = [
+  { id: 'straight', label: 'Recta' },
+  { id: 'turn-right', label: 'Curva derecha' },
+  { id: 'split-up-right', label: 'Recta + derecha' },
+  { id: 'split-left-right', label: 'Doble salida' },
+  { id: 'u-turn-right', label: 'Retorno' },
+];
+const FLOW_ARROW_TYPE_IDS = new Set(FLOW_ARROW_TYPES.map((type) => type.id));
+const FLOW_ARROW_LABELS = Object.fromEntries(FLOW_ARROW_TYPES.map((type) => [type.id, type.label]));
+const FLOW_ARROW_SIZE = {
+  straight: { w: 0.074, aspect: 4.1 },
+  'turn-right': { w: 0.078, aspect: 1 },
+  'split-up-right': { w: 0.082, aspect: 1 },
+  'split-left-right': { w: 0.086, aspect: 1.22 },
+  'u-turn-right': { w: 0.082, aspect: 1 },
+};
+const FLOW_ARROW_PATHS = {
+  straight: ['M8 50 H88'],
+  'turn-right': ['M22 86 V56 Q22 26 54 26 H80'],
+  'split-up-right': ['M28 86 V22', 'M28 56 Q28 40 45 40 H80'],
+  'split-left-right': ['M50 86 V60 Q50 40 25 40 H16', 'M50 60 Q50 40 75 40 H84'],
+  'u-turn-right': ['M20 86 V42 Q20 18 50 18 Q82 18 82 50 V78'],
+};
+const FLOW_ARROW_CONNECTORS = {
+  straight: [{ x: 8, y: 50 }, { x: 88, y: 50 }],
+  'turn-right': [{ x: 22, y: 86 }, { x: 80, y: 26 }],
+  'split-up-right': [{ x: 28, y: 86 }, { x: 28, y: 22 }, { x: 80, y: 40 }],
+  'split-left-right': [{ x: 50, y: 86 }, { x: 16, y: 40 }, { x: 84, y: 40 }],
+  'u-turn-right': [{ x: 20, y: 86 }, { x: 82, y: 78 }],
+};
+const FLOW_ARROW_SNAP_PX = 14;
+
+function flowArrowKind(kind) {
+  return FLOW_ARROW_TYPE_IDS.has(kind) ? kind : 'straight';
+}
+
+function flowArrowSize(kind) {
+  return FLOW_ARROW_SIZE[flowArrowKind(kind)] || FLOW_ARROW_SIZE.straight;
+}
+
+function normalizeRotation(value) {
+  const n = Number(value) || 0;
+  const mod = ((n % 360) + 360) % 360;
+  return mod > 180 ? mod - 360 : mod;
+}
+
+function markerSafeId(id) {
+  return String(id || 'arrow').replace(/[^a-zA-Z0-9_-]/g, '-');
+}
+
+function FlowArrowSvg({ id, kind, editable }) {
+  const safeKind = flowArrowKind(kind);
+  const marker = `flow-arrow-head-${markerSafeId(id)}`;
+  const markerShadow = `${marker}-shadow`;
+  const paths = FLOW_ARROW_PATHS[safeKind] || FLOW_ARROW_PATHS.straight;
+  return (
+    <svg className="flow-arrow-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+      <defs>
+        <marker id={markerShadow} viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="5.4" markerHeight="5.4" orient="auto-start-reverse">
+          <path className="flow-arrow-head-shadow" d="M0 0 L10 5 L0 10 Z" />
+        </marker>
+        <marker id={marker} viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="5.2" markerHeight="5.2" orient="auto-start-reverse">
+          <path className="flow-arrow-head" d="M0 0 L10 5 L0 10 Z" />
+        </marker>
+      </defs>
+      <g className="flow-arrow-shadow">
+        {paths.map((d) => <path key={`${d}-shadow`} d={d} markerEnd={`url(#${markerShadow})`} />)}
+      </g>
+      <g className="flow-arrow-main">
+        {paths.map((d) => <path key={d} d={d} markerEnd={`url(#${marker})`} />)}
+      </g>
+      {editable && (FLOW_ARROW_CONNECTORS[safeKind] || FLOW_ARROW_CONNECTORS.straight).map((pt, idx) => (
+        <circle key={`${idx}-${pt.x}-${pt.y}`} className="flow-connector" cx={pt.x} cy={pt.y} r="3.8" />
+      ))}
+    </svg>
+  );
+}
 
 const money = (value) => `₡${Number(value || 0).toLocaleString('es-CR')}`;
 const pad = (n) => String(n).padStart(2, '0');
@@ -255,7 +333,53 @@ function flowArrowsForFloor(fl) {
     x: arrow.x,
     y: arrow.y,
     r: arrow.r || 0,
+    kind: flowArrowKind(arrow.kind),
   }));
+}
+
+function flowArrowConnectorOffsetsPx(arrow, bounds) {
+  const kind = flowArrowKind(arrow.kind);
+  const size = flowArrowSize(kind);
+  const width = bounds.width * size.w;
+  const height = width / size.aspect;
+  const rotation = (Number(arrow.r || 0) * Math.PI) / 180;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  return (FLOW_ARROW_CONNECTORS[kind] || FLOW_ARROW_CONNECTORS.straight).map((pt) => {
+    const localX = ((pt.x - 50) / 100) * width;
+    const localY = ((pt.y - 50) / 100) * height;
+    return {
+      x: localX * cos - localY * sin,
+      y: localX * sin + localY * cos,
+    };
+  });
+}
+
+function flowArrowConnectorPointsPx(arrow, bounds, x = arrow.x, y = arrow.y) {
+  const center = { x: Number(x) * bounds.width, y: Number(y) * bounds.height };
+  return flowArrowConnectorOffsetsPx(arrow, bounds).map((offset) => ({ x: center.x + offset.x, y: center.y + offset.y }));
+}
+
+function snapFlowArrow(arrow, x, y, arrows, bounds) {
+  const offsets = flowArrowConnectorOffsetsPx(arrow, bounds);
+  let best = null;
+  arrows
+    .filter((other) => other.id !== arrow.id)
+    .forEach((other) => {
+      flowArrowConnectorPointsPx(other, bounds).forEach((target) => {
+        offsets.forEach((offset) => {
+          const px = x * bounds.width + offset.x;
+          const py = y * bounds.height + offset.y;
+          const dist = Math.hypot(px - target.x, py - target.y);
+          if (dist <= FLOW_ARROW_SNAP_PX && (!best || dist < best.dist)) best = { dist, target, offset };
+        });
+      });
+    });
+  if (!best) return { x, y };
+  return {
+    x: clamp((best.target.x - best.offset.x) / bounds.width, 0, 1),
+    y: clamp((best.target.y - best.offset.y) / bounds.height, 0, 1),
+  };
 }
 
 function FlowArrows({ arrows, editable = false, selected = null, onPointerDown }) {
@@ -263,20 +387,21 @@ function FlowArrows({ arrows, editable = false, selected = null, onPointerDown }
     <>
       {arrows.map((arrow) => {
         const Tag = editable ? 'button' : 'span';
+        const kind = flowArrowKind(arrow.kind);
+        const size = flowArrowSize(kind);
         return (
           <Tag
             key={arrow.id}
             type={editable ? 'button' : undefined}
-            className={`flow-arrow${editable ? ' editable' : ''}${selected === arrow.id ? ' selected' : ''}`}
-            style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, '--rot': `${arrow.r}deg` }}
-            title={editable ? 'Mover flecha de circulación' : undefined}
+            className={`flow-arrow kind-${kind}${editable ? ' editable' : ''}${selected === arrow.id ? ' selected' : ''}`}
+            style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, width: `${size.w * 100}%`, aspectRatio: String(size.aspect), '--rot': `${arrow.r}deg` }}
+            title={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
             aria-hidden={editable ? undefined : 'true'}
-            aria-label={editable ? 'Mover flecha de circulación' : undefined}
+            aria-label={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
             onPointerDown={editable ? (e) => onPointerDown?.(e, arrow) : undefined}
             onClick={editable ? (e) => e.stopPropagation() : undefined}
           >
-            <span className="flow-road-axis" aria-hidden="true" />
-            <span className="flow-arrow-glyph" aria-hidden="true" />
+            <FlowArrowSvg id={arrow.id} kind={kind} editable={editable} />
           </Tag>
         );
       })}
@@ -336,6 +461,8 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const [floors, setFloors] = useState(null);
   const [selected, setSelected] = useState(null);
   const [selectedArrow, setSelectedArrow] = useState(null);
+  const [arrowKind, setArrowKind] = useState('straight');
+  const [addingArrow, setAddingArrow] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -351,6 +478,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const spotLayout = useMemo(() => buildSpotLayout(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
   const flowArrows = useMemo(() => flowArrowsForFloor(fl), [fl]);
   const selectedStall = visibleStalls.find((st) => st.id === selected) || null;
+  const selectedArrowItem = flowArrows.find((arrow) => arrow.id === selectedArrow) || null;
 
   function frac(e) {
     const r = overlayRef.current.getBoundingClientRect();
@@ -361,11 +489,11 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: f.stalls.map((s) => (s.id === id ? { ...s, x, y } : s)) })));
   }
 
-  function patchArrow(id, x, y) {
+  function patchArrow(id, patch) {
     setFloors((prev) => prev.map((f) => {
       if (f.piso !== floor) return f;
       const arrows = flowArrowsForFloor(f);
-      return { ...f, arrows: arrows.map((arrow) => (arrow.id === id ? { ...arrow, x, y } : arrow)) };
+      return { ...f, arrows: arrows.map((arrow) => (arrow.id === id ? { ...arrow, ...patch, kind: flowArrowKind(patch.kind ?? arrow.kind) } : arrow)) };
     }));
   }
 
@@ -384,11 +512,34 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     onSaved?.();
   }
 
+  async function addArrow(e) {
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    if (e.target !== overlayRef.current || busy) return;
+    const { x, y } = frac(e);
+    setBusy(true);
+    setMsg(null);
+    const data = await api('/admin/api/parqueo/flecha', { method: 'POST', body: JSON.stringify({ piso: floor, x, y, r: 0, kind: arrowKind }) });
+    setBusy(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, arrows: [...flowArrowsForFloor(f), data.flecha] })));
+    setSelected(null);
+    setSelectedArrow(data.flecha.id);
+    setArrowKind(flowArrowKind(data.flecha.kind));
+    setAddingArrow(false);
+    onSaved?.();
+  }
+
+  function handleOverlayClick(e) {
+    if (addingArrow) return addArrow(e);
+    return addDot(e);
+  }
+
   function startDrag(e, st) {
     e.preventDefault();
     e.stopPropagation();
     setSelected(st.id);
     setSelectedArrow(null);
+    setAddingArrow(false);
     drag.current = { id: st.id, moved: false };
     const onMove = (ev) => {
       if (!drag.current) return;
@@ -419,27 +570,70 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     setSelected(null);
     setEditTarget(null);
     setSelectedArrow(arrow.id);
-    drag.current = { id: arrow.id, moved: false };
+    setArrowKind(flowArrowKind(arrow.kind));
+    setAddingArrow(false);
+    drag.current = { id: arrow.id, moved: false, x: arrow.x, y: arrow.y };
     const onMove = (ev) => {
       if (!drag.current) return;
       drag.current.moved = true;
-      const { x, y } = frac(ev);
-      patchArrow(arrow.id, x, y);
+      const bounds = overlayRef.current.getBoundingClientRect();
+      const point = frac(ev);
+      const snapped = snapFlowArrow(arrow, point.x, point.y, flowArrows, bounds);
+      drag.current.x = snapped.x;
+      drag.current.y = snapped.y;
+      patchArrow(arrow.id, { x: snapped.x, y: snapped.y });
     };
     const onUp = async (ev) => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       const moved = drag.current?.moved;
+      const finalPoint = drag.current ? { x: drag.current.x, y: drag.current.y } : frac(ev);
       drag.current = null;
       if (!moved) return;
       suppressClick.current = true;
-      const { x, y } = frac(ev);
-      const data = await api(`/admin/api/parqueo/flecha/${encodeURIComponent(arrow.id)}/pos`, { method: 'PUT', body: JSON.stringify({ x, y }) });
+      const data = await api(`/admin/api/parqueo/flecha/${encodeURIComponent(arrow.id)}/pos`, { method: 'PUT', body: JSON.stringify(finalPoint) });
       if (!data.ok) { setMsg({ type: 'error', text: data.error }); reload(); return; }
       onSaved?.();
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+  }
+
+  async function saveArrowPatch(id, patch) {
+    setBusy(true);
+    setMsg(null);
+    patchArrow(id, patch);
+    const data = await api(`/admin/api/parqueo/flecha/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) });
+    setBusy(false);
+    if (!data.ok) { setMsg({ type: 'error', text: data.error }); reload(); return null; }
+    patchArrow(id, data.flecha);
+    setArrowKind(flowArrowKind(data.flecha.kind));
+    onSaved?.();
+    return data.flecha;
+  }
+
+  async function rotateArrow(delta) {
+    if (!selectedArrowItem) return;
+    await saveArrowPatch(selectedArrowItem.id, { r: normalizeRotation(selectedArrowItem.r + delta) });
+  }
+
+  async function changeArrowKind(kind) {
+    if (!selectedArrowItem) return;
+    const safeKind = flowArrowKind(kind);
+    setArrowKind(safeKind);
+    await saveArrowPatch(selectedArrowItem.id, { kind: safeKind });
+  }
+
+  async function removeArrow(id) {
+    if (!window.confirm('¿Borrar esta flecha de circulación?')) return;
+    setBusy(true);
+    setMsg(null);
+    const data = await api(`/admin/api/parqueo/flecha/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    setBusy(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, arrows: flowArrowsForFloor(f).filter((arrow) => arrow.id !== id) })));
+    setSelectedArrow(null);
+    onSaved?.();
   }
 
   async function removeDot(id) {
@@ -450,6 +644,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     if (!data.ok) return setMsg({ type: 'error', text: data.error });
     setSelected(null);
     setSelectedArrow(null);
+    setAddingArrow(false);
     setEditTarget(null);
     await reload();
     onSaved?.();
@@ -465,18 +660,44 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     setFloors(data.floors);
     setSelected(null);
     setSelectedArrow(null);
+    setAddingArrow(false);
     setMsg({ type: 'ok', text: 'Plano vaciado. Hacé clic para marcar los espacios.' });
     onSaved?.();
   }
 
   if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
   const count = visibleStalls.length;
+  const editorHint = addingArrow
+    ? 'Hacé clic en el plano para ubicar la nueva flecha de circulación.'
+    : 'Hacé clic en el plano para marcar una plaza. Arrastrá plazas o flechas para moverlas; seleccioná una flecha para cambiar dirección.';
 
   return (
     <div className="plano-editor">
       <div className="editor-bar">
-        <span className="hint">Hacé clic en el plano para marcar una plaza. Arrastrá plazas o flechas para moverlas; seleccioná una plaza para editarla.</span>
+        <span className="hint">{editorHint}</span>
         <div className="editor-actions">
+          <select
+            className="arrow-kind-select"
+            value={selectedArrowItem ? flowArrowKind(selectedArrowItem.kind) : arrowKind}
+            title="Tipo de flecha"
+            disabled={busy}
+            onChange={(e) => (selectedArrowItem ? changeArrowKind(e.target.value) : setArrowKind(flowArrowKind(e.target.value)))}
+          >
+            {FLOW_ARROW_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
+          </select>
+          <button
+            className={`btn ghost${addingArrow ? ' active' : ''}`}
+            onClick={() => {
+              setAddingArrow((value) => !value);
+              setSelected(null);
+              setSelectedArrow(null);
+              setEditTarget(null);
+            }}
+            disabled={busy}
+            title="Agregar flecha de circulación"
+          >
+            <Plus size={16} />{addingArrow ? 'Ubicar flecha' : 'Agregar flecha'}
+          </button>
           <button className="btn ghost danger" onClick={clearAll} disabled={busy}>Vaciar plano</button>
           <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
         </div>
@@ -485,7 +706,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
       <div className="plano-wrap">
         <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
           <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
-          <div ref={overlayRef} className="plano-overlay editing" onClick={addDot}>
+          <div ref={overlayRef} className={`plano-overlay editing${addingArrow ? ' adding-arrow' : ''}`} onClick={handleOverlayClick}>
             <FlowArrows arrows={flowArrows} editable selected={selectedArrow} onPointerDown={startArrowDrag} />
             {visibleStalls.map((st) => (
               <button
@@ -514,7 +735,10 @@ function PlanoEditor({ floor, onClose, onSaved }) {
         {selectedArrow && (
           <>
             <b>{selectedArrow}</b>
-            <span>Flecha de circulación</span>
+            <span>{FLOW_ARROW_LABELS[flowArrowKind(selectedArrowItem?.kind)] || 'Flecha'} · {normalizeRotation(selectedArrowItem?.r || 0)}°</span>
+            <button className="btn ghost icon-only" onClick={() => rotateArrow(-45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la izquierda" aria-label="Girar flecha a la izquierda"><RotateCcw size={16} /></button>
+            <button className="btn ghost icon-only" onClick={() => rotateArrow(45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la derecha" aria-label="Girar flecha a la derecha"><RotateCw size={16} /></button>
+            <button className="btn ghost danger" onClick={() => removeArrow(selectedArrow)} disabled={busy}><Trash2 size={16} />Borrar flecha</button>
             <button className="btn ghost" onClick={() => setSelectedArrow(null)} disabled={busy}>Deseleccionar</button>
           </>
         )}

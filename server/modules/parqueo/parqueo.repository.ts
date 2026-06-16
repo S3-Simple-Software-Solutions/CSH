@@ -8,6 +8,7 @@ import {
   Reservation,
   Space,
 } from './parqueo.types';
+import type { FlowArrowKind } from './parqueo.flow';
 
 export interface ListEventosOptions {
   limit: number;
@@ -44,6 +45,7 @@ export interface FlowArrow {
   x: number;
   y: number;
   r: number;
+  kind: FlowArrowKind;
 }
 
 export interface AddEspacioInput {
@@ -59,6 +61,21 @@ export interface UpdateEspacioInput {
   ancho: number | null;
   alto: number | null;
   discapacitado: boolean;
+}
+
+export interface AddFlowArrowInput {
+  plan: string;
+  x: number;
+  y: number;
+  r: number;
+  kind: FlowArrowKind;
+}
+
+export interface UpdateFlowArrowInput {
+  x?: number;
+  y?: number;
+  r?: number;
+  kind?: FlowArrowKind;
 }
 
 export interface ParqueoRepository {
@@ -82,6 +99,9 @@ export interface ParqueoRepository {
   updateEspacio(id: string, input: UpdateEspacioInput): Promise<Space>;
   moveEspacio(id: string, x: number, y: number): Promise<void>;
   moveFlowArrow(id: string, x: number, y: number): Promise<void>;
+  addFlowArrow(input: AddFlowArrowInput): Promise<FlowArrow>;
+  updateFlowArrow(id: string, input: UpdateFlowArrowInput): Promise<FlowArrow>;
+  removeFlowArrow(id: string): Promise<void>;
   removeEspacio(id: string): Promise<void>;
   clearEspacios(): Promise<void>;
 }

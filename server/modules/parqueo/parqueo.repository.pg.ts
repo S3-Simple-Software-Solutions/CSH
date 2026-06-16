@@ -11,7 +11,7 @@ import {
   Reservation,
   Space,
 } from './parqueo.types';
-import { AddEspacioInput, CroquisDot, FlowArrow, ListEventosOptions, LogEventoInput, ParqueoRepository, UpdateEspacioInput } from './parqueo.repository';
+import { AddEspacioInput, AddFlowArrowInput, CroquisDot, FlowArrow, ListEventosOptions, LogEventoInput, ParqueoRepository, UpdateEspacioInput, UpdateFlowArrowInput } from './parqueo.repository';
 
 const activeWhere = "status in ('reservado','ocupado')";
 const activeReservationWhere = "r.status in ('reservado','ocupado')";
@@ -32,6 +32,28 @@ function toSpace(row: any): Space {
     alto: row.spot_height == null ? null : Number(row.spot_height),
     discapacitado: Boolean(row.accessible),
   };
+}
+
+function toFlowArrow(row: any): FlowArrow {
+  return {
+    id: row.id,
+    plan: row.plan,
+    x: Number(row.pos_x),
+    y: Number(row.pos_y),
+    r: Number(row.rotation),
+    kind: (row.arrow_type || 'straight') as FlowArrow['kind'],
+  };
+}
+
+async function nextFlowArrowId(client: Pool | PoolClient, plan: string): Promise<string> {
+  const res = await client.query('select id from parking_flow_arrows where plan = $1', [plan]);
+  const prefix = `${plan}-arrow-`;
+  const max = res.rows.reduce((best: number, row: { id: string }) => {
+    if (!row.id.startsWith(prefix)) return best;
+    const n = Number(row.id.slice(prefix.length));
+    return Number.isFinite(n) ? Math.max(best, n) : best;
+  }, 0);
+  return `${prefix}${String(max + 1).padStart(2, '0')}`;
 }
 
 function toReservation(row: any): Reservation {
@@ -361,14 +383,8 @@ export class PgParqueoRepository implements ParqueoRepository {
   }
 
   async flowArrows(): Promise<FlowArrow[]> {
-    const rows = await query<any>('select id, plan, pos_x, pos_y, rotation from parking_flow_arrows order by plan, id');
-    return rows.map((r) => ({
-      id: r.id,
-      plan: r.plan,
-      x: Number(r.pos_x),
-      y: Number(r.pos_y),
-      r: Number(r.rotation),
-    }));
+    const rows = await query<any>('select id, plan, pos_x, pos_y, rotation, arrow_type from parking_flow_arrows order by plan, id');
+    return rows.map(toFlowArrow);
   }
 
   async addEspacio({ piso, zona, x, y }: AddEspacioInput): Promise<Space> {
@@ -422,6 +438,51 @@ export class PgParqueoRepository implements ParqueoRepository {
 
   async moveFlowArrow(id: string, x: number, y: number): Promise<void> {
     const res = await pool.query('update parking_flow_arrows set pos_x = $1, pos_y = $2 where id = $3', [x, y, id]);
+    if (!res.rowCount) throw new ApiError(404, 'La flecha no existe');
+  }
+
+  async addFlowArrow(input: AddFlowArrowInput): Promise<FlowArrow> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const id = await nextFlowArrowId(client, input.plan);
+      const rows = await client.query(
+        'insert into parking_flow_arrows (id, plan, pos_x, pos_y, rotation, arrow_type) values ($1,$2,$3,$4,$5,$6) returning id, plan, pos_x, pos_y, rotation, arrow_type',
+        [id, input.plan, input.x, input.y, input.r, input.kind],
+      );
+      await client.query('commit');
+      return toFlowArrow(rows.rows[0]);
+    } catch (err) {
+      try {
+        await client.query('rollback');
+      } catch {
+        /* noop */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateFlowArrow(id: string, input: UpdateFlowArrowInput): Promise<FlowArrow> {
+    const rows = await query<any>(
+      `
+        update parking_flow_arrows
+        set pos_x = coalesce($1, pos_x),
+            pos_y = coalesce($2, pos_y),
+            rotation = coalesce($3, rotation),
+            arrow_type = coalesce($4, arrow_type)
+        where id = $5
+        returning id, plan, pos_x, pos_y, rotation, arrow_type
+      `,
+      [input.x ?? null, input.y ?? null, input.r ?? null, input.kind ?? null, id],
+    );
+    if (!rows[0]) throw new ApiError(404, 'La flecha no existe');
+    return toFlowArrow(rows[0]);
+  }
+
+  async removeFlowArrow(id: string): Promise<void> {
+    const res = await pool.query('delete from parking_flow_arrows where id = $1', [id]);
     if (!res.rowCount) throw new ApiError(404, 'La flecha no existe');
   }
 

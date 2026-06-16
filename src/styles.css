@@ -445,78 +445,36 @@ tr:last-child td { border-bottom: 0; }
   position: absolute;
   z-index: 1;
   display: block;
-  width: 7.4%;
   margin: 0;
   padding: 0;
-  aspect-ratio: 4.1 / 1;
   border: 0;
   background: transparent;
   transform: translate(-50%, -50%) rotate(var(--rot));
   pointer-events: none;
+  overflow: visible;
 }
-.flow-arrow::before {
-  content: "";
-  position: absolute;
-  left: 6%;
-  right: 6%;
-  top: 18%;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, .78);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+.flow-arrow-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.flow-arrow-shadow path {
+  fill: none;
+  stroke: rgba(255, 255, 255, .94);
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, .92)) drop-shadow(0 1px 2px rgba(0, 0, 0, .62));
 }
-.flow-arrow::after {
-  content: "";
-  position: absolute;
-  left: 6%;
-  right: 6%;
-  bottom: 18%;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, .78);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+.flow-arrow-main path {
+  fill: none;
+  stroke: rgba(255, 205, 64, .92);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
-.flow-road-axis {
-  position: absolute;
-  left: 8%;
-  right: 8%;
-  top: calc(50% - 1px);
-  height: 2px;
-  border-radius: 999px;
-  background: repeating-linear-gradient(90deg, rgba(255, 205, 64, .58) 0 8px, transparent 8px 14px);
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .42));
-}
-.flow-arrow-glyph {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 43%;
-  aspect-ratio: 3 / 1;
-  transform: translate(-50%, -50%);
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .55));
-}
-.flow-arrow-glyph::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 36%;
-  width: 72%;
-  height: 28%;
-  border-radius: 999px;
-  background: rgba(255, 205, 64, .9);
-  box-shadow: inset 0 0 0 1px rgba(43, 30, 0, .55);
-}
-.flow-arrow-glyph::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 50%;
-  width: 48%;
-  height: 78%;
-  transform: translateY(-50%);
-  background: rgba(255, 205, 64, .9);
-  clip-path: polygon(0 0, 100% 50%, 0 100%, 17% 50%);
-  box-shadow: inset 0 0 0 1px rgba(43, 30, 0, .55);
+.flow-arrow-head-shadow { fill: rgba(255, 255, 255, .94); }
+.flow-arrow-head { fill: rgba(255, 205, 64, .92); }
+.flow-connector {
+  fill: rgba(255, 255, 255, .9);
+  stroke: rgba(43, 30, 0, .72);
+  stroke-width: 1.4;
 }
 .plano-overlay.editing .flow-arrow.editable {
   z-index: 3;
@@ -558,8 +516,22 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .plano-editor { margin-top: 18px; }
 .editor-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
 .editor-bar .hint { color: var(--muted); font-size: 13px; max-width: 60ch; }
-.editor-actions { display: flex; gap: 8px; }
+.editor-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.editor-actions .btn, .editor-props .btn { min-height: 36px; margin-top: 0; padding: 0 12px; }
+.btn.icon-only { width: 36px; padding: 0; }
+.btn.ghost.active { border-color: var(--gold); background: rgba(201, 169, 97, .12); color: var(--paper); }
+.arrow-kind-select {
+  width: auto;
+  min-height: 36px;
+  margin: 0;
+  background: var(--field);
+  color: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 10px;
+}
 .plano-overlay.editing { cursor: crosshair; }
+.plano-overlay.editing.adding-arrow { cursor: copy; }
 .plano-overlay.editing .pspot.editable { background: rgba(29, 168, 91, .76); border-color: rgba(10, 9, 8, .74); cursor: grab; }
 .plano-overlay.editing .pspot.editable:active { cursor: grabbing; }
 .plano-overlay.editing .pspot.editable.selected { border-color: var(--gold); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .32), 0 0 0 4px rgba(201, 169, 97, .52); transform: translate(-50%, -50%) scale(1.08); }

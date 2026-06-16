@@ -5,6 +5,7 @@ import { sendParkingQrEmail, sendPaymentReceiptEmail } from './parqueo.mail';
 import { maskedReservaEmail, montoDe, reservaEmail } from './parqueo.helpers';
 import { floorPlanMeta } from './parqueo.layout';
 import { PaymentRecord, Recibo } from './parqueo.types';
+import { FLOW_ARROW_KINDS, FlowArrowKind } from './parqueo.flow';
 
 type Actor = { id: string; name: string; parkingRole: string };
 
@@ -50,6 +51,25 @@ function validFloor(piso: unknown): number {
   return p;
 }
 
+function planForFloor(piso: number): string {
+  const plan = floorPlanMeta().find((m) => m.piso === piso)?.plan;
+  if (!plan) throw new ApiError(400, 'Piso invalido');
+  return plan;
+}
+
+function validRotation(value: unknown, fallback = 0): number {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) throw new ApiError(400, 'Rotacion invalida');
+  return Math.round(n * 10) / 10;
+}
+
+function validArrowKind(value: unknown): FlowArrowKind {
+  const kind = String(value || 'straight').trim();
+  if (!FLOW_ARROW_KINDS.includes(kind as FlowArrowKind)) throw new ApiError(400, 'Tipo de flecha invalido');
+  return kind as FlowArrowKind;
+}
+
 function validNullableDimension(value: unknown, label: string): number | null {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
@@ -76,6 +96,7 @@ export async function getCroquis() {
       x: a.x,
       y: a.y,
       r: a.r,
+      kind: a.kind,
     })),
     stalls: dots.filter((d) => d.piso === m.piso).map((d) => ({
       id: d.id,
@@ -115,6 +136,36 @@ export async function moveFlecha(id: string, body: { x: unknown; y: unknown }, a
   const { x, y } = validPoint(body.x, body.y);
   await getParqueoRepository().moveFlowArrow(id, x, y);
   return { id, x, y };
+}
+
+export async function addFlecha(body: { piso: unknown; x: unknown; y: unknown; r?: unknown; kind?: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const piso = validFloor(body.piso);
+  const { x, y } = validPoint(body.x, body.y);
+  const flecha = await getParqueoRepository().addFlowArrow({
+    plan: planForFloor(piso),
+    x,
+    y,
+    r: validRotation(body.r),
+    kind: validArrowKind(body.kind),
+  });
+  return { flecha };
+}
+
+export async function updateFlecha(id: string, body: { x?: unknown; y?: unknown; r?: unknown; kind?: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const patch: { x?: number; y?: number; r?: number; kind?: FlowArrowKind } = {};
+  if (body.x !== undefined || body.y !== undefined) Object.assign(patch, validPoint(body.x, body.y));
+  if (body.r !== undefined) patch.r = validRotation(body.r);
+  if (body.kind !== undefined) patch.kind = validArrowKind(body.kind);
+  const flecha = await getParqueoRepository().updateFlowArrow(id, patch);
+  return { flecha };
+}
+
+export async function removeFlecha(id: string, actor: Actor) {
+  requireParkingAdmin(actor);
+  await getParqueoRepository().removeFlowArrow(id);
+  return { id };
 }
 
 export async function updateEspacio(id: string, body: { nombre?: unknown; discapacitado?: unknown; ancho?: unknown; alto?: unknown }, actor: Actor) {

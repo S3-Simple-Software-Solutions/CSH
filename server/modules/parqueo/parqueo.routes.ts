@@ -78,6 +78,30 @@ parqueoRouter.put('/admin/api/parqueo/flecha/:id/pos', requireAdmin, async (req,
   }
 });
 
+parqueoRouter.post('/admin/api/parqueo/flecha', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.addFlecha(req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+parqueoRouter.put('/admin/api/parqueo/flecha/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.updateFlecha(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+parqueoRouter.delete('/admin/api/parqueo/flecha/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.removeFlecha(String(req.params.id), req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 parqueoRouter.put('/admin/api/parqueo/espacio/:id', requireAdmin, async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await parqueo.updateEspacio(String(req.params.id), req.body, req.adminUser!)) });
