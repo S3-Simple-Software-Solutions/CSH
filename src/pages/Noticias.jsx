@@ -1,10 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NewsCard } from '../components/site.jsx';
-import { news, categories } from '../data/news.js';
+
+const CATEGORIAS = ['Todas', 'Noticias', 'Refuerzos', 'Comunicados', 'Crónicas', 'Cantera', 'Femenino', 'Entradas'];
 
 export default function Noticias() {
+  const [all, setAll] = useState([]);
   const [cat, setCat] = useState('Todas');
-  const list = cat === 'Todas' ? news : news.filter((n) => n.categoria === cat);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/noticias').then((r) => r.json()).then((d) => {
+      if (d.ok) setAll(d.noticias.map((n) => ({ ...n, imagen: n.imagenPath })));
+      setLoading(false);
+    });
+  }, []);
+
+  const list = cat === 'Todas' ? all : all.filter((n) => n.categoria === cat);
+
   return (
     <main className="page section">
       <p className="eyebrow">Sala de prensa</p>
@@ -12,15 +24,21 @@ export default function Noticias() {
       <p className="sub">Todo lo que pasa en el Team: refuerzos, comunicados, crónicas y más.</p>
 
       <div className="tabs news-tabs">
-        {categories.map((c) => (
+        {CATEGORIAS.map((c) => (
           <button key={c} className={cat === c ? 'active' : ''} onClick={() => setCat(c)}>{c}</button>
         ))}
       </div>
 
-      <div className="news-grid">
-        {list.map((n) => <NewsCard key={n.slug} n={n} />)}
-      </div>
-      {list.length === 0 && <p className="muted">No hay noticias en esta categoría por ahora.</p>}
+      {loading ? (
+        <p className="muted">Cargando noticias…</p>
+      ) : (
+        <>
+          <div className="news-grid">
+            {list.map((n) => <NewsCard key={n.id} n={n} />)}
+          </div>
+          {list.length === 0 && <p className="muted">No hay noticias en esta categoría por ahora.</p>}
+        </>
+      )}
     </main>
   );
 }

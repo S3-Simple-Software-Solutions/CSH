@@ -1,18 +1,30 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, MapPin } from 'lucide-react';
 import { SectionHeader, StatGrid, PlayerCard, NewsCard, SponsorWall, Countdown } from '../components/site.jsx';
 import { club } from '../data/club.js';
 import { palmares } from '../data/history.js';
-import { nextMatch } from '../data/calendar.js';
-import { squad, featuredPlayers } from '../data/players.js';
-import { news } from '../data/news.js';
-import { sponsors } from '../data/sponsors.js';
-
-const allPlayers = squad.flatMap((g) => g.jugadores);
-const featured = featuredPlayers.map((slug) => allPlayers.find((p) => p.slug === slug)).filter(Boolean);
+import { competitions } from '../data/calendar.js';
 
 export default function Home() {
+  const [nextMatch, setNextMatch] = useState(null);
+  const [featured, setFeatured] = useState([]);
+  const [news, setNews] = useState([]);
+  const [sponsors, setSponsors] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/partidos/siguiente').then((r) => r.json()).then((d) => d.ok && setNextMatch(d.partido));
+    fetch('/api/jugadores/destacados').then((r) => r.json()).then((d) => {
+      if (d.ok) setFeatured(d.jugadores.map((j) => ({ ...j, foto: j.fotoPath })));
+    });
+    fetch('/api/noticias').then((r) => r.json()).then((d) => {
+      if (d.ok) setNews(d.noticias.map((n) => ({ ...n, imagen: n.imagenPath })));
+    });
+    fetch('/api/sponsors').then((r) => r.json()).then((d) => {
+      if (d.ok) setSponsors(d.sponsors.map((s) => ({ name: s.nombre, path: s.logoPath })).filter((s) => s.path));
+    });
+  }, []);
+
   return (
     <main className="home">
       {/* HERO */}
@@ -30,31 +42,33 @@ export default function Home() {
       </section>
 
       {/* PRÓXIMO PARTIDO */}
-      <section className="page section">
-        <div className="match-feature">
-          <div className="match-feature-head">
-            <p className="eyebrow">Próximo partido</p>
-            <span className="muted">{nextMatch.competicion}</span>
+      {nextMatch && (
+        <section className="page section">
+          <div className="match-feature">
+            <div className="match-feature-head">
+              <p className="eyebrow">Próximo partido</p>
+              <span className="muted">{nextMatch.competicion}</span>
+            </div>
+            <div className="match-feature-body">
+              <div className="match-team">
+                <img src="/brand/logo-shield.png" alt={nextMatch.equipoLocal} />
+                <strong>{nextMatch.equipoLocal}</strong>
+              </div>
+              <div className="match-vs">
+                <span>VS</span>
+                <small>{new Date(nextMatch.fecha).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</small>
+              </div>
+              <div className="match-team">
+                <div className="match-team-badge">{nextMatch.equipoVisita.slice(0, 3).toUpperCase()}</div>
+                <strong>{nextMatch.equipoVisita}</strong>
+              </div>
+            </div>
+            <Countdown targetISO={nextMatch.fecha} />
+            <p className="match-feature-foot"><MapPin size={14} /> {nextMatch.estadio}</p>
+            <Link className="btn ghost" to="/calendario">Ver calendario</Link>
           </div>
-          <div className="match-feature-body">
-            <div className="match-team">
-              <img src={nextMatch.local.logo} alt={nextMatch.local.nombre} />
-              <strong>{nextMatch.local.nombre}</strong>
-            </div>
-            <div className="match-vs">
-              <span>VS</span>
-              <small>{nextMatch.fechaLabel}</small>
-            </div>
-            <div className="match-team">
-              <div className="match-team-badge">{nextMatch.visita.code}</div>
-              <strong>{nextMatch.visita.nombre}</strong>
-            </div>
-          </div>
-          <Countdown targetISO={nextMatch.fechaISO} />
-          <p className="match-feature-foot"><MapPin size={14} /> {nextMatch.estadio}</p>
-          <Link className="btn ghost" to="/calendario">Ver calendario</Link>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* LA VITRINA */}
       <section className="page section">
@@ -63,28 +77,34 @@ export default function Home() {
       </section>
 
       {/* PLANTILLA DESTACADA */}
-      <section className="page section">
-        <SectionHeader eyebrow="El Plantel" title="Figuras del Team" />
-        <div className="player-grid">
-          {featured.map((p) => <PlayerCard key={p.slug} p={p} />)}
-        </div>
-        <div className="section-cta"><Link className="btn ghost" to="/plantilla">Plantilla completa <ArrowRight size={16} /></Link></div>
-      </section>
+      {featured.length > 0 && (
+        <section className="page section">
+          <SectionHeader eyebrow="El Plantel" title="Figuras del Team" />
+          <div className="player-grid">
+            {featured.map((p) => <PlayerCard key={p.id} p={p} />)}
+          </div>
+          <div className="section-cta"><Link className="btn ghost" to="/plantilla">Plantilla completa <ArrowRight size={16} /></Link></div>
+        </section>
+      )}
 
       {/* NOTICIAS */}
-      <section className="page section">
-        <SectionHeader eyebrow="Últimas noticias" title="Lo que pasa en el Team" />
-        <div className="news-grid">
-          {news.slice(0, 3).map((n) => <NewsCard key={n.slug} n={n} />)}
-        </div>
-        <div className="section-cta"><Link className="btn ghost" to="/noticias">Todas las noticias <ArrowRight size={16} /></Link></div>
-      </section>
+      {news.length > 0 && (
+        <section className="page section">
+          <SectionHeader eyebrow="Últimas noticias" title="Lo que pasa en el Team" />
+          <div className="news-grid">
+            {news.slice(0, 3).map((n) => <NewsCard key={n.id} n={n} />)}
+          </div>
+          <div className="section-cta"><Link className="btn ghost" to="/noticias">Todas las noticias <ArrowRight size={16} /></Link></div>
+        </section>
+      )}
 
       {/* SPONSORS */}
-      <section className="page section">
-        <SectionHeader eyebrow="Patrocinadores oficiales" title="Aliados del Team" center />
-        <SponsorWall sponsors={sponsors} />
-      </section>
+      {sponsors.length > 0 && (
+        <section className="page section">
+          <SectionHeader eyebrow="Patrocinadores oficiales" title="Aliados del Team" center />
+          <SponsorWall sponsors={sponsors} />
+        </section>
+      )}
     </main>
   );
 }
