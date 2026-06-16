@@ -38,6 +38,14 @@ export interface CroquisDot {
   discapacitado: boolean;
 }
 
+export interface FlowArrow {
+  id: string;
+  plan: string;
+  x: number;
+  y: number;
+  r: number;
+}
+
 export interface AddEspacioInput {
   piso: number;
   zona: string;
@@ -69,9 +77,11 @@ export interface ParqueoRepository {
   setReservationEmail(id: string, email: string): Promise<void>;
   logEvento(type: string, input: LogEventoInput): Promise<void>;
   croquisDots(): Promise<CroquisDot[]>;
+  flowArrows(): Promise<FlowArrow[]>;
   addEspacio(input: AddEspacioInput): Promise<Space>;
   updateEspacio(id: string, input: UpdateEspacioInput): Promise<Space>;
   moveEspacio(id: string, x: number, y: number): Promise<void>;
+  moveFlowArrow(id: string, x: number, y: number): Promise<void>;
   removeEspacio(id: string): Promise<void>;
   clearEspacios(): Promise<void>;
 }

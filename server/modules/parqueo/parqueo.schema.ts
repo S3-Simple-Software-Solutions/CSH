@@ -1,4 +1,5 @@
 import { pool } from '../../core/db';
+import { DEFAULT_FLOW_ARROWS } from './parqueo.flow';
 
 // Modelo de croquis basado en PUNTOS (dots): cada espacio de parqueo es un punto
 // (pos_x, pos_y en fracciones 0..1 sobre la imagen del plano) que el administrador
@@ -60,5 +61,18 @@ export async function ensureParqueoSchema(): Promise<void> {
       notes text,
       created_at timestamptz not null default now()
     );
+    create table if not exists parking_flow_arrows (
+      id text primary key,
+      plan text not null,
+      pos_x double precision not null,
+      pos_y double precision not null,
+      rotation double precision not null default 0
+    );
   `);
+  for (const arrow of DEFAULT_FLOW_ARROWS) {
+    await pool.query(
+      'insert into parking_flow_arrows (id, plan, pos_x, pos_y, rotation) values ($1,$2,$3,$4,$5) on conflict (id) do nothing',
+      [arrow.id, arrow.plan, arrow.x, arrow.y, arrow.r],
+    );
+  }
 }

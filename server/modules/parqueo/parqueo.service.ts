@@ -66,11 +66,17 @@ function validSpotName(value: unknown): string | null {
 
 export async function getCroquis() {
   const repo = getParqueoRepository();
-  const dots = await repo.croquisDots();
+  const [dots, arrows] = await Promise.all([repo.croquisDots(), repo.flowArrows()]);
   const floors = floorPlanMeta().map((m) => ({
     piso: m.piso,
     plan: m.plan,
     aspect: m.aspect,
+    arrows: arrows.filter((a) => a.plan === m.plan).map((a) => ({
+      id: a.id,
+      x: a.x,
+      y: a.y,
+      r: a.r,
+    })),
     stalls: dots.filter((d) => d.piso === m.piso).map((d) => ({
       id: d.id,
       x: d.x,
@@ -101,6 +107,13 @@ export async function moveEspacio(id: string, body: { x: unknown; y: unknown }, 
   requireParkingAdmin(actor);
   const { x, y } = validPoint(body.x, body.y);
   await getParqueoRepository().moveEspacio(id, x, y);
+  return { id, x, y };
+}
+
+export async function moveFlecha(id: string, body: { x: unknown; y: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const { x, y } = validPoint(body.x, body.y);
+  await getParqueoRepository().moveFlowArrow(id, x, y);
   return { id, x, y };
 }
 

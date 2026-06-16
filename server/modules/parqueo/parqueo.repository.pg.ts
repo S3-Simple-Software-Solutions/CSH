@@ -11,7 +11,7 @@ import {
   Reservation,
   Space,
 } from './parqueo.types';
-import { AddEspacioInput, CroquisDot, ListEventosOptions, LogEventoInput, ParqueoRepository, UpdateEspacioInput } from './parqueo.repository';
+import { AddEspacioInput, CroquisDot, FlowArrow, ListEventosOptions, LogEventoInput, ParqueoRepository, UpdateEspacioInput } from './parqueo.repository';
 
 const activeWhere = "status in ('reservado','ocupado')";
 const activeReservationWhere = "r.status in ('reservado','ocupado')";
@@ -360,6 +360,17 @@ export class PgParqueoRepository implements ParqueoRepository {
     }));
   }
 
+  async flowArrows(): Promise<FlowArrow[]> {
+    const rows = await query<any>('select id, plan, pos_x, pos_y, rotation from parking_flow_arrows order by plan, id');
+    return rows.map((r) => ({
+      id: r.id,
+      plan: r.plan,
+      x: Number(r.pos_x),
+      y: Number(r.pos_y),
+      r: Number(r.rotation),
+    }));
+  }
+
   async addEspacio({ piso, zona, x, y }: AddEspacioInput): Promise<Space> {
     const client = await pool.connect();
     try {
@@ -407,6 +418,11 @@ export class PgParqueoRepository implements ParqueoRepository {
   async moveEspacio(id: string, x: number, y: number): Promise<void> {
     const res = await pool.query('update parking_spaces set pos_x = $1, pos_y = $2, utilizado = true where id = $3', [x, y, id]);
     if (!res.rowCount) throw new ApiError(404, 'El espacio no existe');
+  }
+
+  async moveFlowArrow(id: string, x: number, y: number): Promise<void> {
+    const res = await pool.query('update parking_flow_arrows set pos_x = $1, pos_y = $2 where id = $3', [x, y, id]);
+    if (!res.rowCount) throw new ApiError(404, 'La flecha no existe');
   }
 
   async removeEspacio(id: string): Promise<void> {
