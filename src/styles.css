@@ -427,27 +427,25 @@ tr:last-child td { border-bottom: 0; }
 .plano { position: relative; width: 100%; max-width: 1180px; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .plano img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
 .plano-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
-/* Cada espacio es un punto (dot) ubicado por su centro sobre el plano. */
-.pdot {
+/* Cada plaza se centra en el punto marcado y rellena visualmente el cajón. */
+.pspot {
   position: absolute;
-  width: 16px;
-  height: 16px;
   margin: 0;
   padding: 0;
   transform: translate(-50%, -50%);
-  border-radius: 50%;
-  border: 2px solid rgba(10, 9, 8, .65);
-  background: var(--green);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+  border-radius: 4px;
+  border: 2px solid rgba(7, 34, 20, .85);
+  background: rgba(29, 168, 91, .82);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22), 0 1px 3px rgba(0, 0, 0, .28);
   cursor: pointer;
-  transition: transform .1s, box-shadow .1s;
+  transition: transform .1s, box-shadow .1s, background .1s;
 }
-.pdot.reservado { background: var(--orange); }
-.pdot.ocupado { background: var(--red); }
-.pdot.vencido { background: #7f1d1d; }
-.pdot.mine { border-color: var(--gold); }
-.pdot:hover { transform: translate(-50%, -50%) scale(1.25); box-shadow: 0 0 0 3px rgba(201, 169, 97, .4); }
-html[data-theme='light'] .pdot { border-color: rgba(34, 28, 21, .55); }
+.pspot.reservado { background: rgba(245, 158, 11, .82); border-color: rgba(87, 52, 0, .86); }
+.pspot.ocupado { background: rgba(214, 40, 40, .82); border-color: rgba(92, 15, 15, .88); }
+.pspot.vencido { background: rgba(127, 29, 29, .88); }
+.pspot.mine { border-color: var(--gold); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .24), 0 0 0 2px rgba(201, 169, 97, .5), 0 1px 3px rgba(0, 0, 0, .3); }
+.pspot:hover { transform: translate(-50%, -50%) scale(1.08); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .28), 0 0 0 3px rgba(201, 169, 97, .4), 0 2px 4px rgba(0, 0, 0, .3); }
+html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .plano-loading { margin-top: 18px; padding: 40px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; }
 
 /* ───────── Editor del croquis (marcar espacios con clic) ───────── */
@@ -457,9 +455,9 @@ html[data-theme='light'] .pdot { border-color: rgba(34, 28, 21, .55); }
 .editor-bar .hint { color: var(--muted); font-size: 13px; max-width: 60ch; }
 .editor-actions { display: flex; gap: 8px; }
 .plano-overlay.editing { cursor: crosshair; }
-.plano-overlay.editing .pdot.editable { background: var(--gold); border-color: rgba(10, 9, 8, .7); cursor: grab; }
-.plano-overlay.editing .pdot.editable:active { cursor: grabbing; }
-.plano-overlay.editing .pdot.editable.selected { box-shadow: 0 0 0 4px rgba(201, 169, 97, .5); transform: translate(-50%, -50%) scale(1.2); }
+.plano-overlay.editing .pspot.editable { background: rgba(29, 168, 91, .76); border-color: rgba(10, 9, 8, .74); cursor: grab; }
+.plano-overlay.editing .pspot.editable:active { cursor: grabbing; }
+.plano-overlay.editing .pspot.editable.selected { border-color: var(--gold); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .32), 0 0 0 4px rgba(201, 169, 97, .52); transform: translate(-50%, -50%) scale(1.08); }
 .editor-props { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
 .editor-props b { font-family: monospace; color: var(--paper); }
 .btn.ghost.danger { color: var(--red); border-color: rgba(214, 40, 40, .5); }

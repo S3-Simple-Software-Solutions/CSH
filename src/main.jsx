@@ -140,6 +140,45 @@ function ExpirationBar({ start, end }) {
   return <span className="exp"><i className={cls} style={{ width: `${pct * 100}%` }} /></span>;
 }
 
+const STALL_PIXEL_RATIO = 2.15;
+const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+
+function buildSpotGeometry(stalls, aspect = 1.5) {
+  const byId = new Map();
+  const visible = stalls.filter((s) => s.utilizado !== false);
+  visible.forEach((st) => {
+    const sameRow = visible
+      .filter((o) => o.id !== st.id && Math.abs(o.y - st.y) < 0.018)
+      .map((o) => Math.abs(o.x - st.x))
+      .filter((d) => d > 0.004)
+      .sort((a, b) => a - b);
+    const sameCol = visible
+      .filter((o) => o.id !== st.id && Math.abs(o.x - st.x) < 0.024)
+      .map((o) => Math.abs(o.y - st.y))
+      .filter((d) => d > 0.004)
+      .sort((a, b) => a - b);
+    const rowPitch = sameRow[0] || Infinity;
+    const colPitch = sameCol[0] || Infinity;
+    const vertical = rowPitch < colPitch || (rowPitch < Infinity && colPitch === Infinity);
+    let w;
+    let h;
+    if (vertical) {
+      w = clamp((Number.isFinite(rowPitch) ? rowPitch : 0.016) * 0.84, 0.011, 0.026);
+      h = clamp(w * aspect * STALL_PIXEL_RATIO, 0.036, 0.07);
+    } else {
+      h = clamp((Number.isFinite(colPitch) ? colPitch : 0.038) * 0.82, 0.026, 0.046);
+      w = clamp((h * STALL_PIXEL_RATIO) / aspect, 0.038, 0.066);
+    }
+    byId.set(st.id, { w, h });
+  });
+  return byId;
+}
+
+function spotStyle(st, geometry) {
+  const g = geometry.get(st.id) || { w: 0.05, h: 0.034 };
+  return { left: `${st.x * 100}%`, top: `${st.y * 100}%`, width: `${g.w * 100}%`, height: `${g.h * 100}%` };
+}
+
 function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = [], me }) {
   const [floors, setFloors] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -148,13 +187,15 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
   const fl = floors?.find((f) => f.piso === floor);
   const spaceById = useMemo(() => new Map(spaces.map((s) => [s.id, s])), [spaces]);
   const resById = useMemo(() => new Map(reservations.map((r) => [r.id, r])), [reservations]);
+  const visibleStalls = useMemo(() => (fl?.stalls || []).filter((st) => st.utilizado !== false), [fl]);
+  const spotGeometry = useMemo(() => buildSpotGeometry(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
   if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
   return (
     <div className="plano-wrap">
       <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
         <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
         <div className="plano-overlay">
-          {fl.stalls.filter((st) => st.utilizado !== false).map((st) => {
+          {visibleStalls.map((st) => {
             const space = spaceById.get(st.id);
             const estado = space ? space.estado : 'disponible';
             const reservation = space ? resById.get(space.reservaId) : null;
@@ -168,8 +209,8 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
               <button
                 key={st.id}
                 type="button"
-                className={`pdot ${estado}${expired ? ' vencido' : ''}${mine ? ' mine' : ''}`}
-                style={{ left: `${st.x * 100}%`, top: `${st.y * 100}%` }}
+                className={`pspot ${estado}${expired ? ' vencido' : ''}${mine ? ' mine' : ''}`}
+                style={spotStyle(st, spotGeometry)}
                 title={label}
                 onClick={() => space && onSpace?.(space, reservation)}
               />
@@ -181,8 +222,8 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
   );
 }
 
-// Editor visual del croquis: permite mover y redimensionar las plazas sobre el
-// plano y persistir la geometría. Solo se monta para administradores de parqueo.
+// Editor visual del croquis: permite marcar y mover plazas sobre el plano.
+// Solo se monta para administradores de parqueo.
 function PlanoEditor({ floor, onClose, onSaved }) {
   const [floors, setFloors] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -196,6 +237,8 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   useEffect(() => { reload(); }, []);
 
   const fl = floors?.find((f) => f.piso === floor);
+  const visibleStalls = useMemo(() => (fl?.stalls || []).filter((st) => st.utilizado !== false), [fl]);
+  const spotGeometry = useMemo(() => buildSpotGeometry(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
 
   function frac(e) {
     const r = overlayRef.current.getBoundingClientRect();
@@ -273,12 +316,12 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   }
 
   if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
-  const count = fl.stalls.length;
+  const count = visibleStalls.length;
 
   return (
     <div className="plano-editor">
       <div className="editor-bar">
-        <span className="hint">Hacé clic en el plano para marcar un espacio (aparece un punto). Arrastrá un punto para moverlo; seleccionalo para borrarlo.</span>
+        <span className="hint">Hacé clic en el plano para marcar una plaza. Arrastrá el cajón relleno para moverlo; seleccionalo para borrarlo.</span>
         <div className="editor-actions">
           <button className="btn ghost danger" onClick={clearAll} disabled={busy}>Vaciar plano</button>
           <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
@@ -289,12 +332,12 @@ function PlanoEditor({ floor, onClose, onSaved }) {
         <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
           <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
           <div ref={overlayRef} className="plano-overlay editing" onClick={addDot}>
-            {fl.stalls.filter((st) => st.utilizado !== false).map((st) => (
+            {visibleStalls.map((st) => (
               <button
                 key={st.id}
                 type="button"
-                className={`pdot editable${selected === st.id ? ' selected' : ''}`}
-                style={{ left: `${st.x * 100}%`, top: `${st.y * 100}%` }}
+                className={`pspot editable${selected === st.id ? ' selected' : ''}`}
+                style={spotStyle(st, spotGeometry)}
                 title={st.id}
                 onPointerDown={(e) => startDrag(e, st)}
                 onClick={(e) => e.stopPropagation()}
