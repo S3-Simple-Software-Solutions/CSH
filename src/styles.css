@@ -427,9 +427,42 @@ tr:last-child td { border-bottom: 0; }
 .plano { position: relative; width: 100%; max-width: 1180px; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .plano img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
 .plano-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+.flow-arrow {
+  position: absolute;
+  z-index: 1;
+  width: 3.2%;
+  aspect-ratio: 3 / 1;
+  transform: translate(-50%, -50%) rotate(var(--rot));
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .55));
+}
+.flow-arrow::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 36%;
+  width: 72%;
+  height: 28%;
+  border-radius: 999px;
+  background: rgba(255, 205, 64, .9);
+  box-shadow: inset 0 0 0 1px rgba(43, 30, 0, .55);
+}
+.flow-arrow::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 48%;
+  height: 78%;
+  transform: translateY(-50%);
+  background: rgba(255, 205, 64, .9);
+  clip-path: polygon(0 0, 100% 50%, 0 100%, 17% 50%);
+  box-shadow: inset 0 0 0 1px rgba(43, 30, 0, .55);
+}
 /* Cada plaza se centra en el punto marcado y rellena visualmente el cajón. */
 .pspot {
   position: absolute;
+  z-index: 2;
   margin: 0;
   padding: 0;
   transform: translate(-50%, -50%);
