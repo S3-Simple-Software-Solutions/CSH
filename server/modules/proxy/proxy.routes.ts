@@ -25,6 +25,7 @@ export function registerProxy(app: Express): void {
     app.use('/assets', express.static(path.join(DIST_DIR, 'assets'), { maxAge: '1y', immutable: true }));
     app.get('/parqueo', (_req, res) => res.sendFile(path.join(DIST_DIR, 'index.html')));
     app.get('/cuponera', (_req, res) => res.sendFile(path.join(DIST_DIR, 'index.html')));
+    app.get(/^\/entradas(?:\/.*)?$/, (_req, res) => res.sendFile(path.join(DIST_DIR, 'index.html')));
     app.get(/^\/admin(?:\/.*)?$/, (_req, res) => res.sendFile(path.join(DIST_DIR, 'index.html')));
   }
 

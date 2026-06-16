@@ -13,6 +13,10 @@ parqueoRouter.get('/api/parqueo/publico/estado', async (_req, res, next) => {
   }
 });
 
+parqueoRouter.get('/api/parqueo/croquis', (_req, res) => {
+  res.json({ ok: true, ...parqueo.getCroquis() });
+});
+
 parqueoRouter.post('/api/parqueo/publico/consulta', async (req, res, next) => {
   try {
     res.json({ ok: true, info: await parqueo.consultaPublica(req.body.placa) });

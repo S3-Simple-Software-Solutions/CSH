@@ -22,6 +22,7 @@ authRouter.get('/api/session', (req, res) => {
           status: user.status,
           parkingRole: user.parkingRole,
           couponRole: user.couponRole,
+          eventsRole: user.eventsRole,
           sponsor: user.sponsor,
         }
       : null,
@@ -50,7 +51,7 @@ authRouter.post('/admin/sign-in', (req, res) => {
     cookieAttrs(req, ADMIN_COOKIE, '', 0, '/admin'),
     cookieAttrs(req, ADMIN_COOKIE, makeAdminToken(user), ADMIN_SESSION_HOURS * 3600, '/'),
   ]);
-  res.json({ ok: true, user: { id: user.id, name: user.name, role: user.role, parkingRole: user.parkingRole, couponRole: user.couponRole, sponsor: user.sponsor } });
+  res.json({ ok: true, user: { id: user.id, name: user.name, role: user.role, parkingRole: user.parkingRole, couponRole: user.couponRole, eventsRole: user.eventsRole, sponsor: user.sponsor } });
 });
 
 authRouter.post('/admin/logout', (req, res) => {

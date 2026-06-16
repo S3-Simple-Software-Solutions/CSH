@@ -3,6 +3,7 @@ import { errorHandler } from './core/middleware';
 import { authRouter } from './modules/auth/auth.routes';
 import { parqueoRouter } from './modules/parqueo/parqueo.routes';
 import { cuponeraRouter } from './modules/cuponera/cuponera.routes';
+import { entradasRouter } from './modules/entradas/entradas.routes';
 import { usuariosRouter } from './modules/usuarios/usuarios.routes';
 import { webRouter } from './modules/web/web.routes';
 import { registerProxy } from './modules/proxy/proxy.routes';
@@ -17,6 +18,7 @@ export function createApp() {
   app.use(authRouter);
   app.use(parqueoRouter);
   app.use(cuponeraRouter);
+  app.use(entradasRouter);
   app.use(usuariosRouter);
   app.use(webRouter);
 

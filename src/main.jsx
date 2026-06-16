@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BadgePercent, Car, Clock, Globe, LogOut, Mail, Moon, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Truck, Users, UtensilsCrossed } from 'lucide-react';
+import { BadgePercent, CalendarDays, Car, Check, Clock, Globe, LogOut, Mail, Moon, Plus, QrCode, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Truck, Users, UtensilsCrossed } from 'lucide-react';
+import QRCode from 'qrcode';
+import sotano1Img from './croquis/sotano-1.png';
+import sotano2Img from './croquis/sotano-2.png';
 import './styles.css';
+
+const PLAN_IMG = { 'sotano-1': sotano1Img, 'sotano-2': sotano2Img };
 
 const money = (value) => `₡${Number(value || 0).toLocaleString('es-CR')}`;
 const pad = (n) => String(n).padStart(2, '0');
@@ -54,6 +59,7 @@ function Header({ user, onLogout }) {
         <span>Herediano</span>
       </a>
       <nav>
+        <a href="/entradas">Entradas</a>
         <a href="/cuponera">Cuponera</a>
         <a href="/parqueo">Parqueo</a>
         <a href="/admin">Admin</a>
@@ -134,6 +140,51 @@ function ExpirationBar({ start, end }) {
   return <span className="exp"><i className={cls} style={{ width: `${pct * 100}%` }} /></span>;
 }
 
+function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = [], me }) {
+  const [floors, setFloors] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { api('/api/parqueo/croquis').then((d) => d.ok && setFloors(d.floors)); }, []);
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 5000); return () => clearInterval(id); }, []);
+  const fl = floors?.find((f) => f.piso === floor);
+  const spaceById = useMemo(() => new Map(spaces.map((s) => [s.id, s])), [spaces]);
+  const resById = useMemo(() => new Map(reservations.map((r) => [r.id, r])), [reservations]);
+  if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
+  return (
+    <div className="plano-wrap">
+      <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
+        <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
+        <svg className="plano-overlay" viewBox="0 0 1 1" preserveAspectRatio="none">
+          {fl.stalls.map((st) => {
+            const space = spaceById.get(st.id);
+            const estado = space ? space.estado : 'disponible';
+            const reservation = space ? resById.get(space.reservaId) : null;
+            const session = reservation || space?.reserva;
+            const expired = session && new Date(session.fin).getTime() <= now;
+            const mine = reservation && reservation.userId === me?.id;
+            const label = admin && reservation
+              ? `${st.id} · ${reservation.placa}${expired ? ' · vencido' : ''}`
+              : `${st.id} · ${expired ? 'tiempo vencido' : estado}`;
+            return (
+              <rect
+                key={st.id}
+                className={`pstall ${estado}${expired ? ' vencido' : ''}${mine ? ' mine' : ''}`}
+                x={st.x}
+                y={st.y}
+                width={st.w}
+                height={st.h}
+                vectorEffect="non-scaling-stroke"
+                onClick={() => space && onSpace?.(space, reservation)}
+              >
+                <title>{label}</title>
+              </rect>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function ParkingGrid({ spaces, floor, onSpace, admin = false, reservations = [], me }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -169,7 +220,7 @@ function ParkingGrid({ spaces, floor, onSpace, admin = false, reservations = [],
   );
   const lane = (dir) => (
     <div className={`lane ${dir}`} aria-hidden>
-      <span>{dir === 'left' ? '‹ ‹ ‹' : '› › ›'}</span>
+      <span>{dir === 'left' ? '←' : '↓'}</span>
     </div>
   );
 
@@ -269,8 +320,8 @@ function PublicParking() {
           <ReservationResult lookup={lookup} onResend={resend} onPay={() => setPaying(true)} />
         </section>
 
-        <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en piso ${floor}`} />
-        <ParkingGrid spaces={spaces} floor={floor} onSpace={(space) => space.estado === 'disponible' && setSelected(space)} />
+        <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`} />
+        <PlanoCroquis spaces={spaces} floor={floor} onSpace={(space) => space.estado === 'disponible' && setSelected(space)} />
       </main>
       {selected && <TakeSpaceModal space={selected} onClose={() => setSelected(null)} onDone={(m) => { setModal(m); setSelected(null); refresh(); }} />}
       {paying && lookup && <PaymentModal info={lookup} onClose={() => setPaying(false)} onDone={(receipt) => { setLookup({ receipt }); setPaying(false); refresh(); }} />}
@@ -316,7 +367,7 @@ function Toolbar({ floor, setFloor, stats }) {
   return (
     <div className="toolbar">
       <div className="tabs">
-        {[1, 2].map((p) => <button key={p} className={floor === p ? 'active' : ''} onClick={() => setFloor(p)}>Piso {p}</button>)}
+        {[1, 2].map((p) => <button key={p} className={floor === p ? 'active' : ''} onClick={() => setFloor(p)}>Sótano -{p}</button>)}
       </div>
       <div className="legend">
         <span><i className="green" />Disponible</span>
@@ -439,6 +490,7 @@ function AdminApp() {
         <a className="side-brand" onClick={() => navigate('/admin')}><img src="/admin/assets/logo-shield.png" alt="" /><b>Herediano</b><span>Admin</span></a>
         <button className={route === '/admin' ? 'active' : ''} onClick={() => navigate('/admin')}><Shield size={17} />Resumen</button>
         <button className={route === '/admin/parqueo' ? 'active' : ''} onClick={() => navigate('/admin/parqueo')}><Car size={17} />Gestion de parqueo</button>
+        {user.eventsRole && user.eventsRole !== 'ninguno' && <button className={route === '/admin/entradas' ? 'active' : ''} onClick={() => navigate('/admin/entradas')}><CalendarDays size={17} />Gestion de entradas</button>}
         <button className={route === '/admin/cuponera' ? 'active' : ''} onClick={() => navigate('/admin/cuponera')}><Ticket size={17} />Cuponera</button>
         <button className={route === '/admin/usuarios' ? 'active' : ''} onClick={() => navigate('/admin/usuarios')}><Users size={17} />Gestion de usuarios</button>
         <button className={route === '/admin/web' ? 'active' : ''} onClick={() => navigate('/admin/web')}><Globe size={17} />Gestion de la pagina web</button>
@@ -449,7 +501,7 @@ function AdminApp() {
       </aside>
       <section className="admin-main">
         <Header user={user} onLogout={logout} />
-        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/web' ? <AdminWeb /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
+        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/web' ? <AdminWeb /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
   );
@@ -486,6 +538,7 @@ function AdminHome({ user, navigate }) {
       <p className="sub">Sesion activa de {user.name}. Selecciona un modulo para operar.</p>
       <div className="module-grid">
         <button onClick={() => navigate('/admin/parqueo')}><Car />Gestion de parqueo</button>
+        {user.eventsRole && user.eventsRole !== 'ninguno' && <button onClick={() => navigate('/admin/entradas')}><CalendarDays />Gestion de entradas</button>}
         <button onClick={() => navigate('/admin/cuponera')}><BadgePercent />Cuponera</button>
         <button onClick={() => navigate('/admin/usuarios')}><Users />Gestion de usuarios</button>
         <button onClick={() => navigate('/admin/web')}><Globe />Gestion de la pagina web</button>
@@ -652,8 +705,8 @@ function AdminParking({ user }) {
   return (
     <main className="page">
       <p className="eyebrow">Zonas y reservas</p><h1>Gestion de parqueo</h1>
-      <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en piso ${floor}`} />
-      <ParkingGrid spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin onSpace={(space, reservation) => setModal({ space, reservation })} />
+      <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`} />
+      <PlanoCroquis spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin onSpace={(space, reservation) => setModal({ space, reservation })} />
       <section className="events"><h2>Log de eventos</h2><div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Tipo</th><th>Espacio</th><th>Placa</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>{events.map((e) => <tr key={e.id}><td>{fmtFullDate(e.timestamp)}</td><td>{e.tipo}</td><td>{e.espacioId}</td><td>{e.placa}</td><td>{e.userName}</td><td>{e.notas}</td></tr>)}</tbody></table></div></section>
       {modal && <AdminSpaceModal modal={modal} user={user} onClose={() => setModal(null)} afterAction={afterAction} />}
     </main>
@@ -725,9 +778,397 @@ function MessageModal({ title, text, onClose }) {
   return <Modal title={title} onClose={onClose}><p>{text}</p><button className="btn" onClick={onClose}>Listo</button></Modal>;
 }
 
+const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const mesCorto = (iso) => MESES[new Date(iso).getMonth()];
+
+function QRImage({ data, size = 140 }) {
+  const [src, setSrc] = useState('');
+  useEffect(() => {
+    let alive = true;
+    QRCode.toDataURL(data, { width: size, margin: 1, errorCorrectionLevel: 'M' }).then((url) => { if (alive) setSrc(url); }).catch(() => {});
+    return () => { alive = false; };
+  }, [data, size]);
+  return <img className="qr-img" src={src} width={size} height={size} alt="Codigo QR del boleto" />;
+}
+
+function PublicEntradas() {
+  const path = location.pathname;
+  const slug = path.startsWith('/entradas/') ? decodeURIComponent(path.slice(10).replace(/\/$/, '')) : '';
+  return slug ? <PublicEventDetail slug={slug} /> : <PublicEntradasList />;
+}
+
+function PublicEntradasList() {
+  const [eventos, setEventos] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { api('/api/entradas/publico/eventos').then((d) => { if (d.ok) setEventos(d.eventos); setLoaded(true); }); }, []);
+  return (
+    <>
+      <Header />
+      <main className="page">
+        <p className="eyebrow">Modulo de entradas</p>
+        <h1>Entradas para el Team</h1>
+        <p className="sub">Compra boletos para los proximos partidos. Recibis tu codigo QR al instante por correo.</p>
+        <section className="event-list">
+          {loaded && eventos.length === 0 && <div className="result empty">No hay eventos a la venta en este momento.</div>}
+          {eventos.map((ev) => (
+            <a key={ev.id} className="event-card" href={`/entradas/${ev.slug}`}>
+              <div className="event-card-date"><b>{new Date(ev.fecha).getDate()}</b><span>{mesCorto(ev.fecha)}</span></div>
+              <div className="event-card-body">
+                <h2>{ev.nombre}</h2>
+                <p>{ev.venue}</p>
+                <small>{fmtFullDate(ev.fecha)}</small>
+              </div>
+              <span className="event-card-cta">Comprar <Ticket size={16} /></span>
+            </a>
+          ))}
+        </section>
+        <BoletoLookup />
+      </main>
+    </>
+  );
+}
+
+function BoletoLookup() {
+  const [form, setForm] = useState({ email: '', codigo: '' });
+  const [info, setInfo] = useState(null);
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  async function consultar() {
+    setError(''); setMsg(''); setInfo(null);
+    const d = await api('/api/entradas/publico/consulta', { method: 'POST', body: JSON.stringify(form) });
+    if (!d.ok) return setError(d.error);
+    setInfo(d.info);
+  }
+  async function reenviar() {
+    setMsg(''); setError('');
+    const d = await api('/api/entradas/publico/reenviar', { method: 'POST', body: JSON.stringify({ codigo: form.codigo }) });
+    if (!d.ok) return setError(d.error);
+    setMsg(`Boletos reenviados a ${d.correo}.`);
+  }
+  return (
+    <section className="search-panel">
+      <div>
+        <h2>Consultar mi boleto</h2>
+        <p>Ingresa el codigo del boleto y el correo de compra para ver su estado o reenviarlo.</p>
+        <label>Codigo del boleto</label>
+        <input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} placeholder="ENT-XXXXXX" />
+        <label>Correo de compra</label>
+        <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+        <button className="btn" onClick={consultar}><Search size={16} />Consultar</button>
+        {error && <div className="error">{error}</div>}
+      </div>
+      <div className="result">
+        {!info ? <span className="muted">El estado de tu boleto aparece aqui.</span> : (
+          <>
+            <strong>Boleto {info.codigo}</strong>
+            <div className="facts single">
+              <div><span>Evento</span>{info.eventoNombre}</div>
+              <div><span>Sector</span>{info.tipoNombre}</div>
+              <div><span>Estado</span>{info.estado.toUpperCase()}</div>
+              {info.validadoAt && <div><span>Ingreso</span>{fmtFullDate(info.validadoAt)}</div>}
+            </div>
+            <button className="btn ghost" onClick={reenviar}><Mail size={16} />Reenviar al correo</button>
+            {msg && <p className="ok">{msg}</p>}
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PublicEventDetail({ slug }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [qty, setQty] = useState({});
+  const [checkout, setCheckout] = useState(false);
+  const [done, setDone] = useState(null);
+  useEffect(() => { api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}`).then((d) => (d.ok ? setData(d) : setError(d.error))); }, [slug]);
+  if (error) return (<><Header /><main className="page"><p className="eyebrow">Entradas</p><h1>Evento no disponible</h1><p className="sub">{error}</p><a className="btn ghost" href="/entradas">Volver a eventos</a></main></>);
+  if (!data) return (<><Header /><main className="page"><p>Cargando...</p></main></>);
+  const { evento, tipos } = data;
+  const setCantidad = (id, n, max) => setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(max, n)) }));
+  const lineas = tipos.filter((t) => qty[t.id] > 0).map((t) => ({ tipoId: t.id, cantidad: qty[t.id] }));
+  const total = tipos.reduce((s, t) => s + t.precioCrc * (qty[t.id] || 0), 0);
+  const count = lineas.reduce((s, l) => s + l.cantidad, 0);
+  return (
+    <>
+      <Header />
+      <main className="page">
+        <a className="back-link" href="/entradas">‹ Eventos</a>
+        <p className="eyebrow">{fmtFullDate(evento.fecha)} · {evento.venue}</p>
+        <h1>{evento.nombre}</h1>
+        <p className="sub">{evento.descripcion}</p>
+        <section className="sector-list">
+          {tipos.map((t) => (
+            <div key={t.id} className={`sector ${t.disponibles === 0 ? 'agotado' : ''}`}>
+              <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioCrc)}</span></div>
+              <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
+              <div className="stepper">
+                <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
+                <span>{qty[t.id] || 0}</span>
+                <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
+              </div>
+            </div>
+          ))}
+        </section>
+        <div className="checkout-bar">
+          <div><span>{count} boleto(s)</span><b>{money(total)}</b></div>
+          <button className="btn" disabled={count === 0} onClick={() => setCheckout(true)}>Continuar</button>
+        </div>
+      </main>
+      {checkout && <CheckoutModal slug={slug} lineas={lineas} total={total} evento={evento} onClose={() => setCheckout(false)} onDone={(res) => { setCheckout(false); setDone(res); }} />}
+      {done && <TicketsModal result={done} onClose={() => { setDone(null); location.reload(); }} />}
+    </>
+  );
+}
+
+function CheckoutModal({ slug, lineas, total, evento, onClose, onDone }) {
+  const [buyer, setBuyer] = useState({ nombre: '', email: '' });
+  const [pago, setPago] = useState({ name: '', cardNumber: '', exp: '', cvv: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const count = lineas.reduce((s, l) => s + l.cantidad, 0);
+  async function submit() {
+    setError(''); setLoading(true);
+    const body = { slug, lineas, comprador: buyer, pago: total > 0 ? pago : undefined };
+    const d = await api('/api/entradas/publico/comprar', { method: 'POST', body: JSON.stringify(body) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    onDone(d);
+  }
+  return (
+    <Modal title="Finalizar compra" onClose={onClose}>
+      <div className="pay-summary">{evento.nombre}<br />{count} boleto(s) · Total <b>{money(total)}</b></div>
+      <label>Nombre completo</label><input value={buyer.nombre} onChange={(e) => setBuyer({ ...buyer, nombre: e.target.value })} autoFocus />
+      <label>Correo (recibis el QR aqui)</label><input type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} />
+      {total > 0 && (
+        <>
+          <label>Nombre en la tarjeta</label><input value={pago.name} onChange={(e) => setPago({ ...pago, name: e.target.value })} />
+          <label>Numero de tarjeta</label><input inputMode="numeric" value={pago.cardNumber} onChange={(e) => setPago({ ...pago, cardNumber: e.target.value })} />
+          <div className="two"><div><label>Expira</label><input placeholder="MM/AA" value={pago.exp} onChange={(e) => setPago({ ...pago, exp: e.target.value.replace(/\D/g, '').slice(0, 4).replace(/^(\d{2})(\d)/, '$1/$2') })} /></div><div><label>CVV</label><input inputMode="numeric" value={pago.cvv} onChange={(e) => setPago({ ...pago, cvv: e.target.value })} /></div></div>
+        </>
+      )}
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit} disabled={loading}>{loading ? 'Procesando...' : `Pagar ${money(total)}`}</button>
+    </Modal>
+  );
+}
+
+function TicketsModal({ result, onClose }) {
+  return (
+    <Modal title="Compra exitosa" onClose={onClose}>
+      <p className="muted">{result.emailSent ? `Enviamos tus boletos a ${result.correo}.` : 'Compra registrada. No se pudo enviar el correo ahora, guarda estos codigos.'}</p>
+      <div className="tickets-grid">
+        {result.boletos.map((b) => (
+          <div key={b.codigo} className="ticket-qr">
+            <QRImage data={b.qrData} size={130} />
+            <b>{b.tipoNombre}</b>
+            <span>{b.codigo}</span>
+          </div>
+        ))}
+      </div>
+      <button className="btn" onClick={onClose}>Listo</button>
+    </Modal>
+  );
+}
+
+function AdminEntradas({ user }) {
+  const canManage = user.eventsRole === 'admin';
+  const canGate = user.eventsRole === 'admin' || user.eventsRole === 'operador';
+  const canSales = canManage || user.eventsRole === 'operador' || user.eventsRole === 'comercial';
+  const [tab, setTab] = useState(canManage ? 'eventos' : canGate ? 'puerta' : 'ventas');
+  return (
+    <main className="page">
+      <p className="eyebrow">Venta de boletos</p><h1>Gestion de entradas</h1>
+      <div className="tabs">
+        {canManage && <button className={tab === 'eventos' ? 'active' : ''} onClick={() => setTab('eventos')}>Eventos</button>}
+        {canSales && <button className={tab === 'ventas' ? 'active' : ''} onClick={() => setTab('ventas')}>Ventas</button>}
+        {canGate && <button className={tab === 'puerta' ? 'active' : ''} onClick={() => setTab('puerta')}><ScanLine size={15} />Puerta</button>}
+      </div>
+      {tab === 'eventos' && canManage && <AdminEventosTab />}
+      {tab === 'ventas' && canSales && <AdminVentasTab />}
+      {tab === 'puerta' && canGate && <AdminPuertaTab />}
+    </main>
+  );
+}
+
+function AdminEventosTab() {
+  const [eventos, setEventos] = useState([]);
+  const [modal, setModal] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const refresh = async () => { const d = await api('/admin/api/entradas/eventos'); if (d.ok) setEventos(d.eventos); };
+  useEffect(() => { refresh(); }, []);
+  async function setEstado(ev, estado) {
+    setMsg(null);
+    const d = await api(`/admin/api/entradas/eventos/${ev.evento.id}/estado`, { method: 'POST', body: JSON.stringify({ estado }) });
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setMsg({ type: 'ok', text: `${ev.evento.nombre}: ${estado}.` }); refresh();
+  }
+  return (
+    <>
+      <div className="actions left"><button className="btn" onClick={() => setModal({ type: 'evento' })}><Plus size={16} />Nuevo evento</button></div>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      <div className="table"><table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th><th>Vendidos</th><th>Ingresos</th><th></th></tr></thead><tbody>
+        {eventos.map((ev) => (
+          <tr key={ev.evento.id}>
+            <td>{ev.evento.nombre}</td>
+            <td>{fmtFullDate(ev.evento.fecha)}</td>
+            <td><span className="pill">{ev.evento.estado}</span></td>
+            <td>{ev.boletosVendidos}</td>
+            <td>{money(ev.ingresosCrc)}</td>
+            <td className="row-actions">
+              <button className="btn ghost" onClick={() => setModal({ type: 'tipos', evento: ev.evento })}>Sectores</button>
+              {ev.evento.estado === 'publicado'
+                ? <button className="btn ghost" onClick={() => setEstado(ev, 'finalizado')}>Cerrar</button>
+                : <button className="btn ghost" onClick={() => setEstado(ev, 'publicado')}>Publicar</button>}
+              <button className="btn ghost" onClick={() => setModal({ type: 'cortesia', evento: ev.evento, tipos: ev.tipos })}>Cortesia</button>
+            </td>
+          </tr>
+        ))}
+      </tbody></table></div>
+      {modal?.type === 'evento' && <EventFormModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); }} />}
+      {modal?.type === 'tipos' && <TiposModal evento={modal.evento} onClose={() => { setModal(null); refresh(); }} />}
+      {modal?.type === 'cortesia' && <CortesiaModal evento={modal.evento} tipos={modal.tipos} onClose={() => setModal(null)} />}
+    </>
+  );
+}
+
+function EventFormModal({ onClose, onDone }) {
+  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '' });
+  const [error, setError] = useState('');
+  async function submit() {
+    setError('');
+    const d = await api('/admin/api/entradas/eventos', { method: 'POST', body: JSON.stringify(form) });
+    if (!d.ok) return setError(d.error);
+    onDone();
+  }
+  return (
+    <Modal title="Nuevo evento" onClose={onClose}>
+      <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
+      <label>Lugar</label><input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} />
+      <label>Fecha y hora</label><input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+      <label>Descripcion</label><input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit}>Crear evento</button>
+    </Modal>
+  );
+}
+
+function TiposModal({ evento, onClose }) {
+  const [tipos, setTipos] = useState([]);
+  const [form, setForm] = useState({ nombre: '', precioCrc: '', stockTotal: '' });
+  const [error, setError] = useState('');
+  const refresh = async () => { const d = await api(`/admin/api/entradas/eventos/${evento.id}`); if (d.ok) setTipos(d.tipos); };
+  useEffect(() => { refresh(); }, []);
+  async function add() {
+    setError('');
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, { method: 'POST', body: JSON.stringify({ nombre: form.nombre, precioCrc: Number(form.precioCrc), stockTotal: Number(form.stockTotal) }) });
+    if (!d.ok) return setError(d.error);
+    setForm({ nombre: '', precioCrc: '', stockTotal: '' }); refresh();
+  }
+  async function toggle(t) {
+    const d = await api(`/admin/api/entradas/tipos/${t.id}`, { method: 'PUT', body: JSON.stringify({ nombre: t.nombre, precioCrc: t.precioCrc, stockTotal: t.stockTotal, estado: t.estado === 'activo' ? 'inactivo' : 'activo' }) });
+    if (d.ok) refresh(); else setError(d.error);
+  }
+  return (
+    <Modal title={`Sectores · ${evento.nombre}`} onClose={onClose}>
+      <div className="tipos-list">
+        {tipos.map((t) => (
+          <div key={t.id} className="tipo-row">
+            <div><b>{t.nombre}</b><span>{money(t.precioCrc)} · {t.stockVendido}/{t.stockTotal} · {t.estado}</span></div>
+            <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
+          </div>
+        ))}
+      </div>
+      <label>Nuevo sector</label>
+      <input placeholder="Nombre (ej. Sol Sur)" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+      <div className="two">
+        <div><label>Precio CRC</label><input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} /></div>
+        <div><label>Cupo</label><input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} /></div>
+      </div>
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={add}><Plus size={16} />Agregar sector</button>
+    </Modal>
+  );
+}
+
+function CortesiaModal({ evento, tipos, onClose }) {
+  const [form, setForm] = useState({ tipoId: tipos?.[0]?.id || '', nombre: '', email: '' });
+  const [msg, setMsg] = useState(null);
+  async function submit() {
+    setMsg(null);
+    const d = await api('/admin/api/entradas/cortesia', { method: 'POST', body: JSON.stringify({ eventoId: evento.id, ...form }) });
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setMsg({ type: 'ok', text: `Cortesia ${d.boleto.codigo} emitida${d.emailSent ? ' y enviada' : ''}.` });
+  }
+  return (
+    <Modal title="Emitir cortesia" onClose={onClose}>
+      <p className="muted">{evento.nombre}</p>
+      <label>Sector</label>
+      <select value={form.tipoId} onChange={(e) => setForm({ ...form, tipoId: e.target.value })}>{(tipos || []).map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}</select>
+      <label>Nombre del invitado</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+      <label>Correo</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      <button className="btn" onClick={submit}>Emitir cortesia gratis</button>
+    </Modal>
+  );
+}
+
+function AdminVentasTab() {
+  const [eventos, setEventos] = useState([]);
+  useEffect(() => { api('/admin/api/entradas/ventas').then((d) => d.ok && setEventos(d.eventos)); }, []);
+  const totalIngresos = eventos.reduce((s, e) => s + e.ingresosCrc, 0);
+  const totalVendidos = eventos.reduce((s, e) => s + e.boletosVendidos, 0);
+  const totalUsados = eventos.reduce((s, e) => s + e.boletosUsados, 0);
+  return (
+    <>
+      <section className="coupon-stats">
+        <div><span>Ingresos</span><b>{money(totalIngresos)}</b></div>
+        <div><span>Boletos vendidos</span><b>{totalVendidos}</b></div>
+        <div><span>Ingresos validados</span><b>{totalUsados}</b></div>
+      </section>
+      <div className="table"><table><thead><tr><th>Evento</th><th>Estado</th><th>Vendidos</th><th>Ingresados</th><th>Ingresos</th></tr></thead><tbody>
+        {eventos.map((e) => <tr key={e.evento.id}><td>{e.evento.nombre}</td><td><span className="pill">{e.evento.estado}</span></td><td>{e.boletosVendidos}</td><td>{e.boletosUsados}</td><td>{money(e.ingresosCrc)}</td></tr>)}
+      </tbody></table></div>
+    </>
+  );
+}
+
+function AdminPuertaTab() {
+  const [codigo, setCodigo] = useState('');
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  async function validar(e) {
+    if (e) e.preventDefault();
+    if (!codigo.trim()) return;
+    setLoading(true);
+    const d = await api('/admin/api/entradas/validar', { method: 'POST', body: JSON.stringify({ codigo: codigo.trim() }) });
+    setLoading(false);
+    setResult(d.ok ? { ok: true, boleto: d.boleto } : { ok: false, text: d.error });
+    setCodigo('');
+  }
+  return (
+    <section className="gate">
+      <p className="sub">Escanea o digita el codigo del boleto para registrar el ingreso.</p>
+      <form className="gate-input" onSubmit={validar}>
+        <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="ENT-XXXXXX o contenido del QR" autoFocus />
+        <button className="btn" disabled={loading}><ScanLine size={16} />Validar</button>
+      </form>
+      {result && (
+        <div className={`gate-result ${result.ok ? 'ok' : 'bad'}`}>
+          {result.ok
+            ? <><Check size={42} /><b>Ingreso autorizado</b><span>{result.boleto.tipoNombre} · {result.boleto.eventoNombre}</span><small>{result.boleto.codigo}</small></>
+            : <><QrCode size={42} /><b>{result.text}</b></>}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function App() {
   const path = location.pathname;
   if (path.startsWith('/admin')) return <AdminApp />;
+  if (path.startsWith('/entradas')) return <PublicEntradas />;
   if (path.startsWith('/cuponera')) return <PublicCoupons />;
   return <PublicParking />;
 }
