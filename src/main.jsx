@@ -36,11 +36,11 @@ const FLOW_ARROW_TYPES = [
 const FLOW_ARROW_TYPE_IDS = new Set(FLOW_ARROW_TYPES.map((type) => type.id));
 const FLOW_ARROW_LABELS = Object.fromEntries(FLOW_ARROW_TYPES.map((type) => [type.id, type.label]));
 const FLOW_ARROW_SIZE = {
-  straight: { w: 0.074, aspect: 4.1 },
-  'turn-right': { w: 0.078, aspect: 1 },
-  'split-up-right': { w: 0.082, aspect: 1 },
-  'split-left-right': { w: 0.086, aspect: 1.22 },
-  'u-turn-right': { w: 0.082, aspect: 1 },
+  straight: { w: 0.070, h: 0.020 },
+  'turn-right': { w: 0.050, h: 0.055 },
+  'split-up-right': { w: 0.052, h: 0.058 },
+  'split-left-right': { w: 0.060, h: 0.052 },
+  'u-turn-right': { w: 0.052, h: 0.060 },
 };
 const FLOW_ARROW_PATHS = {
   straight: ['M8 50 H88'],
@@ -82,7 +82,7 @@ function FlowArrowSvg({ id, kind, editable }) {
   const markerShadow = `${marker}-shadow`;
   const paths = FLOW_ARROW_PATHS[safeKind] || FLOW_ARROW_PATHS.straight;
   return (
-    <svg className="flow-arrow-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+    <svg className="flow-arrow-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
       <defs>
         <marker id={markerShadow} viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="5.4" markerHeight="5.4" orient="auto-start-reverse">
           <path className="flow-arrow-head-shadow" d="M0 0 L10 5 L0 10 Z" />
@@ -341,7 +341,7 @@ function flowArrowConnectorOffsetsPx(arrow, bounds) {
   const kind = flowArrowKind(arrow.kind);
   const size = flowArrowSize(kind);
   const width = bounds.width * size.w;
-  const height = width / size.aspect;
+  const height = bounds.height * size.h;
   const rotation = (Number(arrow.r || 0) * Math.PI) / 180;
   const cos = Math.cos(rotation);
   const sin = Math.sin(rotation);
@@ -394,7 +394,7 @@ function FlowArrows({ arrows, editable = false, selected = null, onPointerDown }
             key={arrow.id}
             type={editable ? 'button' : undefined}
             className={`flow-arrow kind-${kind}${editable ? ' editable' : ''}${selected === arrow.id ? ' selected' : ''}`}
-            style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, width: `${size.w * 100}%`, aspectRatio: String(size.aspect), '--rot': `${arrow.r}deg` }}
+            style={{ left: `${arrow.x * 100}%`, top: `${arrow.y * 100}%`, width: `${size.w * 100}%`, height: `${size.h * 100}%`, '--rot': `${arrow.r}deg` }}
             title={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
             aria-hidden={editable ? undefined : 'true'}
             aria-label={editable ? `Mover flecha: ${FLOW_ARROW_LABELS[kind]}` : undefined}
