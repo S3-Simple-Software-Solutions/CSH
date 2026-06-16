@@ -1,5 +1,9 @@
 cache/
 dist-server/
+.tmp-scrape/
+# Assets de marca generados en build (la fuente vive en public/brand, servida por Express).
+dist/brand/
+dist/favicon.png
 server.log
 *.log
 .env

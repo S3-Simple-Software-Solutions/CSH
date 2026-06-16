@@ -1,13 +1,12 @@
 import fs from 'fs';
 import { env } from './config/env';
-import { CACHE_DIR, DATA_DIR } from './config/constants';
+import { DATA_DIR } from './config/constants';
 import { createApp } from './app';
 import { ensureUsuariosSchema } from './modules/usuarios/usuarios.schema';
 import { ensureParqueoSchema } from './modules/parqueo/parqueo.schema';
 import { ensureEntradasSchema } from './modules/entradas/entradas.schema';
 
 async function bootstrap(): Promise<void> {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
   await ensureUsuariosSchema();

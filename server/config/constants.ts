@@ -4,20 +4,17 @@ import { env } from './env';
 // Paths are resolved against the project root (process.cwd()), not __dirname,
 // so they keep working after compiling server/ to dist-server/.
 export const ROOT_DIR = process.cwd();
-export const CACHE_DIR = path.join(ROOT_DIR, 'cache');
 export const DATA_DIR = path.join(ROOT_DIR, 'data');
 export const DIST_DIR = path.join(ROOT_DIR, 'dist');
+export const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 export const CUPONERA_FILE = path.join(DATA_DIR, 'cuponera.json');
 export const WEB_FILE = path.join(DATA_DIR, 'web.json');
 export const HERO_IMG_FILE = path.join(DATA_DIR, 'hero-bg.bin');
 
-export const ORIGIN = 'https://www.herediano.com';
-export const ADMIN_LOGO_PATH = '/admin/assets/logo-shield.png';
 export const SITE_LOGO_PATH = '/brand/logo-shield.png';
 export const COOKIE = 'hsid';
 export const ADMIN_COOKIE = 'csh_admin';
 export const TARIFA_HORA = 1000;
-export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36';
 
 export interface Sponsor {
   name: string;
