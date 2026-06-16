@@ -95,6 +95,9 @@ function FlowArrowSvg({ id, kind, editable }) {
           <path className="flow-arrow-head" d="M0 0 L10 5 L0 10 Z" />
         </marker>
       </defs>
+      <g className="flow-arrow-dots">
+        {paths.map((d) => <path key={`${d}-dots`} d={d} />)}
+      </g>
       <g className="flow-arrow-shadow">
         {paths.map((d) => <path key={`${d}-shadow`} d={d} />)}
       </g>

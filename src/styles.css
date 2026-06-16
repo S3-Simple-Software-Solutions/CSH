@@ -454,14 +454,24 @@ tr:last-child td { border-bottom: 0; }
   overflow: visible;
 }
 .flow-arrow-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.flow-arrow-dots path {
+  fill: none;
+  stroke: rgba(42, 42, 42, .36);
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 0 5.8;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, .55));
+}
 .flow-arrow-shadow path {
   fill: none;
-  stroke: rgba(255, 255, 255, .94);
-  stroke-width: 7;
+  stroke: rgba(255, 255, 255, .66);
+  stroke-width: 11;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, .92)) drop-shadow(0 1px 2px rgba(0, 0, 0, .62));
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, .76)) drop-shadow(0 1px 2px rgba(0, 0, 0, .44));
 }
 .flow-arrow-main path {
   fill: none;
