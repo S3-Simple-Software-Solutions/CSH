@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, Moon, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Truck, Users, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, MessageSquare, Moon, Newspaper, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import AdminJugadores from './pages/admin/AdminJugadores.jsx';
+import AdminNoticias from './pages/admin/AdminNoticias.jsx';
+import AdminPartidos from './pages/admin/AdminPartidos.jsx';
+import AdminSponsors from './pages/admin/AdminSponsors.jsx';
+import AdminMensajes from './pages/admin/AdminMensajes.jsx';
 import QRCode from 'qrcode';
 import sotano1Img from './croquis/sotano-1.png';
 import sotano2Img from './croquis/sotano-2.png';
@@ -1229,10 +1234,16 @@ function AdminApp() {
           const Icon = mod.icon;
           return <button key={path} className={route === path ? 'active' : ''} onClick={() => navigate(path)}><Icon size={17} />{mod.title}</button>;
         })}
+        <p className="side-section-label">Contenido del sitio</p>
+        <button className={route === '/admin/jugadores' ? 'active' : ''} onClick={() => navigate('/admin/jugadores')}><Users2 size={17} />Jugadores</button>
+        <button className={route === '/admin/noticias' ? 'active' : ''} onClick={() => navigate('/admin/noticias')}><Newspaper size={17} />Noticias</button>
+        <button className={route === '/admin/partidos' ? 'active' : ''} onClick={() => navigate('/admin/partidos')}><Trophy size={17} />Partidos</button>
+        <button className={route === '/admin/sponsors' ? 'active' : ''} onClick={() => navigate('/admin/sponsors')}><ShoppingBag size={17} />Sponsors</button>
+        <button className={route === '/admin/mensajes' ? 'active' : ''} onClick={() => navigate('/admin/mensajes')}><MessageSquare size={17} />Mensajes</button>
       </aside>
       <section className="admin-main">
         <Header user={user} onLogout={logout} />
-        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/web' ? <AdminWeb /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
+        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
   );
@@ -1277,6 +1288,11 @@ function AdminHome({ user, navigate }) {
           const Icon = mod.icon;
           return <button key={path} className="wip" onClick={() => navigate(path)}><Icon /><span>{mod.title}<small>En construccion</small></span></button>;
         })}
+        <button onClick={() => navigate('/admin/jugadores')}><Users2 />Jugadores</button>
+        <button onClick={() => navigate('/admin/noticias')}><Newspaper />Noticias</button>
+        <button onClick={() => navigate('/admin/partidos')}><Trophy />Partidos</button>
+        <button onClick={() => navigate('/admin/sponsors')}><ShoppingBag />Sponsors</button>
+        <button onClick={() => navigate('/admin/mensajes')}><MessageSquare />Mensajes</button>
       </div>
     </main>
   );

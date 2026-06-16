@@ -7,7 +7,7 @@ import { genId, slugify, IMG_EXT } from '../../core/id';
 import { ApiError } from '../../core/errors';
 import {
   findSponsorsActivos, findAllSponsors, findSponsorById,
-  insertSponsor, updateSponsor, deleteSponsor,
+  insertSponsor, updateSponsor, deleteSponsor, reorderSponsors,
 } from './sponsors.repository';
 
 export const sponsorsRouter = Router();
@@ -69,6 +69,15 @@ sponsorsRouter.delete('/admin/api/sponsors/:id', requireAdmin, async (req, res, 
   try {
     const deleted = await deleteSponsor(String(req.params.id));
     if (!deleted) throw new ApiError(404, 'Sponsor no encontrado');
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+sponsorsRouter.post('/admin/api/sponsors/reorder', requireAdmin, async (req, res, next) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items)) throw new ApiError(400, 'items debe ser un array');
+    await reorderSponsors(items.map((it: any) => ({ id: String(it.id), orden: Number(it.orden) })));
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

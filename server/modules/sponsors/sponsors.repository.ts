@@ -60,3 +60,19 @@ export async function deleteSponsor(id: string): Promise<boolean> {
   const result = await pool.query('delete from club_sponsors where id=$1', [id]);
   return (result.rowCount ?? 0) > 0;
 }
+
+export async function reorderSponsors(items: { id: string; orden: number }[]): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    for (const { id, orden } of items) {
+      await client.query('update club_sponsors set orden=$1 where id=$2', [orden, id]);
+    }
+    await client.query('commit');
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
+}

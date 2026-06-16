@@ -8,7 +8,7 @@ import { ApiError } from '../../core/errors';
 import {
   findJugadoresActivos, findAllJugadores, findDestacados,
   findJugadorById, findJugadorBySlug,
-  insertJugador, updateJugador, deleteJugador,
+  insertJugador, updateJugador, deleteJugador, reorderJugadores,
 } from './jugadores.repository';
 
 export const jugadoresRouter = Router();
@@ -89,6 +89,15 @@ jugadoresRouter.delete('/admin/api/jugadores/:id', requireAdmin, async (req, res
   try {
     const deleted = await deleteJugador(String(req.params.id));
     if (!deleted) throw new ApiError(404, 'Jugador no encontrado');
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+jugadoresRouter.post('/admin/api/jugadores/reorder', requireAdmin, async (req, res, next) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items)) throw new ApiError(400, 'items debe ser un array');
+    await reorderJugadores(items.map((it: any) => ({ id: String(it.id), orden: Number(it.orden) })));
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
