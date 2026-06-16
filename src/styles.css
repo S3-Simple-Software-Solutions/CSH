@@ -330,7 +330,32 @@ tr:last-child td { border-bottom: 0; }
 }
 @media (max-width: 860px) {
   .admin-shell { grid-template-columns: 1fr; }
-  .admin-shell aside { border-right: 0; border-bottom: 1px solid var(--line); }
+  /* El menu lateral pasa a ser una barra horizontal con scroll en mobile. */
+  .admin-shell aside {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  .admin-shell aside .side-brand { display: none; }
+  .admin-shell aside button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    margin-bottom: 0;
+  }
+  .admin-shell aside button.active, .admin-shell aside button:hover {
+    box-shadow: inset 0 -3px 0 var(--gold);
+  }
   .search-panel { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
