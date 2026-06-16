@@ -49,6 +49,13 @@ const FLOW_ARROW_PATHS = {
   'split-left-right': ['M50 86 V60 Q50 40 25 40 H16', 'M50 60 Q50 40 75 40 H84'],
   'u-turn-right': ['M20 86 V42 Q20 18 50 18 Q82 18 82 50 V78'],
 };
+const FLOW_ARROW_INDICATOR_PATHS = {
+  straight: ['M43 50 H62'],
+  'turn-right': ['M42 61 Q42 42 61 42 H69'],
+  'split-up-right': ['M35 65 V43', 'M35 55 Q35 45 49 45 H64'],
+  'split-left-right': ['M50 63 Q50 49 35 49 H27', 'M50 63 Q50 49 65 49 H73'],
+  'u-turn-right': ['M35 70 V45 Q35 31 52 31 Q68 31 68 49 V63'],
+};
 const FLOW_ARROW_CONNECTORS = {
   straight: [{ x: 8, y: 50 }, { x: 88, y: 50 }],
   'turn-right': [{ x: 22, y: 86 }, { x: 80, y: 26 }],
@@ -79,23 +86,20 @@ function markerSafeId(id) {
 function FlowArrowSvg({ id, kind, editable }) {
   const safeKind = flowArrowKind(kind);
   const marker = `flow-arrow-head-${markerSafeId(id)}`;
-  const markerShadow = `${marker}-shadow`;
   const paths = FLOW_ARROW_PATHS[safeKind] || FLOW_ARROW_PATHS.straight;
+  const indicatorPaths = FLOW_ARROW_INDICATOR_PATHS[safeKind] || FLOW_ARROW_INDICATOR_PATHS.straight;
   return (
     <svg className="flow-arrow-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
       <defs>
-        <marker id={markerShadow} viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="5.4" markerHeight="5.4" orient="auto-start-reverse">
-          <path className="flow-arrow-head-shadow" d="M0 0 L10 5 L0 10 Z" />
-        </marker>
         <marker id={marker} viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="5.2" markerHeight="5.2" orient="auto-start-reverse">
           <path className="flow-arrow-head" d="M0 0 L10 5 L0 10 Z" />
         </marker>
       </defs>
       <g className="flow-arrow-shadow">
-        {paths.map((d) => <path key={`${d}-shadow`} d={d} markerEnd={`url(#${markerShadow})`} />)}
+        {paths.map((d) => <path key={`${d}-shadow`} d={d} />)}
       </g>
       <g className="flow-arrow-main">
-        {paths.map((d) => <path key={d} d={d} markerEnd={`url(#${marker})`} />)}
+        {indicatorPaths.map((d) => <path key={d} d={d} markerEnd={`url(#${marker})`} />)}
       </g>
       {editable && (FLOW_ARROW_CONNECTORS[safeKind] || FLOW_ARROW_CONNECTORS.straight).map((pt, idx) => (
         <circle key={`${idx}-${pt.x}-${pt.y}`} className="flow-connector" cx={pt.x} cy={pt.y} r="3.8" />

@@ -471,7 +471,6 @@ tr:last-child td { border-bottom: 0; }
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
-.flow-arrow-head-shadow { fill: rgba(255, 255, 255, .94); }
 .flow-arrow-head { fill: rgba(255, 205, 64, .92); }
 .flow-connector {
   fill: rgba(255, 255, 255, .9);
