@@ -11,25 +11,6 @@ import sotano2Img from './croquis/sotano-2.png';
 import './styles.css';
 
 const PLAN_IMG = { 'sotano-1': sotano1Img, 'sotano-2': sotano2Img };
-const PLAN_FLOW_ARROWS = {
-  'sotano-1': [
-    { x: 0.170, y: 0.181, r: 180 }, { x: 0.300, y: 0.181, r: 180 }, { x: 0.438, y: 0.181, r: 180 }, { x: 0.574, y: 0.181, r: 180 }, { x: 0.708, y: 0.181, r: 180 },
-    { x: 0.153, y: 0.318, r: 90 }, { x: 0.153, y: 0.469, r: 90 }, { x: 0.153, y: 0.619, r: 90 }, { x: 0.151, y: 0.708, r: 180 },
-    { x: 0.207, y: 0.389, r: -90 }, { x: 0.207, y: 0.615, r: 90 }, { x: 0.198, y: 0.704, r: 90 },
-    { x: 0.792, y: 0.346, r: 90 }, { x: 0.792, y: 0.523, r: -90 }, { x: 0.792, y: 0.643, r: -90 }, { x: 0.792, y: 0.746, r: -90 },
-    { x: 0.864, y: 0.438, r: 90 }, { x: 0.864, y: 0.557, r: 90 }, { x: 0.852, y: 0.690, r: 180 },
-    { x: 0.833, y: 0.279, r: 90 }, { x: 0.854, y: 0.299, r: 90 }, { x: 0.776, y: 0.393, r: 45 }, { x: 0.845, y: 0.354, r: -90 },
-  ],
-  'sotano-2': [
-    { x: 0.169, y: 0.192, r: 180 }, { x: 0.292, y: 0.192, r: 180 }, { x: 0.431, y: 0.192, r: 180 }, { x: 0.561, y: 0.192, r: 180 }, { x: 0.695, y: 0.192, r: 180 },
-    { x: 0.128, y: 0.348, r: 90 }, { x: 0.128, y: 0.472, r: 90 }, { x: 0.128, y: 0.617, r: 90 }, { x: 0.144, y: 0.690, r: 180 },
-    { x: 0.180, y: 0.403, r: -90 }, { x: 0.180, y: 0.570, r: -90 }, { x: 0.180, y: 0.682, r: -90 },
-    { x: 0.383, y: 0.804, r: 180 }, { x: 0.548, y: 0.804, r: 180 }, { x: 0.708, y: 0.804, r: 180 },
-    { x: 0.790, y: 0.326, r: -90 }, { x: 0.790, y: 0.462, r: -90 }, { x: 0.790, y: 0.598, r: -90 }, { x: 0.790, y: 0.734, r: -90 },
-    { x: 0.864, y: 0.328, r: 90 }, { x: 0.864, y: 0.501, r: 90 }, { x: 0.864, y: 0.663, r: 90 }, { x: 0.846, y: 0.706, r: 180 },
-  ],
-};
-
 const FLOW_ARROW_TYPES = [
   { id: 'straight', label: 'Recta' },
   { id: 'turn-left', label: 'Doblar izquierda' },
@@ -377,7 +358,7 @@ function spotStyle(st, layout) {
 
 function flowArrowsForFloor(fl) {
   if (!fl) return [];
-  const arrows = fl.arrows?.length ? fl.arrows : (PLAN_FLOW_ARROWS[fl.plan] || []);
+  const arrows = Array.isArray(fl.arrows) ? fl.arrows : [];
   return arrows.map((arrow, idx) => ({
     id: arrow.id || `${fl.plan}-arrow-${String(idx + 1).padStart(2, '0')}`,
     x: arrow.x,

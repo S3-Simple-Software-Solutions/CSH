@@ -78,6 +78,7 @@ async function main() {
   try {
     await client.query('begin');
     await client.query('delete from parking_reservations');
+    await client.query('delete from parking_flow_arrows');
     await client.query('delete from parking_spaces');
     for (let i = 0; i < spots.length; i += 1) {
       const spot = spots[i];
