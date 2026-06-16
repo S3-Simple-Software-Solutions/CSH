@@ -60,7 +60,8 @@ jobs:
             set -e
             cd /home/tony/Desktop/APP_CSH
             echo "── pulling ──"
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             echo "── installing ──"
             npm ci
             echo "── building ──"
