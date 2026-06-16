@@ -5,6 +5,11 @@ import { createApp } from './app';
 import { ensureUsuariosSchema } from './modules/usuarios/usuarios.schema';
 import { ensureParqueoSchema } from './modules/parqueo/parqueo.schema';
 import { ensureEntradasSchema } from './modules/entradas/entradas.schema';
+import { ensureJugadoresSchema } from './modules/jugadores/jugadores.schema';
+import { ensureNoticiasSchema } from './modules/noticias/noticias.schema';
+import { ensurePartidosSchema } from './modules/partidos/partidos.schema';
+import { ensureSponsorsSchema } from './modules/sponsors/sponsors.schema';
+import { ensureContactoSchema } from './modules/contacto/contacto.schema';
 
 async function bootstrap(): Promise<void> {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -12,6 +17,11 @@ async function bootstrap(): Promise<void> {
   await ensureUsuariosSchema();
   await ensureParqueoSchema();
   await ensureEntradasSchema();
+  await ensureJugadoresSchema();
+  await ensureNoticiasSchema();
+  await ensurePartidosSchema();
+  await ensureSponsorsSchema();
+  await ensureContactoSchema();
 
   const app = createApp();
   app.listen(env.PORT, env.HOST, () => console.log(`Herediano React + PostgreSQL corriendo en http://${env.HOST}:${env.PORT}`));
