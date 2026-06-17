@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, ChevronDown, Clock, Eye, EyeOff, Globe, LogOut, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
@@ -537,13 +537,47 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const [selectionBox, setSelectionBox] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [confirmSave, setConfirmSave] = useState(false);
   const overlayRef = useRef(null);
   const drag = useRef(null);
   const suppressClick = useRef(false);
+  const baseline = useRef(null);
+  const tempSeq = useRef(0);
 
   const reload = () => api('/api/parqueo/croquis').then((d) => d.ok && setFloors(d.floors));
   useEffect(() => { reload(); }, []);
+
+  // Modo edición diferido: todos los cambios se acumulan en estado local;
+  // nada se persiste hasta apretar "Guardar".
+  const nextTempId = (prefix) => `tmp-${prefix}-${(tempSeq.current += 1)}`;
+  const isTempId = (id) => typeof id === 'string' && id.startsWith('tmp-');
+  function enterEditMode() {
+    if (!fl) return;
+    baseline.current = {
+      stalls: (fl.stalls || []).map((s) => ({ ...s })),
+      arrows: flowArrowsForFloor(fl).map((a) => ({ ...a })),
+    };
+    setEditMode(true);
+    setMsg(null);
+  }
+  function exitEditMode() {
+    setEditMode(false);
+    setSelectedIds([]);
+    setSelectedArrow(null);
+    setAddingArrow(false);
+    setEditTarget(null);
+    baseline.current = null;
+  }
+  function cancelEditMode() {
+    // Restaura el piso al snapshot tomado al entrar y descarta los cambios locales.
+    const snap = baseline.current;
+    if (snap) {
+      setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: snap.stalls.map((s) => ({ ...s })), arrows: snap.arrows.map((a) => ({ ...a })) })));
+    }
+    exitEditMode();
+    setMsg(null);
+  }
 
   const fl = floors?.find((f) => f.piso === floor);
   const visibleStalls = useMemo(() => (fl?.stalls || []).filter((st) => st.utilizado !== false), [fl]);
@@ -581,36 +615,28 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     }
   }
 
-  async function addDot(e) {
+  function addDot(e) {
     if (suppressClick.current) { suppressClick.current = false; return; }
     if (e.target !== overlayRef.current || busy) return;
     const { x, y } = frac(e);
-    setBusy(true);
-    setMsg(null);
-    const data = await api('/admin/api/parqueo/espacio', { method: 'POST', body: JSON.stringify({ piso: floor, x, y }) });
-    setBusy(false);
-    if (!data.ok) return setMsg({ type: 'error', text: data.error });
-    await reload();
-    selectSpaces([data.espacio.id]);
+    const id = nextTempId('sp');
+    const espacio = { id, piso: floor, zona: 'A', x, y, utilizado: true, estado: 'disponible', reservaId: null, nombre: null, tipo: 'regular', ancho: null, alto: null, discapacitado: false };
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: [...(f.stalls || []), espacio] })));
+    selectSpaces([id]);
     setSelectedArrow(null);
-    onSaved?.();
   }
 
-  async function addArrow(e) {
+  function addArrow(e) {
     if (suppressClick.current) { suppressClick.current = false; return; }
     if (e.target !== overlayRef.current || busy) return;
     const { x, y } = frac(e);
-    setBusy(true);
-    setMsg(null);
-    const data = await api('/admin/api/parqueo/flecha', { method: 'POST', body: JSON.stringify({ piso: floor, x, y, r: 0, kind: arrowKind }) });
-    setBusy(false);
-    if (!data.ok) return setMsg({ type: 'error', text: data.error });
-    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, arrows: [...flowArrowsForFloor(f), data.flecha] })));
+    const id = nextTempId('ar');
+    const flecha = { id, x, y, r: 0, kind: flowArrowKind(arrowKind) };
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, arrows: [...flowArrowsForFloor(f), flecha] })));
     setSelectedIds([]);
-    setSelectedArrow(data.flecha.id);
-    setArrowKind(flowArrowKind(data.flecha.kind));
+    setSelectedArrow(id);
+    setArrowKind(flecha.kind);
     setAddingArrow(false);
-    onSaved?.();
   }
 
   function handleOverlayClick(e) {
@@ -665,7 +691,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
       const { x, y } = frac(ev);
       patchDot(st.id, x, y);
     };
-    const onUp = async (ev) => {
+    const onUp = (ev) => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       const moved = drag.current?.moved;
@@ -674,9 +700,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
       // El arrastre termina con un click; evitá que dispare un addDot.
       suppressClick.current = true;
       const { x, y } = frac(ev);
-      const data = await api(`/admin/api/parqueo/espacio/${encodeURIComponent(st.id)}/pos`, { method: 'PUT', body: JSON.stringify({ x, y }) });
-      if (!data.ok) { setMsg({ type: 'error', text: data.error }); reload(); return; }
-      onSaved?.();
+      patchDot(st.id, x, y);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -701,7 +725,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
       drag.current.y = snapped.y;
       patchArrow(arrow.id, { x: snapped.x, y: snapped.y });
     };
-    const onUp = async (ev) => {
+    const onUp = (ev) => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       const moved = drag.current?.moved;
@@ -709,127 +733,258 @@ function PlanoEditor({ floor, onClose, onSaved }) {
       drag.current = null;
       if (!moved) return;
       suppressClick.current = true;
-      const data = await api(`/admin/api/parqueo/flecha/${encodeURIComponent(arrow.id)}/pos`, { method: 'PUT', body: JSON.stringify(finalPoint) });
-      if (!data.ok) { setMsg({ type: 'error', text: data.error }); reload(); return; }
-      onSaved?.();
+      patchArrow(arrow.id, finalPoint);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   }
 
-  async function saveArrowPatch(id, patch) {
-    setBusy(true);
+  function saveArrowPatch(id, patch) {
     setMsg(null);
     patchArrow(id, patch);
-    const data = await api(`/admin/api/parqueo/flecha/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) });
-    setBusy(false);
-    if (!data.ok) { setMsg({ type: 'error', text: data.error }); reload(); return null; }
-    patchArrow(id, data.flecha);
-    setArrowKind(flowArrowKind(data.flecha.kind));
-    onSaved?.();
-    return data.flecha;
+    if (patch.kind !== undefined) setArrowKind(flowArrowKind(patch.kind));
   }
 
-  async function rotateArrow(delta) {
+  function rotateArrow(delta) {
     if (!selectedArrowItem) return;
-    await saveArrowPatch(selectedArrowItem.id, { r: normalizeRotation(selectedArrowItem.r + delta) });
+    saveArrowPatch(selectedArrowItem.id, { r: normalizeRotation(selectedArrowItem.r + delta) });
   }
 
-  async function changeArrowKind(kind) {
+  function changeArrowKind(kind) {
     if (!selectedArrowItem) return;
     const safeKind = flowArrowKind(kind);
     setArrowKind(safeKind);
-    await saveArrowPatch(selectedArrowItem.id, { kind: safeKind });
+    saveArrowPatch(selectedArrowItem.id, { kind: safeKind });
   }
 
-  async function flipTurnDirection() {
+  function flipTurnDirection() {
     if (!selectedArrowItem) return;
     const flippedKind = FLOW_TURN_FLIP[flowArrowKind(selectedArrowItem.kind)];
     if (!flippedKind) return;
     setArrowKind(flippedKind);
-    await saveArrowPatch(selectedArrowItem.id, { kind: flippedKind });
+    saveArrowPatch(selectedArrowItem.id, { kind: flippedKind });
   }
 
-  async function removeArrow(id) {
-    if (!window.confirm('¿Borrar esta flecha de circulación?')) return;
-    setBusy(true);
+  function removeArrow(id) {
+    if (!window.confirm('¿Quitar esta flecha de circulación? Se aplicará al guardar.')) return;
     setMsg(null);
-    const data = await api(`/admin/api/parqueo/flecha/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    setBusy(false);
-    if (!data.ok) return setMsg({ type: 'error', text: data.error });
     setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, arrows: flowArrowsForFloor(f).filter((arrow) => arrow.id !== id) })));
     setSelectedArrow(null);
-    onSaved?.();
   }
 
-  async function removeDot(id) {
-    setBusy(true);
+  function removeDot(id) {
     setMsg(null);
-    const data = await api(`/admin/api/parqueo/espacio/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    setBusy(false);
-    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: (f.stalls || []).filter((s) => s.id !== id) })));
     setSelectedIds((ids) => ids.filter((item) => item !== id));
     setSelectedArrow(null);
     setAddingArrow(false);
     setEditTarget(null);
-    await reload();
-    onSaved?.();
   }
 
-  async function applySpaceBatch(action, estado) {
+  function applySpaceBatch(action, estado) {
     if (!selectedIds.length || busy) return;
-    if (action === 'delete' && !window.confirm(`¿Borrar ${selectedIds.length} espacio${selectedIds.length === 1 ? '' : 's'} seleccionado${selectedIds.length === 1 ? '' : 's'}?`)) return;
-    setBusy(true);
+    if (action === 'delete' && !window.confirm(`¿Quitar ${selectedIds.length} espacio${selectedIds.length === 1 ? '' : 's'}? Se aplicará al guardar.`)) return;
     setMsg(null);
-    const data = await api('/admin/api/parqueo/espacios/batch', {
-      method: 'POST',
-      body: JSON.stringify({ ids: selectedIds, action, estado }),
-    });
-    setBusy(false);
-    if (!data.ok) return setMsg({ type: 'error', text: data.error });
-    const changed = data.count || selectedIds.length;
-    setSelectedIds([]);
-    setSelectedArrow(null);
-    setEditTarget(null);
-    await reload();
-    onSaved?.();
-    setMsg({ type: 'ok', text: `${changed} espacio${changed === 1 ? '' : 's'} actualizado${changed === 1 ? '' : 's'}.` });
+    const ids = new Set(selectedIds);
+    setFloors((prev) => prev.map((f) => {
+      if (f.piso !== floor) return f;
+      if (action === 'delete') return { ...f, stalls: (f.stalls || []).filter((s) => !ids.has(s.id)) };
+      if (action === 'status') {
+        const patch = (estado === 'disponible' || estado === 'no_disponible') ? { estado, reservaId: null } : { estado };
+        return { ...f, stalls: (f.stalls || []).map((s) => (ids.has(s.id) ? { ...s, ...patch } : s)) };
+      }
+      return f;
+    }));
+    if (action === 'delete') { setSelectedIds([]); setEditTarget(null); }
   }
 
-  async function clearAll() {
-    if (!window.confirm('¿Vaciar el plano? Se borrarán TODOS los espacios y sus reservas. Esta acción no se puede deshacer.')) return;
-    setBusy(true);
+  function clearAll() {
+    if (!window.confirm('¿Vaciar el plano? Se quitarán TODOS los espacios; se aplicará al guardar.')) return;
     setMsg(null);
-    const data = await api('/admin/api/parqueo/croquis/clear', { method: 'POST' });
-    setBusy(false);
-    if (!data.ok) return setMsg({ type: 'error', text: data.error });
-    setFloors(data.floors);
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: [] })));
     setSelectedIds([]);
     setSelectedArrow(null);
     setAddingArrow(false);
-    setMsg({ type: 'ok', text: 'Plano vaciado. Hacé clic para marcar los espacios.' });
-    onSaved?.();
+    setEditTarget(null);
+  }
+
+  // Persiste todos los cambios locales contra el snapshot tomado al entrar a edición.
+  async function guardarCambios() {
+    const snap = baseline.current;
+    setConfirmSave(false);
+    if (!snap) { exitEditMode(); return; }
+    setBusy(true);
+    setMsg(null);
+    const call = async (url, opts) => {
+      const data = await api(url, opts);
+      if (!data.ok) throw new Error(data.error || 'Error al guardar');
+      return data;
+    };
+    try {
+      const curStalls = visibleStalls;
+      const curArrows = flowArrows;
+      const baseStalls = (snap.stalls || []).filter((s) => s.utilizado !== false);
+      const baseArrows = snap.arrows || [];
+      const baseStallMap = new Map(baseStalls.map((s) => [s.id, s]));
+      const baseArrowMap = new Map(baseArrows.map((a) => [a.id, a]));
+      const curStallIds = new Set(curStalls.map((s) => s.id));
+      const curArrowIds = new Set(curArrows.map((a) => a.id));
+      const statusGroups = { disponible: [], ocupado: [], no_disponible: [] };
+
+      // 1) Espacios eliminados
+      const deletedSpaceIds = baseStalls.filter((s) => !curStallIds.has(s.id)).map((s) => s.id);
+      if (deletedSpaceIds.length) {
+        await call('/admin/api/parqueo/espacios/batch', { method: 'POST', body: JSON.stringify({ ids: deletedSpaceIds, action: 'delete' }) });
+      }
+
+      // 2) Espacios nuevos (id temporal)
+      for (const s of curStalls) {
+        if (!isTempId(s.id)) continue;
+        const created = await call('/admin/api/parqueo/espacio', { method: 'POST', body: JSON.stringify({ piso: floor, x: s.x, y: s.y, zona: s.zona || 'A' }) });
+        const realId = created.espacio.id;
+        if (s.nombre || s.discapacitado || s.ancho != null || s.alto != null) {
+          await call(`/admin/api/parqueo/espacio/${encodeURIComponent(realId)}`, { method: 'PUT', body: JSON.stringify({ nombre: s.nombre || '', discapacitado: !!s.discapacitado, ancho: s.ancho ?? null, alto: s.alto ?? null }) });
+        }
+        if (s.estado && s.estado !== 'disponible' && statusGroups[s.estado]) statusGroups[s.estado].push(realId);
+      }
+
+      // 3) Espacios existentes modificados (posición, props, estado)
+      for (const s of curStalls) {
+        if (isTempId(s.id)) continue;
+        const b = baseStallMap.get(s.id);
+        if (!b) continue;
+        if (s.x !== b.x || s.y !== b.y) {
+          await call(`/admin/api/parqueo/espacio/${encodeURIComponent(s.id)}/pos`, { method: 'PUT', body: JSON.stringify({ x: s.x, y: s.y }) });
+        }
+        if ((s.nombre || '') !== (b.nombre || '') || !!s.discapacitado !== !!b.discapacitado || (s.ancho ?? null) !== (b.ancho ?? null) || (s.alto ?? null) !== (b.alto ?? null)) {
+          await call(`/admin/api/parqueo/espacio/${encodeURIComponent(s.id)}`, { method: 'PUT', body: JSON.stringify({ nombre: s.nombre || '', discapacitado: !!s.discapacitado, ancho: s.ancho ?? null, alto: s.alto ?? null }) });
+        }
+        if (s.estado && s.estado !== b.estado && statusGroups[s.estado]) statusGroups[s.estado].push(s.id);
+      }
+
+      // 4) Cambios de estado agrupados
+      for (const estado of Object.keys(statusGroups)) {
+        if (statusGroups[estado].length) {
+          await call('/admin/api/parqueo/espacios/batch', { method: 'POST', body: JSON.stringify({ ids: statusGroups[estado], action: 'status', estado }) });
+        }
+      }
+
+      // 5) Flechas eliminadas
+      for (const a of baseArrows) {
+        if (!curArrowIds.has(a.id)) await call(`/admin/api/parqueo/flecha/${encodeURIComponent(a.id)}`, { method: 'DELETE' });
+      }
+
+      // 6) Flechas nuevas (id temporal); el POST ya fija pos, rotación y tipo
+      for (const a of curArrows) {
+        if (!isTempId(a.id)) continue;
+        await call('/admin/api/parqueo/flecha', { method: 'POST', body: JSON.stringify({ piso: floor, x: a.x, y: a.y, r: a.r || 0, kind: flowArrowKind(a.kind) }) });
+      }
+
+      // 7) Flechas existentes modificadas
+      for (const a of curArrows) {
+        if (isTempId(a.id)) continue;
+        const b = baseArrowMap.get(a.id);
+        if (!b) continue;
+        if (a.x !== b.x || a.y !== b.y) await call(`/admin/api/parqueo/flecha/${encodeURIComponent(a.id)}/pos`, { method: 'PUT', body: JSON.stringify({ x: a.x, y: a.y }) });
+        const patch = {};
+        if ((a.r || 0) !== (b.r || 0)) patch.r = a.r || 0;
+        if (flowArrowKind(a.kind) !== flowArrowKind(b.kind)) patch.kind = flowArrowKind(a.kind);
+        if (Object.keys(patch).length) await call(`/admin/api/parqueo/flecha/${encodeURIComponent(a.id)}`, { method: 'PUT', body: JSON.stringify(patch) });
+      }
+
+      await reload();
+      exitEditMode();
+      onSaved?.();
+      setMsg({ type: 'ok', text: 'Cambios guardados.' });
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message || 'No se pudieron guardar los cambios.' });
+      await reload();
+      exitEditMode();
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
 
   return (
     <div className="plano-editor">
+      <div className="editor-bar">
+        {editMode ? (
+          <div className="editor-actions">
+            <select
+              className="arrow-kind-select"
+              value={selectedArrowItem ? flowArrowKind(selectedArrowItem.kind) : arrowKind}
+              title="Tipo de flecha"
+              disabled={busy}
+              onChange={(e) => (selectedArrowItem ? changeArrowKind(e.target.value) : setArrowKind(flowArrowKind(e.target.value)))}
+            >
+              {FLOW_ARROW_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
+            </select>
+            <button
+              className={`btn ghost${addingArrow ? ' active' : ''}`}
+              onClick={() => {
+                setAddingArrow((value) => !value);
+                setSelectedIds([]);
+                setSelectedArrow(null);
+                setEditTarget(null);
+              }}
+              disabled={busy}
+              title="Agregar flecha de circulación"
+            >
+              <Plus size={16} />{addingArrow ? 'Ubicar flecha' : 'Agregar flecha'}
+            </button>
+            <button className="btn ghost danger" onClick={clearAll} disabled={busy}>Vaciar plano</button>
+            {selectedIds.length > 0 && (
+              <>
+                {selectedIds.length === 1 && <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy}>Editar plaza</button>}
+                <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy}><Check size={16} />Disponible</button>
+                <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy}><Car size={16} />Ocupado</button>
+                <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy}><EyeOff size={16} />No disponible</button>
+                <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy}><Trash2 size={16} />Borrar</button>
+                <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy}>Deseleccionar</button>
+              </>
+            )}
+            {selectedArrow && (
+              <>
+                <button className="btn ghost icon-only" onClick={() => rotateArrow(-45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la izquierda" aria-label="Girar flecha a la izquierda"><RotateCcw size={16} /></button>
+                <button className="btn ghost icon-only" onClick={() => rotateArrow(45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la derecha" aria-label="Girar flecha a la derecha"><RotateCw size={16} /></button>
+                {isTurnArrowKind(selectedArrowItem?.kind) && <button className="btn ghost" onClick={flipTurnDirection} disabled={busy || !selectedArrowItem} title="Cambiar curva izquierda/derecha"><ArrowLeftRight size={16} />Cambiar lado</button>}
+                <button className="btn ghost danger" onClick={() => removeArrow(selectedArrow)} disabled={busy}><Trash2 size={16} />Borrar flecha</button>
+                <button className="btn ghost" onClick={() => setSelectedArrow(null)} disabled={busy}>Deseleccionar</button>
+              </>
+            )}
+          </div>
+        ) : (
+          <button type="button" className="btn ghost editar-toggle" onClick={enterEditMode} disabled={busy} title="Editar el croquis">
+            <Pencil size={16} />Editar
+          </button>
+        )}
+        <div className="editor-bar-end">
+          {editMode && <button className="btn ghost" onClick={cancelEditMode} disabled={busy}>Cancelar</button>}
+          {editMode && <button className="btn" onClick={() => setConfirmSave(true)} disabled={busy}><Check size={16} />{busy ? 'Guardando…' : 'Guardar'}</button>}
+          <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
+        </div>
+      </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
-      <div className="plano-layout">
-        <div className="plano-wrap">
-          <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
+      <div className="plano-wrap">
+        <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
           <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
-          <div ref={overlayRef} className={`plano-overlay editing${addingArrow ? ' adding-arrow' : ''}`} onPointerDown={startBoxSelect} onClick={handleOverlayClick}>
-            <FlowArrows arrows={flowArrows} editable selected={selectedArrow} onPointerDown={startArrowDrag} aspect={fl.aspect} />
+          <div
+            ref={overlayRef}
+            className={`plano-overlay${editMode ? ' editing' : ''}${editMode && addingArrow ? ' adding-arrow' : ''}`}
+            onPointerDown={editMode ? startBoxSelect : undefined}
+            onClick={editMode ? handleOverlayClick : undefined}
+          >
+            <FlowArrows arrows={flowArrows} editable={editMode} selected={editMode ? selectedArrow : null} onPointerDown={editMode ? startArrowDrag : undefined} aspect={fl.aspect} />
             {visibleStalls.map((st) => (
               <button
                 key={st.id}
                 type="button"
-                className={`pspot editable ${st.estado || 'disponible'}${st.discapacitado ? ' accessible' : ''}${selectedSet.has(st.id) ? ' selected' : ''}`}
+                className={`pspot${editMode ? ' editable' : ''} ${st.estado || 'disponible'}${st.discapacitado ? ' accessible' : ''}${editMode && selectedSet.has(st.id) ? ' selected' : ''}`}
                 style={spotStyle(st, spotLayout)}
                 title={st.nombre || st.id}
-                onPointerDown={(e) => startDrag(e, st)}
+                onPointerDown={editMode ? (e) => startDrag(e, st) : undefined}
                 onClick={(e) => e.stopPropagation()}
               />
             ))}
@@ -846,78 +1001,36 @@ function PlanoEditor({ floor, onClose, onSaved }) {
             )}
           </div>
         </div>
-        </div>
-        <aside className="editor-controls">
-          <button
-            type="button"
-            className={`btn ghost editar-toggle${menuOpen ? ' active' : ''}`}
-            onClick={() => setMenuOpen((value) => !value)}
-            disabled={busy}
-            aria-expanded={menuOpen}
-            title="Mostrar acciones del croquis"
-          >
-            <Pencil size={16} />Editar<ChevronDown size={16} className={`editar-caret${menuOpen ? ' open' : ''}`} />
-          </button>
-          {menuOpen && (
-          <div className="editor-menu">
-          <select
-            className="arrow-kind-select"
-            value={selectedArrowItem ? flowArrowKind(selectedArrowItem.kind) : arrowKind}
-            title="Tipo de flecha"
-            disabled={busy}
-            onChange={(e) => (selectedArrowItem ? changeArrowKind(e.target.value) : setArrowKind(flowArrowKind(e.target.value)))}
-          >
-            {FLOW_ARROW_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
-          </select>
-          <button
-            className={`btn ghost${addingArrow ? ' active' : ''}`}
-            onClick={() => {
-              setAddingArrow((value) => !value);
-              setSelectedIds([]);
-              setSelectedArrow(null);
-              setEditTarget(null);
-            }}
-            disabled={busy}
-            title="Agregar flecha de circulación"
-          >
-            <Plus size={16} />{addingArrow ? 'Ubicar flecha' : 'Agregar flecha'}
-          </button>
-          <button className="btn ghost danger" onClick={clearAll} disabled={busy}>Vaciar plano</button>
-          <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
-          {selectedIds.length > 0 && (
-            <>
-              {selectedIds.length === 1 && <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy}>Editar plaza</button>}
-              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy}><Check size={16} />Disponible</button>
-              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy}><Car size={16} />Ocupado</button>
-              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy}><EyeOff size={16} />No disponible</button>
-              <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy}><Trash2 size={16} />Borrar</button>
-              <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy}>Deseleccionar</button>
-            </>
-          )}
-          {selectedArrow && (
-            <>
-              <button className="btn ghost icon-only" onClick={() => rotateArrow(-45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la izquierda" aria-label="Girar flecha a la izquierda"><RotateCcw size={16} /></button>
-              <button className="btn ghost icon-only" onClick={() => rotateArrow(45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la derecha" aria-label="Girar flecha a la derecha"><RotateCw size={16} /></button>
-              {isTurnArrowKind(selectedArrowItem?.kind) && <button className="btn ghost" onClick={flipTurnDirection} disabled={busy || !selectedArrowItem} title="Cambiar curva izquierda/derecha"><ArrowLeftRight size={16} />Cambiar lado</button>}
-              <button className="btn ghost danger" onClick={() => removeArrow(selectedArrow)} disabled={busy}><Trash2 size={16} />Borrar flecha</button>
-              <button className="btn ghost" onClick={() => setSelectedArrow(null)} disabled={busy}>Deseleccionar</button>
-            </>
-          )}
-          </div>
-          )}
-        </aside>
       </div>
       {editTarget && (
         <EditSpaceModal
           stall={editTarget}
           layout={spotLayout}
           onClose={() => setEditTarget(null)}
-          onSaved={async () => {
+          onApply={(patch) => {
+            setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : {
+              ...f,
+              stalls: (f.stalls || []).map((s) => (s.id === editTarget.id ? {
+                ...s,
+                nombre: patch.nombre ? patch.nombre : null,
+                discapacitado: !!patch.discapacitado,
+                tipo: patch.discapacitado ? 'discapacitado' : 'regular',
+                ancho: patch.ancho ?? null,
+                alto: patch.alto ?? null,
+              } : s)),
+            })));
             setEditTarget(null);
-            await reload();
-            onSaved?.();
           }}
         />
+      )}
+      {confirmSave && (
+        <Modal title="Guardar cambios" onClose={() => !busy && setConfirmSave(false)}>
+          <p className="muted">¿Querés guardar los cambios del croquis en Sótano -{floor}?</p>
+          <div className="actions left">
+            <button className="btn" onClick={guardarCambios} disabled={busy}>{busy ? 'Guardando…' : 'Guardar cambios'}</button>
+            <button className="btn ghost" onClick={() => setConfirmSave(false)} disabled={busy}>Cancelar</button>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -927,7 +1040,7 @@ function pctValue(value) {
   return String(Math.round(Number(value || 0) * 1000) / 10);
 }
 
-function EditSpaceModal({ stall, layout, onClose, onSaved }) {
+function EditSpaceModal({ stall, layout, onClose, onApply }) {
   const current = layout.get(stall.id) || { w: stall.ancho || 0.032, h: stall.alto || 0.022 };
   const [form, setForm] = useState({
     nombre: stall.nombre || '',
@@ -936,31 +1049,16 @@ function EditSpaceModal({ stall, layout, onClose, onSaved }) {
     alto: pctValue(current.h),
   });
   const [msg, setMsg] = useState(null);
-  const [saving, setSaving] = useState(false);
-  async function save() {
+  function save() {
     setMsg(null);
     const ancho = Number(form.ancho) / 100;
     const alto = Number(form.alto) / 100;
     if (!Number.isFinite(ancho) || !Number.isFinite(alto) || ancho <= 0 || alto <= 0) return setMsg({ type: 'error', text: 'Ingresa un tamano valido.' });
-    setSaving(true);
-    const data = await api(`/admin/api/parqueo/espacio/${encodeURIComponent(stall.id)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ nombre: form.nombre, discapacitado: form.discapacitado, ancho, alto }),
-    });
-    setSaving(false);
-    if (!data.ok) return setMsg({ type: 'error', text: data.error });
-    await onSaved?.(data.espacio);
+    onApply({ nombre: form.nombre, discapacitado: form.discapacitado, ancho, alto });
   }
-  async function resetSize() {
+  function resetSize() {
     setMsg(null);
-    setSaving(true);
-    const data = await api(`/admin/api/parqueo/espacio/${encodeURIComponent(stall.id)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ nombre: form.nombre, discapacitado: form.discapacitado, ancho: null, alto: null }),
-    });
-    setSaving(false);
-    if (!data.ok) return setMsg({ type: 'error', text: data.error });
-    await onSaved?.(data.espacio);
+    onApply({ nombre: form.nombre, discapacitado: form.discapacitado, ancho: null, alto: null });
   }
   return (
     <Modal title={`Editar plaza ${stall.id}`} onClose={onClose}>
@@ -973,8 +1071,8 @@ function EditSpaceModal({ stall, layout, onClose, onSaved }) {
       </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <div className="actions left">
-        <button className="btn" onClick={save} disabled={saving}>{saving ? 'Guardando...' : 'Guardar plaza'}</button>
-        <button className="btn ghost" onClick={resetSize} disabled={saving}>Tamano automatico</button>
+        <button className="btn" onClick={save}>Aplicar</button>
+        <button className="btn ghost" onClick={resetSize}>Tamano automatico</button>
       </div>
     </Modal>
   );
