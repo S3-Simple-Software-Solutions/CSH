@@ -10,6 +10,8 @@ import {
 } from './parqueo.types';
 import type { FlowArrowKind } from './parqueo.flow';
 
+export type ParkingSpaceStatus = Space['estado'];
+
 export interface ListEventosOptions {
   limit: number;
   offset: number;
@@ -32,6 +34,8 @@ export interface CroquisDot {
   x: number;
   y: number;
   utilizado: boolean;
+  estado: ParkingSpaceStatus;
+  reservaId: string | null;
   nombre: string | null;
   tipo: string;
   ancho: number | null;
@@ -97,12 +101,14 @@ export interface ParqueoRepository {
   flowArrows(): Promise<FlowArrow[]>;
   addEspacio(input: AddEspacioInput): Promise<Space>;
   updateEspacio(id: string, input: UpdateEspacioInput): Promise<Space>;
+  updateEspaciosEstado(ids: string[], estado: ParkingSpaceStatus, actor: EventActor): Promise<number>;
   moveEspacio(id: string, x: number, y: number): Promise<void>;
   moveFlowArrow(id: string, x: number, y: number): Promise<void>;
   addFlowArrow(input: AddFlowArrowInput): Promise<FlowArrow>;
   updateFlowArrow(id: string, input: UpdateFlowArrowInput): Promise<FlowArrow>;
   removeFlowArrow(id: string): Promise<void>;
   removeEspacio(id: string): Promise<void>;
+  removeEspacios(ids: string[]): Promise<number>;
   clearEspacios(): Promise<void>;
 }
 

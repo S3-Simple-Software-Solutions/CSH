@@ -11,7 +11,7 @@ import {
   Reservation,
   Space,
 } from './parqueo.types';
-import { AddEspacioInput, AddFlowArrowInput, CroquisDot, FlowArrow, ListEventosOptions, LogEventoInput, ParqueoRepository, UpdateEspacioInput, UpdateFlowArrowInput } from './parqueo.repository';
+import { AddEspacioInput, AddFlowArrowInput, CroquisDot, FlowArrow, ListEventosOptions, LogEventoInput, ParkingSpaceStatus, ParqueoRepository, UpdateEspacioInput, UpdateFlowArrowInput } from './parqueo.repository';
 
 const activeWhere = "status in ('reservado','ocupado')";
 const activeReservationWhere = "r.status in ('reservado','ocupado')";
@@ -365,7 +365,7 @@ export class PgParqueoRepository implements ParqueoRepository {
   }
 
   async croquisDots(): Promise<CroquisDot[]> {
-    const rows = await query<any>('select id, floor, zone, num, type, pos_x, pos_y, utilizado, name, spot_width, spot_height, accessible from parking_spaces where utilizado = true and pos_x is not null and pos_y is not null order by floor, num');
+    const rows = await query<any>('select id, floor, zone, num, type, status, reservation_id, pos_x, pos_y, utilizado, name, spot_width, spot_height, accessible from parking_spaces where utilizado = true and pos_x is not null and pos_y is not null order by floor, num');
     return rows.map((r) => ({
       id: r.id,
       piso: r.floor,
@@ -374,6 +374,8 @@ export class PgParqueoRepository implements ParqueoRepository {
       x: Number(r.pos_x),
       y: Number(r.pos_y),
       utilizado: Boolean(r.utilizado),
+      estado: r.status,
+      reservaId: r.reservation_id,
       nombre: r.name || null,
       tipo: r.type,
       ancho: r.spot_width == null ? null : Number(r.spot_width),
@@ -429,6 +431,51 @@ export class PgParqueoRepository implements ParqueoRepository {
     );
     if (!rows[0]) throw new ApiError(404, 'El espacio no existe');
     return toSpace(rows[0]);
+  }
+
+  async updateEspaciosEstado(ids: string[], estado: ParkingSpaceStatus, actor: EventActor): Promise<number> {
+    const uniqueIds = Array.from(new Set(ids));
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const locked = await client.query<any>('select id, reservation_id from parking_spaces where id = any($1::text[]) and utilizado = true for update', [uniqueIds]);
+      if (locked.rowCount !== uniqueIds.length) {
+        await client.query('rollback');
+        throw new ApiError(404, 'Uno o mas espacios no existen');
+      }
+
+      if (estado === 'disponible' || estado === 'no_disponible') {
+        await client.query(
+          "update parking_reservations set status = $2 where space_id = any($1::text[]) and status in ('reservado','ocupado')",
+          [uniqueIds, estado === 'disponible' ? 'finalizada' : 'cancelada'],
+        );
+        await client.query('update parking_spaces set status = $2, reservation_id = null where id = any($1::text[])', [uniqueIds, estado]);
+      } else if (estado === 'ocupado') {
+        const reservationIds = locked.rows.map((row) => row.reservation_id).filter(Boolean);
+        if (reservationIds.length) {
+          await client.query("update parking_reservations set status = 'ocupado' where id = any($1::text[]) and status in ('reservado','ocupado')", [reservationIds]);
+        }
+        await client.query("update parking_spaces set status = 'ocupado' where id = any($1::text[])", [uniqueIds]);
+      } else {
+        await client.query('rollback');
+        throw new ApiError(400, 'Estado invalido');
+      }
+
+      for (const id of uniqueIds) {
+        await logEvento(client, 'edicion', { espacioId: id, user: actor, notas: `Estado ${estado}` });
+      }
+      await client.query('commit');
+      return uniqueIds.length;
+    } catch (err) {
+      try {
+        await client.query('rollback');
+      } catch {
+        /* noop */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   async moveEspacio(id: string, x: number, y: number): Promise<void> {
@@ -496,6 +543,37 @@ export class PgParqueoRepository implements ParqueoRepository {
       await client.query("delete from parking_reservations where space_id = $1 and status not in ('reservado','ocupado')", [id]);
       await client.query('delete from parking_spaces where id = $1', [id]);
       await client.query('commit');
+    } catch (err) {
+      try {
+        await client.query('rollback');
+      } catch {
+        /* noop */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async removeEspacios(ids: string[]): Promise<number> {
+    const uniqueIds = Array.from(new Set(ids));
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const locked = await client.query<any>('select id from parking_spaces where id = any($1::text[]) and utilizado = true for update', [uniqueIds]);
+      if (locked.rowCount !== uniqueIds.length) {
+        await client.query('rollback');
+        throw new ApiError(404, 'Uno o mas espacios no existen');
+      }
+      const active = await client.query<any>("select space_id from parking_reservations where space_id = any($1::text[]) and status in ('reservado','ocupado') limit 1", [uniqueIds]);
+      if (active.rows[0]) {
+        await client.query('rollback');
+        throw new ApiError(409, 'No se pueden borrar espacios con reserva activa');
+      }
+      await client.query("delete from parking_reservations where space_id = any($1::text[]) and status not in ('reservado','ocupado')", [uniqueIds]);
+      const removed = await client.query('delete from parking_spaces where id = any($1::text[])', [uniqueIds]);
+      await client.query('commit');
+      return removed.rowCount || 0;
     } catch (err) {
       try {
         await client.query('rollback');

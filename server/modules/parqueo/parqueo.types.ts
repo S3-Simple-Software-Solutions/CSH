@@ -4,7 +4,7 @@ export interface Space {
   zona: string;
   num: number;
   tipo: string;
-  estado: 'disponible' | 'reservado' | 'ocupado';
+  estado: 'disponible' | 'reservado' | 'ocupado' | 'no_disponible';
   reservaId: string | null;
   utilizado: boolean;
   nombre: string | null;
