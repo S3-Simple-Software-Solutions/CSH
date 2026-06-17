@@ -1580,7 +1580,7 @@ function AdminWeb() {
     <main className="page">
       <p className="eyebrow">Contenido del sitio publico</p>
       <h1>Gestion de la pagina web</h1>
-      <p className="sub">Edita el hero de la portada: la imagen de fondo y sus textos. Los cambios se aplican de inmediato en el sitio.</p>
+      <p className="sub">Edita el hero de la portada (`/`): imagen de fondo y textos. Los cambios se aplican de inmediato en el sitio.</p>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <div className="web-editor">
         <section className="hero-preview" style={{ backgroundImage: `url(${heroImg})` }}>
@@ -1691,14 +1691,102 @@ function AdminParking({ user }) {
   );
 }
 
+function CouponModal({ cupon, categorias, sponsors, lockedProveedor, onClose, onSaved }) {
+  const isEdit = Boolean(cupon?.id);
+  const defaultVigencia = () => new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const [form, setForm] = useState({
+    proveedor: lockedProveedor || cupon?.proveedor || (sponsors[0]?.nombre || ''),
+    titulo: cupon?.titulo || '',
+    descripcion: cupon?.descripcion || '',
+    codigo: cupon?.codigo || '',
+    categoria: cupon?.categoria || categorias[0] || 'Otros',
+    descuento: cupon?.descuento ?? 10,
+    vigencia: cupon?.vigencia ? cupon.vigencia.slice(0, 10) : defaultVigencia(),
+    limite: cupon?.limite ?? 100,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function save() {
+    setError('');
+    if (!form.proveedor || !form.titulo.trim() || !form.codigo.trim()) {
+      return setError('Proveedor, titulo y codigo son obligatorios.');
+    }
+    setBusy(true);
+    const body = {
+      ...form,
+      titulo: form.titulo.trim(),
+      codigo: form.codigo.trim().toUpperCase(),
+      descuento: Number(form.descuento),
+      limite: Number(form.limite),
+      vigencia: new Date(`${form.vigencia}T23:59:59`).toISOString(),
+    };
+    const data = isEdit
+      ? await api(`/admin/api/cuponera/${cupon.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+      : await api('/admin/api/cuponera', { method: 'POST', body: JSON.stringify(body) });
+    setBusy(false);
+    if (!data.ok) return setError(data.error || 'No se pudo guardar');
+    onSaved();
+  }
+
+  return (
+    <Modal title={isEdit ? 'Editar cupon' : 'Nuevo cupon'} onClose={onClose}>
+      <label>Proveedor</label>
+      {lockedProveedor ? (
+        <input value={form.proveedor} readOnly />
+      ) : (
+        <select value={form.proveedor} onChange={(e) => setForm({ ...form, proveedor: e.target.value })}>
+          {sponsors.map((s) => <option key={s.id} value={s.nombre}>{s.nombre}</option>)}
+        </select>
+      )}
+      <label>Titulo</label>
+      <input value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} />
+      <label>Descripcion</label>
+      <textarea rows={3} value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+      <label>Codigo</label>
+      <input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} />
+      <div className="two">
+        <div>
+          <label>Categoria</label>
+          <select value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
+            {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label>Descuento %</label>
+          <input type="number" min="0" max="100" value={form.descuento} onChange={(e) => setForm({ ...form, descuento: e.target.value })} />
+        </div>
+      </div>
+      <div className="two">
+        <div>
+          <label>Vigencia</label>
+          <input type="date" value={form.vigencia} onChange={(e) => setForm({ ...form, vigencia: e.target.value })} />
+        </div>
+        <div>
+          <label>Limite usos</label>
+          <input type="number" min="1" value={form.limite} onChange={(e) => setForm({ ...form, limite: e.target.value })} />
+        </div>
+      </div>
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={save} disabled={busy}>{busy ? 'Guardando...' : 'Guardar'}</button>
+    </Modal>
+  );
+}
+
 function AdminCoupons({ user }) {
-  const [state, setState] = useState({ cupones: [], eventos: [], stats: {}, role: 'socio', sponsor: '' });
+  const [state, setState] = useState({ cupones: [], eventos: [], stats: {}, role: 'socio', sponsor: '', categorias: [] });
+  const [sponsors, setSponsors] = useState([]);
   const [message, setMessage] = useState(null);
+  const [modal, setModal] = useState(null);
+  const [delTarget, setDelTarget] = useState(null);
   const refresh = async () => {
     const data = await api('/admin/api/cuponera');
     if (data.ok) setState(data);
   };
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    refresh();
+    api('/admin/api/sponsors').then((d) => d.ok && setSponsors(d.sponsors.filter((s) => s.activo && !s.esApparel)));
+  }, []);
   async function toggle(cupon) {
     setMessage(null);
     const estado = cupon.estado === 'habilitado' ? 'retirado' : 'habilitado';
@@ -1707,11 +1795,20 @@ function AdminCoupons({ user }) {
     setMessage({ type: 'ok', text: `${cupon.proveedor}: cupon ${estado}.` });
     refresh();
   }
+  async function confirmDelete() {
+    const data = await api(`/admin/api/cuponera/${delTarget.id}`, { method: 'DELETE' });
+    if (!data.ok) return setMessage({ type: 'error', text: data.error });
+    setMessage({ type: 'ok', text: 'Cupon eliminado.' });
+    setDelTarget(null);
+    refresh();
+  }
   const canManage = state.role === 'admin' || state.role === 'patrocinador';
+  const lockedProveedor = state.role === 'patrocinador' ? state.sponsor : '';
   return (
     <main className="page">
       <p className="eyebrow">Beneficios y proveedores</p><h1>Cuponera</h1>
-      <p className="sub">{state.role === 'patrocinador' ? `Panel de patrocinador para ${state.sponsor}.` : 'Panel administrativo para revisar, retirar o habilitar cupones de descuento.'}</p>
+      <p className="sub">{state.role === 'patrocinador' ? `Panel de patrocinador para ${state.sponsor}.` : 'Panel administrativo para gestionar cupones de descuento.'}</p>
+      {canManage && <button className="btn" onClick={() => setModal({})}><Plus size={16} />Nuevo cupon</button>}
       <section className="coupon-stats">
         <div><span>Total</span><b>{state.stats.total || 0}</b></div>
         <div><span>Habilitados</span><b>{state.stats.habilitados || 0}</b></div>
@@ -1719,9 +1816,35 @@ function AdminCoupons({ user }) {
       </section>
       {message && <div className={message.type === 'ok' ? 'okbox' : 'error'}>{message.text}</div>}
       <section className="coupon-list admin-coupons">
-        {state.cupones.map((cupon) => <CouponCard key={cupon.id} cupon={cupon} admin={canManage} onToggle={toggle} />)}
+        {state.cupones.map((cupon) => (
+          <div key={cupon.id} className="coupon-admin-wrap">
+            <CouponCard cupon={cupon} admin={canManage} onToggle={toggle} />
+            {canManage && (
+              <div className="coupon-admin-actions">
+                <button className="icon-text ghost" onClick={() => setModal(cupon)}><Pencil size={14} />Editar</button>
+                {state.role === 'admin' && <button className="icon-text ghost" onClick={() => setDelTarget(cupon)}><Trash2 size={14} />Eliminar</button>}
+              </div>
+            )}
+          </div>
+        ))}
       </section>
       <section className="events"><h2>Actividad de cupones</h2><div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Proveedor</th><th>Cupon</th><th>Estado</th><th>Usuario</th></tr></thead><tbody>{state.eventos.map((e) => <tr key={e.id}><td>{fmtFullDate(e.timestamp)}</td><td>{e.proveedor}</td><td>{e.cuponId}</td><td>{e.estado}</td><td>{e.userName}</td></tr>)}</tbody></table></div></section>
+      {modal !== null && (
+        <CouponModal
+          cupon={modal?.id ? modal : null}
+          categorias={state.categorias?.length ? state.categorias : ['Otros']}
+          sponsors={sponsors}
+          lockedProveedor={lockedProveedor}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); setMessage({ type: 'ok', text: 'Cupon guardado.' }); refresh(); }}
+        />
+      )}
+      {delTarget && (
+        <Modal title="Eliminar cupon" onClose={() => setDelTarget(null)}>
+          <p>¿Eliminar el cupon de <strong>{delTarget.proveedor}</strong> ({delTarget.codigo})?</p>
+          <button className="btn" onClick={confirmDelete}>Eliminar</button>
+        </Modal>
+      )}
     </main>
   );
 }

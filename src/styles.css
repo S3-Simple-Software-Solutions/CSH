@@ -302,6 +302,8 @@ input:focus, select:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb
 .coupon-stats span { display: block; color: var(--muted); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px; }
 .coupon-stats b { color: var(--gold); font-size: 34px; line-height: 1; }
 .coupon-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+.coupon-admin-wrap { display: flex; flex-direction: column; gap: 8px; }
+.coupon-admin-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .coupon { position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); display: grid; grid-template-columns: 124px 1fr; overflow: hidden; }
 .coupon.retirado { opacity: .55; filter: grayscale(.45); }
 .coupon::before, .coupon::after { content: ''; position: absolute; left: 124px; width: 20px; height: 20px; border-radius: 50%; background: var(--bg); border: 1px solid var(--line); transform: translateX(-50%); z-index: 1; }

@@ -12,10 +12,12 @@ export interface WebConfig {
 
 export const WEB_DEFAULTS = {
   kicker: 'Clausura 2026 · Campeón Nacional',
-  title: 'Título',
+  title: 'Campeón',
   number: '32',
   sub: 'Nuestra pasión es eterna',
 };
+
+export const HERO_DEFAULT_IMAGE = '/brand/hero/champions-bw.jpg';
 
 export function readWebData(): WebConfig {
   try {

@@ -1,5 +1,6 @@
 export interface Cupon {
   id: string;
+  sponsorId?: string | null;
   proveedor: string;
   logo: string;
   titulo: string;

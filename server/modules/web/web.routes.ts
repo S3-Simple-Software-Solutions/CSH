@@ -1,8 +1,12 @@
 import { Router, raw } from 'express';
 import { requireAdmin } from '../auth/auth.middleware';
-import { getHeroImage, getWebConfig, removeHeroImage, saveHeroImage, saveWebTexts } from './web.service';
+import { getHeroImage, getWebConfig, removeHeroImage, resolvePublicHero, saveHeroImage, saveWebTexts } from './web.service';
 
 export const webRouter = Router();
+
+webRouter.get('/api/web/hero', (_req, res) => {
+  res.json({ ok: true, hero: resolvePublicHero() });
+});
 
 const heroUpload = raw({ type: ['image/png', 'image/jpeg', 'image/webp', 'image/avif'], limit: '8mb' });
 

@@ -10,6 +10,7 @@ import { ensureNoticiasSchema } from './modules/noticias/noticias.schema';
 import { ensurePartidosSchema } from './modules/partidos/partidos.schema';
 import { ensureSponsorsSchema } from './modules/sponsors/sponsors.schema';
 import { ensureContactoSchema } from './modules/contacto/contacto.schema';
+import { ensureCuponeraSchema } from './modules/cuponera/cuponera.schema';
 
 async function bootstrap(): Promise<void> {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -21,6 +22,7 @@ async function bootstrap(): Promise<void> {
   await ensureNoticiasSchema();
   await ensurePartidosSchema();
   await ensureSponsorsSchema();
+  await ensureCuponeraSchema();
   await ensureContactoSchema();
 
   const app = createApp();
