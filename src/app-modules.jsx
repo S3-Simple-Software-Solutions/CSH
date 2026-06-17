@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import { Accessibility, ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
@@ -805,12 +805,17 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     if (action === 'delete' && !window.confirm(`¿Quitar ${selectedIds.length} espacio${selectedIds.length === 1 ? '' : 's'}? Se aplicará al guardar.`)) return;
     setMsg(null);
     const ids = new Set(selectedIds);
+    // Para discapacitado: si todas las seleccionadas ya lo son, lo quita; si no, lo pone.
+    const turnOn = action === 'accessible' ? !visibleStalls.filter((s) => ids.has(s.id)).every((s) => s.discapacitado) : false;
     setFloors((prev) => prev.map((f) => {
       if (f.piso !== floor) return f;
       if (action === 'delete') return { ...f, stalls: (f.stalls || []).filter((s) => !ids.has(s.id)) };
       if (action === 'status') {
         const patch = (estado === 'disponible' || estado === 'no_disponible') ? { estado, reservaId: null } : { estado };
         return { ...f, stalls: (f.stalls || []).map((s) => (ids.has(s.id) ? { ...s, ...patch } : s)) };
+      }
+      if (action === 'accessible') {
+        return { ...f, stalls: (f.stalls || []).map((s) => (ids.has(s.id) ? { ...s, discapacitado: turnOn, tipo: turnOn ? 'discapacitado' : 'regular' } : s)) };
       }
       return f;
     }));
@@ -944,6 +949,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
               <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy || !selectedIds.length} title="Marcar como disponible"><Check size={16} />Disponible</button>
               <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy || !selectedIds.length} title="Marcar como ocupado"><Car size={16} />Ocupado</button>
               <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy || !selectedIds.length} title="Marcar como no disponible"><EyeOff size={16} />No disponible</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('accessible')} disabled={busy || !selectedIds.length} title="Marcar/desmarcar como plaza de discapacitados"><Accessibility size={16} />Discapacitado</button>
               <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy || !selectedIds.length} title="Quitar las plazas seleccionadas"><Trash2 size={16} />Borrar</button>
               <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy || !selectedIds.length}>Deseleccionar</button>
             </div>
