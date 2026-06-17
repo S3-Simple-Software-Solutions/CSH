@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import { query } from './core/db';
 import { errorHandler } from './core/middleware';
 import { DIST_DIR, PUBLIC_DIR } from './config/constants';
 import { authRouter } from './modules/auth/auth.routes';
@@ -22,6 +23,15 @@ export function createApp() {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '64kb' }));
   app.use(express.urlencoded({ extended: false, limit: '64kb' }));
+
+  app.get('/healthz', async (_req, res) => {
+    try {
+      await query('select 1 as ok');
+      res.json({ ok: true });
+    } catch {
+      res.status(503).json({ ok: false });
+    }
+  });
 
   // Routers de dominio (rutas API y de sesion).
   app.use(authRouter);
