@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "dev:server": "tsx watch server/index.ts",
+    "dev:local": "docker compose up -d && concurrently -n servidor,frontend -c cyan,yellow \"npm run dev:server\" \"npm run dev\"",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "build": "npm run build:client && npm run build:server",
@@ -45,6 +46,7 @@
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
+    "concurrently": "^10.0.3",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }
