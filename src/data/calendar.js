@@ -23,6 +23,34 @@ export const competitions = [
   },
 ];
 
+export const standings = {
+  ligaFPD: {
+    nombre: 'Liga Promerica — Apertura 2026',
+    equipos: [
+      { equipo: 'Alajuelense', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Deportivo Saprissa', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Cartaginés', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Herediano', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'San Carlos', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Pérez Zeledón', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Puntarenas FC', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Sporting FC', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Liberia', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Guadalupe FC', pj: 0, dg: 0, pts: 0 },
+    ],
+  },
+  copaCentroamericana: {
+    nombre: 'Copa Centroamericana 2026 — Grupo B',
+    equipos: [
+      { equipo: 'Herediano', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'CD Marathón', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Alianza FC', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Real Estelí FC', pj: 0, dg: 0, pts: 0 },
+      { equipo: 'Antigua GFC', pj: 0, dg: 0, pts: 0 },
+    ],
+  },
+};
+
 // Resultados recientes (estáticos).
 export const recentResults = [
   { fecha: '2026-05-16', local: 'Herediano', golesL: 2, visita: 'Saprissa', golesV: 0, competicion: 'Clausura 2026 · Final (vuelta)' },
