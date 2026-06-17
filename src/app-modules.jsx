@@ -607,6 +607,35 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     }
   }, [editMode, fl, floor]);
 
+  // Atajos de teclado en edición: Esc deselecciona, Backspace/Supr borra lo seleccionado.
+  useEffect(() => {
+    if (!editMode) return;
+    const onKey = (e) => {
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+      if (editTarget || confirmSave) return;
+      if (e.key === 'Escape') {
+        setSelectedIds([]);
+        setSelectedArrow(null);
+        setAddingArrow(false);
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        if (!selectedIds.length && !selectedArrow) return;
+        e.preventDefault();
+        if (selectedIds.length) {
+          const ids = new Set(selectedIds);
+          setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: (f.stalls || []).filter((s) => !ids.has(s.id)) })));
+          setSelectedIds([]);
+          setEditTarget(null);
+        } else if (selectedArrow) {
+          setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, arrows: flowArrowsForFloor(f).filter((a) => a.id !== selectedArrow) })));
+          setSelectedArrow(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editMode, selectedIds, selectedArrow, editTarget, confirmSave, floor]);
+
   function frac(e) {
     const r = overlayRef.current.getBoundingClientRect();
     return { x: Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1), y: Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1) };
