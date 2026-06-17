@@ -82,6 +82,22 @@ export interface UpdateFlowArrowInput {
   kind?: FlowArrowKind;
 }
 
+export interface RoadPoint {
+  x: number;
+  y: number;
+}
+
+export interface Road {
+  id: string;
+  plan: string;
+  points: RoadPoint[];
+}
+
+export interface AddRoadInput {
+  plan: string;
+  points: RoadPoint[];
+}
+
 export interface ParqueoRepository {
   publicEstado(): Promise<PublicSpace[]>;
   adminEstado(): Promise<{ espacios: Space[]; reservas: Reservation[] }>;
@@ -99,6 +115,11 @@ export interface ParqueoRepository {
   logEvento(type: string, input: LogEventoInput): Promise<void>;
   croquisDots(): Promise<CroquisDot[]>;
   flowArrows(): Promise<FlowArrow[]>;
+  roads(): Promise<Road[]>;
+  addRoad(input: AddRoadInput): Promise<Road>;
+  removeRoad(id: string): Promise<void>;
+  planVisibility(): Promise<Record<string, boolean>>;
+  setPlanVisibility(plan: string, show: boolean): Promise<void>;
   addEspacio(input: AddEspacioInput): Promise<Space>;
   updateEspacio(id: string, input: UpdateEspacioInput): Promise<Space>;
   updateEspaciosEstado(ids: string[], estado: ParkingSpaceStatus, actor: EventActor): Promise<number>;

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import { Accessibility, ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, Route, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
@@ -427,6 +427,79 @@ function snapFlowArrow(arrow, x, y, arrows, bounds, aspect = 1.5) {
   };
 }
 
+// ───────── Rutas / carreteras dibujables sobre el croquis ─────────
+// Engancha un punto al eje respecto al vértice anterior: el tramo queda
+// horizontal o vertical (ángulos 0/90/180/270), nunca en diagonal.
+function snapToAxis(prev, p) {
+  if (!prev) return p;
+  const dx = Math.abs(p.x - prev.x);
+  const dy = Math.abs(p.y - prev.y);
+  return dx >= dy ? { x: p.x, y: prev.y } : { x: prev.x, y: p.y };
+}
+
+// Path SVG en espacio 0..100 (preserveAspectRatio="none"): tramos rectos entre
+// vértices y, en cada intersección, una curva suave (Bézier cuadrática) que
+// recorta la esquina con un radio fijo — así nunca queda en punta.
+const ROAD_CORNER_R = 5; // radio de redondeo en unidades de viewBox (0..100)
+function roadPathD(points) {
+  if (!points || points.length < 2) return '';
+  const P = points.map((p) => ({ x: p.x * 100, y: p.y * 100 }));
+  const fmt = (p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+  if (P.length === 2) return `M ${fmt(P[0])} L ${fmt(P[1])}`;
+  let d = `M ${fmt(P[0])}`;
+  for (let i = 1; i < P.length - 1; i += 1) {
+    const prev = P[i - 1];
+    const cur = P[i];
+    const next = P[i + 1];
+    const lenIn = Math.hypot(cur.x - prev.x, cur.y - prev.y) || 1;
+    const lenOut = Math.hypot(next.x - cur.x, next.y - cur.y) || 1;
+    const rIn = Math.min(ROAD_CORNER_R, lenIn / 2);
+    const rOut = Math.min(ROAD_CORNER_R, lenOut / 2);
+    const enter = { x: cur.x - ((cur.x - prev.x) / lenIn) * rIn, y: cur.y - ((cur.y - prev.y) / lenIn) * rIn };
+    const exit = { x: cur.x + ((next.x - cur.x) / lenOut) * rOut, y: cur.y + ((next.y - cur.y) / lenOut) * rOut };
+    d += ` L ${fmt(enter)} Q ${fmt(cur)} ${fmt(exit)}`;
+  }
+  d += ` L ${fmt(P[P.length - 1])}`;
+  return d;
+}
+
+// Capa SVG de carreteras: trazo de asfalto + raya amarilla central (dos carriles).
+// `draft` = { points, vertices }: points incluye el cursor (preview elástico);
+// vertices son los puntos ya fijados con click (se marcan con un círculo).
+function RoadsLayer({ roads = [], draft = null, editable = false, selected = null, onSelect }) {
+  const draftPts = draft?.points || null;
+  const items = draftPts && draftPts.length > 1 ? [...roads, { id: '__draft__', points: draftPts }] : roads;
+  const draftVertices = draft?.vertices || [];
+  if (!items.length && !draftVertices.length) return null;
+  return (
+    <svg className="roads-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      {items.map((r) => {
+        const d = roadPathD(r.points);
+        if (!d) return null;
+        const isDraft = r.id === '__draft__';
+        const sel = editable && selected === r.id;
+        return (
+          <g key={r.id} className={`road${isDraft ? ' draft' : ''}${sel ? ' selected' : ''}`}>
+            <path className="road-asphalt" d={d} fill="none" />
+            <path className="road-center" d={d} fill="none" />
+            {editable && !isDraft && (
+              <path
+                className="road-hit"
+                d={d}
+                fill="none"
+                onPointerDown={(e) => { e.stopPropagation(); onSelect?.(r.id); }}
+              />
+            )}
+          </g>
+        );
+      })}
+      {draftVertices.map((p, i) => (
+        <circle key={`v-${i}`} className="road-vertex" cx={p.x * 100} cy={p.y * 100} r="1.1" />
+      ))}
+    </svg>
+  );
+}
+
 function FlowArrows({ arrows, editable = false, selected = null, onPointerDown, aspect = 1.5 }) {
   return (
     <>
@@ -476,8 +549,8 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
   if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
   return (
     <div className="plano-wrap">
-      <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
-        <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
+      <div className={`plano${fl.showPlan === false ? ' no-plan' : ''}`} style={{ aspectRatio: String(fl.aspect) }}>
+        {fl.showPlan !== false && <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />}
         <div className="plano-overlay">
           {visibleStalls.map((st) => {
             const space = spaceById.get(st.id);
@@ -502,6 +575,7 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
             );
           })}
         </div>
+        <RoadsLayer roads={fl.roads || []} />
       </div>
     </div>
   );
@@ -522,6 +596,10 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
   const [editMode, setEditMode] = useState(autoEdit);
   const [confirmSave, setConfirmSave] = useState(false);
   const [showPlan, setShowPlan] = useState(true);
+  const [drawingRoad, setDrawingRoad] = useState(false);
+  const [draftRoad, setDraftRoad] = useState(null); // vértices ya fijados con click
+  const [roadCursor, setRoadCursor] = useState(null); // posición del cursor (preview)
+  const [selectedRoad, setSelectedRoad] = useState(null);
   const overlayRef = useRef(null);
   const drag = useRef(null);
   const suppressClick = useRef(false);
@@ -539,10 +617,13 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     piso: f.piso,
     stalls: (f.stalls || []).map((s) => ({ ...s })),
     arrows: flowArrowsForFloor(f).map((a) => ({ ...a })),
+    roads: (f.roads || []).map((r) => ({ id: r.id, points: r.points.map((p) => ({ ...p })) })),
+    showPlan: f.showPlan !== false,
   });
   function enterEditMode() {
     if (!fl) return;
     baseline.current = snapshotFloor(fl);
+    setShowPlan(fl.showPlan !== false);
     setEditMode(true);
     setMsg(null);
   }
@@ -552,6 +633,10 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     setSelectedArrow(null);
     setAddingArrow(false);
     setEditTarget(null);
+    setDrawingRoad(false);
+    setDraftRoad(null);
+    setRoadCursor(null);
+    setSelectedRoad(null);
     baseline.current = null;
   }
   // Cierra la edición: en modo embebido (autoEdit) vuelve a la vista del admin.
@@ -564,7 +649,8 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     // Restaura el piso al snapshot tomado al entrar y descarta los cambios locales.
     const snap = baseline.current;
     if (snap) {
-      setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: snap.stalls.map((s) => ({ ...s })), arrows: snap.arrows.map((a) => ({ ...a })) })));
+      setShowPlan(snap.showPlan !== false);
+      setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: snap.stalls.map((s) => ({ ...s })), arrows: snap.arrows.map((a) => ({ ...a })), roads: (snap.roads || []).map((r) => ({ id: r.id, points: r.points.map((p) => ({ ...p })) })) })));
     }
     exitEditMode();
     setMsg(null);
@@ -574,6 +660,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
   const visibleStalls = useMemo(() => (fl?.stalls || []).filter((st) => st.utilizado !== false), [fl]);
   const spotLayout = useMemo(() => buildSpotLayout(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
   const flowArrows = useMemo(() => flowArrowsForFloor(fl), [fl]);
+  const roads = useMemo(() => fl?.roads || [], [fl]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selected = selectedIds.length === 1 ? selectedIds[0] : null;
   const selectedStall = visibleStalls.find((st) => st.id === selected) || null;
@@ -584,6 +671,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     if (!editMode || !fl) return;
     if (!baseline.current || baseline.current.piso !== floor) {
       baseline.current = snapshotFloor(fl);
+      setShowPlan(fl.showPlan !== false);
       setSelectedIds([]);
       setSelectedArrow(null);
       setEditTarget(null);
@@ -601,8 +689,12 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
         setSelectedIds([]);
         setSelectedArrow(null);
         setAddingArrow(false);
+        setSelectedRoad(null);
+        setDrawingRoad(false);
+        setDraftRoad(null);
+        setRoadCursor(null);
       } else if (e.key === 'Backspace' || e.key === 'Delete') {
-        if (!selectedIds.length && !selectedArrow) return;
+        if (!selectedIds.length && !selectedArrow && !selectedRoad) return;
         e.preventDefault();
         if (selectedIds.length) {
           const ids = new Set(selectedIds);
@@ -612,16 +704,68 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
         } else if (selectedArrow) {
           setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, arrows: flowArrowsForFloor(f).filter((a) => a.id !== selectedArrow) })));
           setSelectedArrow(null);
+        } else if (selectedRoad) {
+          removeRoad(selectedRoad);
         }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editMode, selectedIds, selectedArrow, editTarget, confirmSave, floor]);
+  }, [editMode, selectedIds, selectedArrow, selectedRoad, editTarget, confirmSave, floor]);
 
   function frac(e) {
     const r = overlayRef.current.getBoundingClientRect();
     return { x: Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1), y: Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1) };
+  }
+
+  // ── Dibujo de ruta por clicks: cada click fija un vértice; los tramos entre
+  //    vértices son rectos y las esquinas se curvan suave al renderizar.
+  //    Doble click (o desactivar la herramienta) finaliza la ruta.
+  function addRoadPoint(e) {
+    if (!drawingRoad || busy) return;
+    const raw = frac(e);
+    setSelectedRoad(null);
+    setDraftRoad((prev) => {
+      const pts = prev || [];
+      const last = pts[pts.length - 1];
+      const p = snapToAxis(last, raw); // tramo horizontal o vertical
+      if (last && Math.hypot(p.x - last.x, p.y - last.y) < 0.005) return pts; // evita duplicado (doble click)
+      return [...pts, p];
+    });
+  }
+  function moveRoadCursor(e) {
+    if (!drawingRoad) return;
+    const raw = frac(e);
+    const last = draftRoad?.[draftRoad.length - 1];
+    setRoadCursor(snapToAxis(last, raw));
+  }
+  function commitRoad() {
+    const pts = draftRoad || [];
+    setDraftRoad(null);
+    setRoadCursor(null);
+    if (pts.length < 2) return; // necesita al menos 2 vértices
+    const road = { id: nextTempId('road'), points: pts.map((p) => ({ ...p })) };
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, roads: [...(f.roads || []), road] })));
+    setSelectedRoad(road.id);
+  }
+  function finishRoad() { commitRoad(); }
+  function removeRoad(id) {
+    setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, roads: (f.roads || []).filter((r) => r.id !== id) })));
+    setSelectedRoad((cur) => (cur === id ? null : cur));
+  }
+  function toggleDrawRoad() {
+    if (drawingRoad) {
+      commitRoad(); // al apagar la herramienta, fija la ruta en curso
+      setDrawingRoad(false);
+      return;
+    }
+    setDraftRoad(null);
+    setRoadCursor(null);
+    setSelectedRoad(null);
+    setSelectedIds([]);
+    setSelectedArrow(null);
+    setAddingArrow(false);
+    setDrawingRoad(true);
   }
   // Refleja un cambio de posición en el estado local sin recargar todo el croquis.
   function patchDot(id, x, y) {
@@ -928,6 +1072,24 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
         if (Object.keys(patch).length) await call(`/admin/api/parqueo/flecha/${encodeURIComponent(a.id)}`, { method: 'PUT', body: JSON.stringify(patch) });
       }
 
+      // 8) Rutas: las rutas no se editan, sólo se crean o borran.
+      const curRoads = roads;
+      const baseRoads = snap.roads || [];
+      const curRoadIds = new Set(curRoads.map((r) => r.id));
+      for (const r of baseRoads) {
+        if (!curRoadIds.has(r.id)) await call(`/admin/api/parqueo/ruta/${encodeURIComponent(r.id)}`, { method: 'DELETE' });
+      }
+      for (const r of curRoads) {
+        if (!isTempId(r.id)) continue;
+        await call('/admin/api/parqueo/ruta', { method: 'POST', body: JSON.stringify({ piso: floor, points: r.points.map((p) => ({ x: p.x, y: p.y })) }) });
+      }
+
+      // 9) Visibilidad del plano de fondo (mostrar/ocultar croquis)
+      if (showPlan !== (snap.showPlan !== false)) {
+        await call('/admin/api/parqueo/plan-visibilidad', { method: 'POST', body: JSON.stringify({ piso: floor, showPlan }) });
+        setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, showPlan })));
+      }
+
       onSaved?.();
       if (autoEdit) {
         finishEditing();
@@ -966,9 +1128,11 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
           {showPlan && <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />}
           <div
             ref={overlayRef}
-            className={`plano-overlay${editMode ? ' editing' : ''}${editMode && addingArrow ? ' adding-arrow' : ''}`}
-            onPointerDown={editMode ? startBoxSelect : undefined}
-            onClick={editMode ? handleOverlayClick : undefined}
+            className={`plano-overlay${editMode ? ' editing' : ''}${editMode && addingArrow ? ' adding-arrow' : ''}${editMode && drawingRoad ? ' drawing-road' : ''}`}
+            onPointerDown={editMode && !drawingRoad ? startBoxSelect : undefined}
+            onPointerMove={editMode && drawingRoad ? moveRoadCursor : undefined}
+            onClick={editMode ? (drawingRoad ? addRoadPoint : handleOverlayClick) : undefined}
+            onDoubleClick={editMode && drawingRoad ? finishRoad : undefined}
           >
             {visibleStalls.map((st) => (
               <button
@@ -977,7 +1141,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
                 className={`pspot${editMode ? ' editable' : ''} ${st.estado || 'disponible'}${st.discapacitado ? ' accessible' : ''}${editMode && selectedSet.has(st.id) ? ' selected' : ''}`}
                 style={spotStyle(st, spotLayout)}
                 title={st.nombre || st.id}
-                onPointerDown={editMode ? (e) => startDrag(e, st) : undefined}
+                onPointerDown={editMode && !drawingRoad ? (e) => startDrag(e, st) : undefined}
                 onClick={(e) => e.stopPropagation()}
               />
             ))}
@@ -993,6 +1157,13 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
               />
             )}
           </div>
+          <RoadsLayer
+            roads={roads}
+            draft={drawingRoad && draftRoad ? { points: roadCursor ? [...draftRoad, roadCursor] : draftRoad, vertices: draftRoad } : null}
+            editable={editMode && !drawingRoad}
+            selected={selectedRoad}
+            onSelect={setSelectedRoad}
+          />
           {editMode && (
             <div className="plano-tools" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
               <span className={`sel-count${selectedIds.length ? ' on' : ''}`}>{selectedIds.length ? `${selectedIds.length} sel.` : 'Sin selección'}</span>
@@ -1005,6 +1176,9 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
               <button className="btn ghost" onClick={() => applySpaceBatch('accessible')} disabled={busy || !selectedIds.length} title="Marcar/desmarcar como plaza de discapacitados"><Accessibility size={15} />Discap.</button>
               <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy || !selectedIds.length} title="Quitar las plazas seleccionadas"><Trash2 size={15} />Borrar</button>
               <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy || !selectedIds.length} title="Deseleccionar">Deselec.</button>
+              <span className="plano-tools-sep" aria-hidden />
+              <button className={`btn ghost${drawingRoad ? ' active' : ''}`} onClick={toggleDrawRoad} disabled={busy} title="Dibujar ruta: click para colocar cada punto, doble click (o este botón) para terminar"><Route size={15} />{drawingRoad ? 'Terminar ruta' : 'Ruta'}</button>
+              <button className="btn ghost danger" onClick={() => selectedRoad && removeRoad(selectedRoad)} disabled={busy || !selectedRoad} title="Borrar la ruta seleccionada"><Trash2 size={15} />Borrar ruta</button>
               <span className="plano-tools-sep" aria-hidden />
               <button className="btn ghost" onClick={cancelEditMode} disabled={busy}>Cancelar</button>
               <button className="btn" onClick={() => setConfirmSave(true)} disabled={busy}><Check size={15} />{busy ? 'Guardando…' : 'Guardar'}</button>
