@@ -950,36 +950,14 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     <div className="plano-editor">
       <div className="editor-bar">
         {editMode ? (
-          <div className="editor-actions">
-            <div className="btn-group">
-              <button className="btn ghost" onClick={() => setShowPlan((v) => !v)} disabled={busy} title={showPlan ? 'Ocultar el plano de fondo' : 'Mostrar el plano de fondo'}>{showPlan ? <><EyeOff size={16} />Ocultar croquis</> : <><Eye size={16} />Mostrar croquis</>}</button>
-            </div>
-            <span className="btn-divider" aria-hidden />
-            <div className="btn-group">
-              <span className={`sel-count${selectedIds.length ? ' on' : ''}`}>{selectedIds.length ? `${selectedIds.length} seleccionada${selectedIds.length === 1 ? '' : 's'}` : 'Sin selección'}</span>
-              <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy || selectedIds.length !== 1} title={selectedIds.length === 1 ? 'Editar la plaza seleccionada' : 'Seleccioná una sola plaza'}><Pencil size={16} />Editar plaza</button>
-              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy || !selectedIds.length} title="Marcar como disponible"><Check size={16} />Disponible</button>
-              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy || !selectedIds.length} title="Marcar como ocupado"><Car size={16} />Ocupado</button>
-              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy || !selectedIds.length} title="Marcar como no disponible"><EyeOff size={16} />No disponible</button>
-              <button className="btn ghost" onClick={() => applySpaceBatch('accessible')} disabled={busy || !selectedIds.length} title="Marcar/desmarcar como plaza de discapacitados"><Accessibility size={16} />Discapacitado</button>
-              <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy || !selectedIds.length} title="Quitar las plazas seleccionadas"><Trash2 size={16} />Borrar</button>
-              <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy || !selectedIds.length}>Deseleccionar</button>
-            </div>
-          </div>
+          <div className="editor-bar-title"><Pencil size={15} /><span>Editando croquis — Sótano -{floor}</span></div>
         ) : (
           <button type="button" className="btn ghost editar-toggle" onClick={enterEditMode} disabled={busy} title="Editar el croquis">
             <Pencil size={16} />Editar
           </button>
         )}
         <div className="editor-bar-end">
-          {editMode ? (
-            <>
-              <button className="btn ghost" onClick={cancelEditMode} disabled={busy}>Cancelar</button>
-              <button className="btn" onClick={() => setConfirmSave(true)} disabled={busy}><Check size={16} />{busy ? 'Guardando…' : 'Guardar'}</button>
-            </>
-          ) : (
-            <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
-          )}
+          {!editMode && <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>}
         </div>
       </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
@@ -1015,6 +993,23 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
               />
             )}
           </div>
+          {editMode && (
+            <div className="plano-tools" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <span className={`sel-count${selectedIds.length ? ' on' : ''}`}>{selectedIds.length ? `${selectedIds.length} sel.` : 'Sin selección'}</span>
+              <button className="btn ghost" onClick={() => setShowPlan((v) => !v)} disabled={busy} title={showPlan ? 'Ocultar el plano de fondo' : 'Mostrar el plano de fondo'}>{showPlan ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+              <span className="plano-tools-sep" aria-hidden />
+              <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy || selectedIds.length !== 1} title={selectedIds.length === 1 ? 'Editar la plaza seleccionada' : 'Seleccioná una sola plaza'}><Pencil size={15} />Editar</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy || !selectedIds.length} title="Marcar como disponible"><Check size={15} />Disponible</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy || !selectedIds.length} title="Marcar como ocupado"><Car size={15} />Ocupado</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy || !selectedIds.length} title="Marcar como no disponible"><EyeOff size={15} />No disp.</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('accessible')} disabled={busy || !selectedIds.length} title="Marcar/desmarcar como plaza de discapacitados"><Accessibility size={15} />Discap.</button>
+              <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy || !selectedIds.length} title="Quitar las plazas seleccionadas"><Trash2 size={15} />Borrar</button>
+              <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy || !selectedIds.length} title="Deseleccionar">Deselec.</button>
+              <span className="plano-tools-sep" aria-hidden />
+              <button className="btn ghost" onClick={cancelEditMode} disabled={busy}>Cancelar</button>
+              <button className="btn" onClick={() => setConfirmSave(true)} disabled={busy}><Check size={15} />{busy ? 'Guardando…' : 'Guardar'}</button>
+            </div>
+          )}
         </div>
       </div>
       {editTarget && (

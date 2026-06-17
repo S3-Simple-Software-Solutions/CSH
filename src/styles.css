@@ -607,8 +607,15 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .toolbar-extra .btn { min-height: 38px; margin-top: 0; padding: 0 12px; }
 .plano-editor { margin-top: 18px; }
 .editor-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.editor-bar-title { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-label); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
 .editor-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .editor-actions .btn-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Toolbar de edición incrustado DENTRO del croquis (flotante sobre el plano) */
+.plano-tools { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 7px 9px; background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, .28); }
+.plano-tools .btn { min-height: 32px; margin-top: 0; padding: 0 10px; font-size: 12px; letter-spacing: .02em; }
+.plano-tools .btn:disabled { opacity: .42; cursor: not-allowed; }
+.plano-tools .sel-count { padding: 0 6px; }
+.plano-tools-sep { width: 1px; align-self: stretch; min-height: 22px; background: var(--line); margin: 0 2px; }
 .btn-divider { width: 1px; align-self: stretch; min-height: 28px; background: var(--line); }
 .sel-count { font-family: var(--font-label); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-right: 2px; }
 .sel-count.on { color: var(--gold); }
