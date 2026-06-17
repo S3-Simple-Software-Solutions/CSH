@@ -62,6 +62,14 @@ parqueoRouter.post('/admin/api/parqueo/espacio', requireAdmin, async (req, res, 
   }
 });
 
+parqueoRouter.post('/admin/api/parqueo/espacios/batch', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.batchEspacios(req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 parqueoRouter.put('/admin/api/parqueo/espacio/:id/pos', requireAdmin, async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await parqueo.moveEspacio(String(req.params.id), req.body, req.adminUser!)) });

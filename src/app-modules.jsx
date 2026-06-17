@@ -356,6 +356,20 @@ function spotStyle(st, layout) {
   return { left: `${g.x * 100}%`, top: `${g.y * 100}%`, width: `${g.w * 100}%`, height: `${g.h * 100}%` };
 }
 
+function selectionRect(a, b) {
+  const left = Math.min(a.x, b.x);
+  const top = Math.min(a.y, b.y);
+  const right = Math.max(a.x, b.x);
+  const bottom = Math.max(a.y, b.y);
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+function spotTouchesSelection(st, layout, rect) {
+  const g = layout.get(st.id) || { x: st.x, y: st.y, w: 0.032, h: 0.022 };
+  const spot = { left: g.x - g.w / 2, right: g.x + g.w / 2, top: g.y - g.h / 2, bottom: g.y + g.h / 2 };
+  return spot.left <= rect.right && spot.right >= rect.left && spot.top <= rect.bottom && spot.bottom >= rect.top;
+}
+
 function flowArrowsForFloor(fl) {
   if (!fl) return [];
   const arrows = Array.isArray(fl.arrows) ? fl.arrows : [];
@@ -515,11 +529,12 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
 // Solo se monta para administradores de parqueo.
 function PlanoEditor({ floor, onClose, onSaved }) {
   const [floors, setFloors] = useState(null);
-  const [selected, setSelected] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [selectedArrow, setSelectedArrow] = useState(null);
   const [arrowKind, setArrowKind] = useState('straight');
   const [addingArrow, setAddingArrow] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+  const [selectionBox, setSelectionBox] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const overlayRef = useRef(null);
@@ -533,6 +548,8 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const visibleStalls = useMemo(() => (fl?.stalls || []).filter((st) => st.utilizado !== false), [fl]);
   const spotLayout = useMemo(() => buildSpotLayout(visibleStalls, fl?.aspect), [visibleStalls, fl?.aspect]);
   const flowArrows = useMemo(() => flowArrowsForFloor(fl), [fl]);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selected = selectedIds.length === 1 ? selectedIds[0] : null;
   const selectedStall = visibleStalls.find((st) => st.id === selected) || null;
   const selectedArrowItem = flowArrows.find((arrow) => arrow.id === selectedArrow) || null;
 
@@ -553,6 +570,16 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     }));
   }
 
+  function selectSpaces(ids) {
+    const nextIds = Array.from(new Set(ids));
+    setSelectedIds(nextIds);
+    if (nextIds.length) {
+      setSelectedArrow(null);
+      setEditTarget(null);
+      setAddingArrow(false);
+    }
+  }
+
   async function addDot(e) {
     if (suppressClick.current) { suppressClick.current = false; return; }
     if (e.target !== overlayRef.current || busy) return;
@@ -563,7 +590,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     setBusy(false);
     if (!data.ok) return setMsg({ type: 'error', text: data.error });
     await reload();
-    setSelected(data.espacio.id);
+    selectSpaces([data.espacio.id]);
     setSelectedArrow(null);
     onSaved?.();
   }
@@ -578,7 +605,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     setBusy(false);
     if (!data.ok) return setMsg({ type: 'error', text: data.error });
     setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, arrows: [...flowArrowsForFloor(f), data.flecha] })));
-    setSelected(null);
+    setSelectedIds([]);
     setSelectedArrow(data.flecha.id);
     setArrowKind(flowArrowKind(data.flecha.kind));
     setAddingArrow(false);
@@ -590,10 +617,44 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     return addDot(e);
   }
 
+  function startBoxSelect(e) {
+    if (addingArrow || busy || e.target !== overlayRef.current) return;
+    const start = frac(e);
+    const startClient = { x: e.clientX, y: e.clientY };
+    let moved = false;
+    const idsInRect = (rect) => visibleStalls.filter((st) => spotTouchesSelection(st, spotLayout, rect)).map((st) => st.id);
+    const onMove = (ev) => {
+      const distance = Math.hypot(ev.clientX - startClient.x, ev.clientY - startClient.y);
+      if (distance < 5 && !moved) return;
+      if (!moved) {
+        setSelectedArrow(null);
+        setEditTarget(null);
+        setAddingArrow(false);
+      }
+      moved = true;
+      const rect = selectionRect(start, frac(ev));
+      setSelectionBox(rect);
+      selectSpaces(idsInRect(rect));
+    };
+    const onUp = (ev) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setSelectionBox(null);
+      if (!moved) return;
+      suppressClick.current = true;
+      const rect = selectionRect(start, frac(ev));
+      const ids = idsInRect(rect);
+      selectSpaces(ids);
+      setMsg(ids.length ? null : { type: 'ok', text: 'No hay espacios dentro de la selección.' });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
   function startDrag(e, st) {
     e.preventDefault();
     e.stopPropagation();
-    setSelected(st.id);
+    selectSpaces([st.id]);
     setSelectedArrow(null);
     setAddingArrow(false);
     drag.current = { id: st.id, moved: false };
@@ -623,7 +684,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   function startArrowDrag(e, arrow) {
     e.preventDefault();
     e.stopPropagation();
-    setSelected(null);
+    setSelectedIds([]);
     setEditTarget(null);
     setSelectedArrow(arrow.id);
     setArrowKind(flowArrowKind(arrow.kind));
@@ -706,12 +767,32 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     const data = await api(`/admin/api/parqueo/espacio/${encodeURIComponent(id)}`, { method: 'DELETE' });
     setBusy(false);
     if (!data.ok) return setMsg({ type: 'error', text: data.error });
-    setSelected(null);
+    setSelectedIds((ids) => ids.filter((item) => item !== id));
     setSelectedArrow(null);
     setAddingArrow(false);
     setEditTarget(null);
     await reload();
     onSaved?.();
+  }
+
+  async function applySpaceBatch(action, estado) {
+    if (!selectedIds.length || busy) return;
+    if (action === 'delete' && !window.confirm(`¿Borrar ${selectedIds.length} espacio${selectedIds.length === 1 ? '' : 's'} seleccionado${selectedIds.length === 1 ? '' : 's'}?`)) return;
+    setBusy(true);
+    setMsg(null);
+    const data = await api('/admin/api/parqueo/espacios/batch', {
+      method: 'POST',
+      body: JSON.stringify({ ids: selectedIds, action, estado }),
+    });
+    setBusy(false);
+    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    const changed = data.count || selectedIds.length;
+    setSelectedIds([]);
+    setSelectedArrow(null);
+    setEditTarget(null);
+    await reload();
+    onSaved?.();
+    setMsg({ type: 'ok', text: `${changed} espacio${changed === 1 ? '' : 's'} actualizado${changed === 1 ? '' : 's'}.` });
   }
 
   async function clearAll() {
@@ -722,7 +803,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     setBusy(false);
     if (!data.ok) return setMsg({ type: 'error', text: data.error });
     setFloors(data.floors);
-    setSelected(null);
+    setSelectedIds([]);
     setSelectedArrow(null);
     setAddingArrow(false);
     setMsg({ type: 'ok', text: 'Plano vaciado. Hacé clic para marcar los espacios.' });
@@ -733,7 +814,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const count = visibleStalls.length;
   const editorHint = addingArrow
     ? 'Hacé clic en el plano para ubicar la nueva flecha de circulación.'
-    : 'Hacé clic para marcar una plaza. Arrastrá flechas desde las esquinas del carril para unir tramos de calle; seleccionalas para cambiar dirección.';
+    : 'Hacé clic para marcar una plaza. Arrastrá sobre el plano para seleccionar varias plazas y aplicar acciones masivas.';
 
   return (
     <div className="plano-editor">
@@ -753,7 +834,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
             className={`btn ghost${addingArrow ? ' active' : ''}`}
             onClick={() => {
               setAddingArrow((value) => !value);
-              setSelected(null);
+              setSelectedIds([]);
               setSelectedArrow(null);
               setEditTarget(null);
             }}
@@ -770,30 +851,44 @@ function PlanoEditor({ floor, onClose, onSaved }) {
       <div className="plano-wrap">
         <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
           <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
-          <div ref={overlayRef} className={`plano-overlay editing${addingArrow ? ' adding-arrow' : ''}`} onClick={handleOverlayClick}>
+          <div ref={overlayRef} className={`plano-overlay editing${addingArrow ? ' adding-arrow' : ''}`} onPointerDown={startBoxSelect} onClick={handleOverlayClick}>
             <FlowArrows arrows={flowArrows} editable selected={selectedArrow} onPointerDown={startArrowDrag} aspect={fl.aspect} />
             {visibleStalls.map((st) => (
               <button
                 key={st.id}
                 type="button"
-                className={`pspot editable${st.discapacitado ? ' accessible' : ''}${selected === st.id ? ' selected' : ''}`}
+                className={`pspot editable ${st.estado || 'disponible'}${st.discapacitado ? ' accessible' : ''}${selectedSet.has(st.id) ? ' selected' : ''}`}
                 style={spotStyle(st, spotLayout)}
                 title={st.nombre || st.id}
                 onPointerDown={(e) => startDrag(e, st)}
                 onClick={(e) => e.stopPropagation()}
               />
             ))}
+            {selectionBox && (
+              <div
+                className="selection-marquee"
+                style={{
+                  left: `${selectionBox.left * 100}%`,
+                  top: `${selectionBox.top * 100}%`,
+                  width: `${selectionBox.width * 100}%`,
+                  height: `${selectionBox.height * 100}%`,
+                }}
+              />
+            )}
           </div>
         </div>
       </div>
       <div className="editor-props">
         <span>{count} espacio{count === 1 ? '' : 's'} en Sótano -{floor}</span>
-        {selected && (
+        {selectedIds.length > 0 && (
           <>
-            <b>{selectedStall?.nombre || selected}</b>
-            <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy}>Editar plaza</button>
-            <button className="btn ghost danger" onClick={() => removeDot(selected)} disabled={busy}>Borrar espacio</button>
-            <button className="btn ghost" onClick={() => setSelected(null)} disabled={busy}>Deseleccionar</button>
+            <b>{selectedIds.length === 1 ? (selectedStall?.nombre || selected) : `${selectedIds.length} seleccionados`}</b>
+            {selectedIds.length === 1 && <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy}>Editar plaza</button>}
+            <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy}><Check size={16} />Disponible</button>
+            <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy}><Car size={16} />Ocupado</button>
+            <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy}><EyeOff size={16} />No disponible</button>
+            <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy}><Trash2 size={16} />Borrar</button>
+            <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy}>Deseleccionar</button>
           </>
         )}
         {selectedArrow && (
@@ -1491,6 +1586,19 @@ function AdminSpaceModal({ modal, user, onClose, afterAction }) {
   if (modal.error) return <MessageModal title="Error" text={modal.error} onClose={onClose} />;
   if (space.estado === 'disponible') {
     return <Modal title={space.id} onClose={onClose}><p className="muted">Disponible · Piso {space.piso} · Zona {space.zona}</p><label>Placa</label><input value={plate} onChange={(e) => setPlate(e.target.value)} /><label>Duracion</label><select value={duration} onChange={(e) => setDuration(e.target.value)}><option value="30">30 minutos</option><option value="60">1 hora</option><option value="120">2 horas</option><option value="240">4 horas</option></select><button className="btn" onClick={() => afterAction(api('/admin/api/parqueo/reservar', { method: 'POST', body: JSON.stringify({ espacioId: space.id, placa: plate.trim().toUpperCase(), duracion: Number(duration) }) }))}>Reservar</button></Modal>;
+  }
+  if (!reservation) {
+    return (
+      <Modal title={space.id} onClose={onClose}>
+        <p className="muted">Estado manual: {String(space.estado).replace('_', ' ')}</p>
+        {user.parkingRole === 'admin' && (
+          <div className="actions">
+            <button className="btn ghost" onClick={() => afterAction(api('/admin/api/parqueo/espacios/batch', { method: 'POST', body: JSON.stringify({ ids: [space.id], action: 'status', estado: 'disponible' }) }))}><Check size={16} />Disponible</button>
+            <button className="btn ghost" onClick={() => afterAction(api('/admin/api/parqueo/espacios/batch', { method: 'POST', body: JSON.stringify({ ids: [space.id], action: 'status', estado: 'no_disponible' }) }))}><EyeOff size={16} />No disponible</button>
+          </div>
+        )}
+      </Modal>
+    );
   }
   return (
     <Modal title={space.id} onClose={onClose}>

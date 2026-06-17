@@ -1,6 +1,7 @@
 import { TARIFA_HORA } from '../../config/constants';
 import { ApiError } from '../../core/errors';
 import { getParqueoRepository } from './parqueo.repository';
+import type { ParkingSpaceStatus } from './parqueo.repository';
 import { sendParkingQrEmail, sendPaymentReceiptEmail } from './parqueo.mail';
 import { maskedReservaEmail, montoDe, reservaEmail } from './parqueo.helpers';
 import { floorPlanMeta } from './parqueo.layout';
@@ -84,6 +85,21 @@ function validSpotName(value: unknown): string | null {
   return name;
 }
 
+function validSpaceIds(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new ApiError(400, 'Seleccion invalida');
+  const ids = Array.from(new Set(value.map((id) => String(id || '').trim()).filter(Boolean)));
+  if (!ids.length) throw new ApiError(400, 'Selecciona al menos un espacio');
+  if (ids.length > 300) throw new ApiError(400, 'Seleccion demasiado grande');
+  if (ids.some((id) => id.length > 40)) throw new ApiError(400, 'Seleccion invalida');
+  return ids;
+}
+
+function validBatchSpaceStatus(value: unknown): ParkingSpaceStatus {
+  const estado = String(value || '').trim();
+  if (estado === 'disponible' || estado === 'ocupado' || estado === 'no_disponible') return estado;
+  throw new ApiError(400, 'Estado invalido');
+}
+
 export async function getCroquis() {
   const repo = getParqueoRepository();
   const [dots, arrows] = await Promise.all([repo.croquisDots(), repo.flowArrows()]);
@@ -105,6 +121,8 @@ export async function getCroquis() {
       zona: d.zona,
       num: d.num,
       utilizado: d.utilizado,
+      estado: d.estado,
+      reservaId: d.reservaId,
       nombre: d.nombre,
       tipo: d.tipo,
       ancho: d.ancho,
@@ -185,6 +203,23 @@ export async function removeEspacio(id: string, actor: Actor) {
   requireParkingAdmin(actor);
   await getParqueoRepository().removeEspacio(id);
   return { id };
+}
+
+export async function batchEspacios(body: { ids?: unknown; action?: unknown; estado?: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const ids = validSpaceIds(body.ids);
+  const action = String(body.action || '').trim();
+  const repo = getParqueoRepository();
+  if (action === 'delete') {
+    const count = await repo.removeEspacios(ids);
+    return { count };
+  }
+  if (action === 'status') {
+    const estado = validBatchSpaceStatus(body.estado);
+    const count = await repo.updateEspaciosEstado(ids, estado, { id: actor.id, name: actor.name });
+    return { count, estado };
+  }
+  throw new ApiError(400, 'Accion invalida');
 }
 
 export async function clearCroquis(actor: Actor) {
