@@ -71,6 +71,13 @@ function validArrowKind(value: unknown): FlowArrowKind {
   return kind as FlowArrowKind;
 }
 
+function validRoadPoints(value: unknown): { x: number; y: number }[] {
+  if (!Array.isArray(value)) throw new ApiError(400, 'Ruta invalida');
+  const points = value.slice(0, 400).map((p) => validPoint((p as any)?.x, (p as any)?.y));
+  if (points.length < 2) throw new ApiError(400, 'La ruta necesita al menos 2 puntos');
+  return points;
+}
+
 function validNullableDimension(value: unknown, label: string): number | null {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
@@ -102,17 +109,22 @@ function validBatchSpaceStatus(value: unknown): ParkingSpaceStatus {
 
 export async function getCroquis() {
   const repo = getParqueoRepository();
-  const [dots, arrows] = await Promise.all([repo.croquisDots(), repo.flowArrows()]);
+  const [dots, arrows, roads, visibility] = await Promise.all([repo.croquisDots(), repo.flowArrows(), repo.roads(), repo.planVisibility()]);
   const floors = floorPlanMeta().map((m) => ({
     piso: m.piso,
     plan: m.plan,
     aspect: m.aspect,
+    showPlan: visibility[m.plan] !== false,
     arrows: arrows.filter((a) => a.plan === m.plan).map((a) => ({
       id: a.id,
       x: a.x,
       y: a.y,
       r: a.r,
       kind: a.kind,
+    })),
+    roads: roads.filter((r) => r.plan === m.plan).map((r) => ({
+      id: r.id,
+      points: r.points,
     })),
     stalls: dots.filter((d) => d.piso === m.piso).map((d) => ({
       id: d.id,
@@ -184,6 +196,30 @@ export async function removeFlecha(id: string, actor: Actor) {
   requireParkingAdmin(actor);
   await getParqueoRepository().removeFlowArrow(id);
   return { id };
+}
+
+export async function addRuta(body: { piso: unknown; points: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const piso = validFloor(body.piso);
+  const ruta = await getParqueoRepository().addRoad({
+    plan: planForFloor(piso),
+    points: validRoadPoints(body.points),
+  });
+  return { ruta };
+}
+
+export async function removeRuta(id: string, actor: Actor) {
+  requireParkingAdmin(actor);
+  await getParqueoRepository().removeRoad(id);
+  return { id };
+}
+
+export async function setPlanVisibilidad(body: { piso: unknown; showPlan: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const piso = validFloor(body.piso);
+  const show = body.showPlan !== false && String(body.showPlan).toLowerCase() !== 'false';
+  await getParqueoRepository().setPlanVisibility(planForFloor(piso), show);
+  return { piso, showPlan: show };
 }
 
 export async function updateEspacio(id: string, body: { nombre?: unknown; discapacitado?: unknown; ancho?: unknown; alto?: unknown }, actor: Actor) {

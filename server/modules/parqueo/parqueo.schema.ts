@@ -73,6 +73,15 @@ export async function ensureParqueoSchema(): Promise<void> {
     update parking_flow_arrows
       set arrow_type = 'straight'
       where arrow_type is null or arrow_type = '';
+    create table if not exists parking_roads (
+      id text primary key,
+      plan text not null,
+      points jsonb not null default '[]'
+    );
+    create table if not exists parking_plan_settings (
+      plan text primary key,
+      show_plan boolean not null default true
+    );
   `);
   for (const arrow of DEFAULT_FLOW_ARROWS) {
     await pool.query(

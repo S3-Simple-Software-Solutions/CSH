@@ -11,7 +11,7 @@ import {
   Reservation,
   Space,
 } from './parqueo.types';
-import { AddEspacioInput, AddFlowArrowInput, CroquisDot, FlowArrow, ListEventosOptions, LogEventoInput, ParkingSpaceStatus, ParqueoRepository, UpdateEspacioInput, UpdateFlowArrowInput } from './parqueo.repository';
+import { AddEspacioInput, AddFlowArrowInput, AddRoadInput, CroquisDot, FlowArrow, ListEventosOptions, LogEventoInput, ParkingSpaceStatus, ParqueoRepository, Road, UpdateEspacioInput, UpdateFlowArrowInput } from './parqueo.repository';
 
 const activeWhere = "status in ('reservado','ocupado')";
 const activeReservationWhere = "r.status in ('reservado','ocupado')";
@@ -48,6 +48,25 @@ function toFlowArrow(row: any): FlowArrow {
 async function nextFlowArrowId(client: Pool | PoolClient, plan: string): Promise<string> {
   const res = await client.query('select id from parking_flow_arrows where plan = $1', [plan]);
   const prefix = `${plan}-arrow-`;
+  const max = res.rows.reduce((best: number, row: { id: string }) => {
+    if (!row.id.startsWith(prefix)) return best;
+    const n = Number(row.id.slice(prefix.length));
+    return Number.isFinite(n) ? Math.max(best, n) : best;
+  }, 0);
+  return `${prefix}${String(max + 1).padStart(2, '0')}`;
+}
+
+function toRoad(row: any): Road {
+  const raw = typeof row.points === 'string' ? JSON.parse(row.points || '[]') : row.points;
+  const points = Array.isArray(raw)
+    ? raw.map((p: any) => ({ x: Number(p.x), y: Number(p.y) })).filter((p: any) => Number.isFinite(p.x) && Number.isFinite(p.y))
+    : [];
+  return { id: row.id, plan: row.plan, points };
+}
+
+async function nextRoadId(client: Pool | PoolClient, plan: string): Promise<string> {
+  const res = await client.query('select id from parking_roads where plan = $1', [plan]);
+  const prefix = `${plan}-road-`;
   const max = res.rows.reduce((best: number, row: { id: string }) => {
     if (!row.id.startsWith(prefix)) return best;
     const n = Number(row.id.slice(prefix.length));
@@ -387,6 +406,53 @@ export class PgParqueoRepository implements ParqueoRepository {
   async flowArrows(): Promise<FlowArrow[]> {
     const rows = await query<any>('select id, plan, pos_x, pos_y, rotation, arrow_type from parking_flow_arrows order by plan, id');
     return rows.map(toFlowArrow);
+  }
+
+  async roads(): Promise<Road[]> {
+    const rows = await query<any>('select id, plan, points from parking_roads order by plan, id');
+    return rows.map(toRoad);
+  }
+
+  async addRoad(input: AddRoadInput): Promise<Road> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const id = await nextRoadId(client, input.plan);
+      const rows = await client.query(
+        'insert into parking_roads (id, plan, points) values ($1,$2,$3::jsonb) returning id, plan, points',
+        [id, input.plan, JSON.stringify(input.points)],
+      );
+      await client.query('commit');
+      return toRoad(rows.rows[0]);
+    } catch (err) {
+      try {
+        await client.query('rollback');
+      } catch {
+        /* noop */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async removeRoad(id: string): Promise<void> {
+    const res = await pool.query('delete from parking_roads where id = $1', [id]);
+    if (!res.rowCount) throw new ApiError(404, 'La ruta no existe');
+  }
+
+  async planVisibility(): Promise<Record<string, boolean>> {
+    const rows = await query<any>('select plan, show_plan from parking_plan_settings');
+    const out: Record<string, boolean> = {};
+    for (const row of rows) out[row.plan] = row.show_plan !== false;
+    return out;
+  }
+
+  async setPlanVisibility(plan: string, show: boolean): Promise<void> {
+    await pool.query(
+      'insert into parking_plan_settings (plan, show_plan) values ($1, $2) on conflict (plan) do update set show_plan = excluded.show_plan',
+      [plan, show],
+    );
   }
 
   async addEspacio({ piso, zona, x, y }: AddEspacioInput): Promise<Space> {
