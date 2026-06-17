@@ -1,0 +1,37 @@
+---
+description: Flujo de ramas main/dev para integración de features (John)
+alwaysApply: true
+---
+
+# Git: main + dev (John)
+
+## Ramas
+
+- `main`: producción / estable. No commitear features directamente.
+- `dev`: integración de John. Todos los features terminados se fusionan aquí.
+- `feat/*`: ramas de trabajo. Se crean desde `dev` actualizado.
+
+## Al clonar o antes de trabajar
+
+1. `npm run sync:branches` (o `scripts/sync-branches.ps1`)
+2. Trae `origin/main` y `origin/dev` y deja `dev` al día con `main`.
+
+## Nueva feature
+
+```bash
+npm run sync:branches
+git checkout -b feat/nombre-corto
+```
+
+## Terminar feature
+
+1. Commit en la rama `feat/*`.
+2. `npm run finish:feature -- feat/nombre-corto` (fusiona en `dev` y borra la rama local).
+3. `git push origin dev`
+4. Borrar rama remota del feature si se subió: `git push origin --delete feat/nombre-corto`
+
+## Reglas
+
+- Nunca fusionar un feature sin commit.
+- Siempre revisar si `main` tiene cambios nuevos antes de crear o fusionar features.
+- `main` solo recibe cambios vía PR cuando `dev` esté validado.
