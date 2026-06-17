@@ -572,9 +572,13 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .plano-layout .plano-wrap { flex: 1 1 auto; min-width: 0; margin-top: 0; }
 .editor-controls { flex: 0 0 200px; display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
 .editor-controls .btn { min-height: 36px; margin-top: 0; padding: 0 12px; justify-content: center; }
+.editar-toggle .editar-caret { margin-left: auto; transition: transform .15s ease; }
+.editar-toggle .editar-caret.open { transform: rotate(180deg); }
+.editor-menu { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 @media (max-width: 860px) {
   .plano-layout { flex-direction: column; }
-  .editor-controls { flex: 1 1 auto; width: 100%; flex-direction: row; flex-wrap: wrap; }
+  .editor-controls { flex: 1 1 auto; width: 100%; }
+  .editor-menu { flex-direction: row; flex-wrap: wrap; }
 }
 .btn.icon-only { width: 36px; padding: 0; }
 .btn.ghost.active { border-color: var(--gold); background: rgba(201, 169, 97, .12); color: var(--paper); }

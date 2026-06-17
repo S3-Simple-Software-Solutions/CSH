@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, MessageSquare, Moon, Newspaper, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, ChevronDown, Clock, Eye, EyeOff, Globe, LogOut, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
@@ -537,6 +537,7 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const [selectionBox, setSelectionBox] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const overlayRef = useRef(null);
   const drag = useRef(null);
   const suppressClick = useRef(false);
@@ -847,6 +848,18 @@ function PlanoEditor({ floor, onClose, onSaved }) {
         </div>
         </div>
         <aside className="editor-controls">
+          <button
+            type="button"
+            className={`btn ghost editar-toggle${menuOpen ? ' active' : ''}`}
+            onClick={() => setMenuOpen((value) => !value)}
+            disabled={busy}
+            aria-expanded={menuOpen}
+            title="Mostrar acciones del croquis"
+          >
+            <Pencil size={16} />Editar<ChevronDown size={16} className={`editar-caret${menuOpen ? ' open' : ''}`} />
+          </button>
+          {menuOpen && (
+          <div className="editor-menu">
           <select
             className="arrow-kind-select"
             value={selectedArrowItem ? flowArrowKind(selectedArrowItem.kind) : arrowKind}
@@ -889,6 +902,8 @@ function PlanoEditor({ floor, onClose, onSaved }) {
               <button className="btn ghost danger" onClick={() => removeArrow(selectedArrow)} disabled={busy}><Trash2 size={16} />Borrar flecha</button>
               <button className="btn ghost" onClick={() => setSelectedArrow(null)} disabled={busy}>Deseleccionar</button>
             </>
+          )}
+          </div>
           )}
         </aside>
       </div>
