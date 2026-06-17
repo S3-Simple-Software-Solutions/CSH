@@ -935,7 +935,6 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
         {editMode ? (
           <div className="editor-actions">
             <div className="btn-group">
-              <button className="btn ghost danger" onClick={clearAll} disabled={busy} title="Quitar todas las plazas (se aplica al guardar)"><Trash2 size={16} />Vaciar plano</button>
               <button className="btn ghost" onClick={() => setShowPlan((v) => !v)} disabled={busy} title={showPlan ? 'Ocultar el plano de fondo' : 'Mostrar el plano de fondo'}>{showPlan ? <><EyeOff size={16} />Ocultar croquis</> : <><Eye size={16} />Mostrar croquis</>}</button>
             </div>
             <span className="btn-divider" aria-hidden />
@@ -1845,6 +1844,7 @@ function PublicEventDetail({ slug }) {
   const { evento, tipos } = data;
   const setCantidad = (id, n, max) => setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(max, n)) }));
   const lineas = tipos.filter((t) => qty[t.id] > 0).map((t) => ({ tipoId: t.id, cantidad: qty[t.id] }));
+  const detalle = tipos.filter((t) => qty[t.id] > 0).map((t) => ({ nombre: t.nombre, cantidad: qty[t.id], subtotal: t.precioCrc * qty[t.id] }));
   const total = tipos.reduce((s, t) => s + t.precioCrc * (qty[t.id] || 0), 0);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
   return (
@@ -1873,18 +1873,21 @@ function PublicEventDetail({ slug }) {
           <button className="btn" disabled={count === 0} onClick={() => setCheckout(true)}>Continuar</button>
         </div>
       </main>
-      {checkout && <CheckoutModal slug={slug} lineas={lineas} total={total} evento={evento} onClose={() => setCheckout(false)} onDone={(res) => { setCheckout(false); setDone(res); }} />}
+      {checkout && <CheckoutModal slug={slug} lineas={lineas} detalle={detalle} total={total} evento={evento} onClose={() => setCheckout(false)} onDone={(res) => { setCheckout(false); setDone(res); }} />}
       {done && <TicketsModal result={done} onClose={() => { setDone(null); location.reload(); }} />}
     </>
   );
 }
 
-function CheckoutModal({ slug, lineas, total, evento, onClose, onDone }) {
+function CheckoutModal({ slug, lineas, detalle = [], total, evento, onClose, onDone }) {
   const [buyer, setBuyer] = useState({ nombre: '', email: '' });
   const [pago, setPago] = useState({ name: '', cardNumber: '', exp: '', cvv: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
+  // El precio del boleto ya incluye IVA; se desglosa el 13% sin alterar el total cobrado.
+  const subtotal = Math.round(total / 1.13);
+  const iva = total - subtotal;
   async function submit() {
     setError(''); setLoading(true);
     const body = { slug, lineas, comprador: buyer, pago: total > 0 ? pago : undefined };
@@ -1895,7 +1898,17 @@ function CheckoutModal({ slug, lineas, total, evento, onClose, onDone }) {
   }
   return (
     <Modal title="Finalizar compra" onClose={onClose}>
-      <div className="pay-summary">{evento.nombre}<br />{count} boleto(s) · Total <b>{money(total)}</b></div>
+      <div className="pay-summary">
+        <div className="pay-event">{evento.nombre}</div>
+        <ul className="pay-lines">
+          {detalle.map((l) => (
+            <li key={l.nombre}><span>{l.cantidad} × {l.nombre}</span><b>{money(l.subtotal)}</b></li>
+          ))}
+        </ul>
+        <div className="pay-row"><span>Subtotal</span><b>{money(subtotal)}</b></div>
+        <div className="pay-row"><span>IVA (13%)</span><b>{money(iva)}</b></div>
+        <div className="pay-row total"><span>Total · {count} boleto{count === 1 ? '' : 's'}</span><b>{money(total)}</b></div>
+      </div>
       <label>Nombre completo</label><input value={buyer.nombre} onChange={(e) => setBuyer({ ...buyer, nombre: e.target.value })} autoFocus />
       <label>Correo (recibis el QR aqui)</label><input type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} />
       {total > 0 && (

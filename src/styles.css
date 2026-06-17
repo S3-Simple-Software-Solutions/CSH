@@ -262,6 +262,14 @@ input:focus, select:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb
 .modal-head h3 { margin: 0; font-size: 28px; }
 .modal-head button { border: 0; background: transparent; color: var(--muted); font-size: 28px; cursor: pointer; line-height: 1; }
 .pay-summary { margin: 14px 0; border: 1px solid var(--line); border-radius: 4px; padding: 12px; color: var(--muted); line-height: 1.55; }
+.pay-summary .pay-event { color: var(--paper); font-weight: 600; margin-bottom: 8px; }
+.pay-summary .pay-lines { list-style: none; margin: 0 0 8px; padding: 0; }
+.pay-summary .pay-lines li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.pay-summary .pay-lines b { color: var(--paper); font-weight: 600; }
+.pay-summary .pay-row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.pay-summary .pay-row b { color: var(--paper); font-weight: 600; }
+.pay-summary .pay-row.total { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--paper); font-size: 15px; }
+.pay-summary .pay-row.total b { color: var(--gold); }
 .two { display: grid; grid-template-columns: 1fr 120px; gap: 10px; }
 .admin-shell { min-height: 100vh; display: grid; grid-template-columns: 280px 1fr; }
 .admin-shell aside { border-right: 1px solid var(--line); background: var(--aside); padding: 24px 18px; display: flex; flex-direction: column; gap: 8px; }

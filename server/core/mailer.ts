@@ -12,8 +12,8 @@ export interface MailAttachment {
   filename: string;
   content: Buffer;
   contentType: string;
-  cid: string;
-  contentDisposition: 'inline';
+  cid?: string;
+  contentDisposition: 'inline' | 'attachment';
 }
 
 export function makeMailTransport() {
