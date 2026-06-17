@@ -748,7 +748,6 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, roads: [...(f.roads || []), road] })));
     setSelectedRoad(road.id);
   }
-  function finishRoad() { commitRoad(); }
   function removeRoad(id) {
     setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, roads: (f.roads || []).filter((r) => r.id !== id) })));
     setSelectedRoad((cur) => (cur === id ? null : cur));
@@ -1132,7 +1131,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
             onPointerDown={editMode && !drawingRoad ? startBoxSelect : undefined}
             onPointerMove={editMode && drawingRoad ? moveRoadCursor : undefined}
             onClick={editMode ? (drawingRoad ? addRoadPoint : handleOverlayClick) : undefined}
-            onDoubleClick={editMode && drawingRoad ? finishRoad : undefined}
+            onDoubleClick={editMode && drawingRoad ? commitRoad : undefined}
           >
             {visibleStalls.map((st) => (
               <button

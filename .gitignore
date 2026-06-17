@@ -1,14 +1,13 @@
 cache/
 dist-server/
 .tmp-scrape/
-# Assets de marca generados en build (la fuente vive en public/brand, servida por Express).
-dist/brand/
-dist/favicon.png
+dist/
 server.log
 *.log
 .env
 .env.*
 !.env.example
+data/hero-bg.bin
 data/*.json
 ALL_SECRETS
 .claude/
