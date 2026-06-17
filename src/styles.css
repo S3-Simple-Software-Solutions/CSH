@@ -58,24 +58,56 @@ body {
 }
 button, input, select { font: inherit; }
 a { color: var(--gold); }
-.top {
-  height: 72px;
+/* AdminTopBar — barra de contexto del panel admin */
+.admin-topbar {
+  height: 68px;
   border-bottom: 1px solid var(--line);
   background: var(--top-bg);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 0 28px;
+  backdrop-filter: blur(10px);
   position: sticky;
   top: 0;
   z-index: 20;
 }
-.brand { display: inline-flex; align-items: center; gap: 12px; color: var(--paper); text-decoration: none; }
-.brand img { width: 38px; height: 42px; object-fit: contain; }
-.brand span { font-family: var(--font-label); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; }
-.top nav { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-.top nav a, .top nav button { color: var(--muted); text-decoration: none; font-size: 13px; background: none; border: 0; cursor: pointer; }
+.admin-topbar-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 28px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.admin-topbar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-family: var(--font-label);
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.admin-topbar-back:hover { color: var(--paper); }
+.admin-topbar-right { display: flex; align-items: center; gap: 12px; }
+.admin-topbar-user { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.admin-topbar-name { font-size: 13px; color: var(--paper); font-weight: 600; }
+.admin-topbar-role { font-family: var(--font-label); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.admin-topbar-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-label);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.admin-topbar-logout:hover { color: var(--paper); }
 .page { max-width: 1280px; margin: 0 auto; padding: 34px 28px 60px; }
 .eyebrow { margin: 0 0 8px; color: var(--gold); letter-spacing: .2em; text-transform: uppercase; font-size: 11px; font-family: var(--font-label); font-weight: 600; }
 h1 { margin: 0 0 10px; font-family: var(--font-display); text-transform: uppercase; font-size: clamp(36px, 6vw, 64px); line-height: .9; letter-spacing: 0; font-weight: 900; }

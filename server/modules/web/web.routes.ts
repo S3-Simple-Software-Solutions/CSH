@@ -8,7 +8,7 @@ webRouter.get('/api/web/hero', (_req, res) => {
   res.json({ ok: true, hero: resolvePublicHero() });
 });
 
-const heroUpload = raw({ type: ['image/png', 'image/jpeg', 'image/webp', 'image/avif'], limit: '8mb' });
+const heroUpload = raw({ type: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/avif'], limit: '8mb' });
 
 webRouter.get('/admin/api/web', requireAdmin, (_req, res) => {
   res.json({ ok: true, ...getWebConfig() });

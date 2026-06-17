@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, LogOut, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import { Accessibility, ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import AdminTopBar from './layout/AdminTopBar.jsx';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
@@ -164,24 +165,6 @@ function ThemeToggle() {
   );
 }
 
-function Header({ user, onLogout }) {
-  return (
-    <header className="top">
-      <a className="brand" href="/">
-        <img src="/brand/logo-shield.png" alt="Escudo Club Sport Herediano" />
-        <span>Herediano</span>
-      </a>
-      <nav>
-        <a href="/entradas">Entradas</a>
-        <a href="/cuponera">Cuponera</a>
-        <a href="/parqueo">Parqueo</a>
-        <a href="/admin">Admin</a>
-        <ThemeToggle />
-        {user && <button className="icon-text ghost" onClick={onLogout}><LogOut size={16} />Salir</button>}
-      </nav>
-    </header>
-  );
-}
 
 function CouponCard({ cupon, admin = false, onToggle }) {
   const pct = Math.min(100, Math.round((Number(cupon.usos || 0) / Math.max(1, Number(cupon.limite || 1))) * 100));
@@ -1466,7 +1449,7 @@ function AdminApp() {
         <button className={route === '/admin/mensajes' ? 'active' : ''} onClick={() => navigate('/admin/mensajes')}><MessageSquare size={17} />Mensajes</button>
       </aside>
       <section className="admin-main">
-        <Header user={user} onLogout={logout} />
+        <AdminTopBar user={user} onLogout={logout} />
         {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
@@ -1558,10 +1541,15 @@ function AdminWeb() {
     if (!file) return;
     setMsg(null);
     setSaving(true);
-    const response = await fetch('/admin/api/web/hero-imagen', { method: 'POST', headers: { 'content-type': file.type }, body: file });
+    const response = await fetch('/admin/api/web/hero-imagen', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': file.type || 'application/octet-stream' },
+      body: file,
+    });
     const data = await response.json().catch(() => ({ ok: false, error: 'Respuesta invalida' }));
     setSaving(false);
-    if (!data.ok) return setMsg({ type: 'error', text: data.error });
+    if (!response.ok || !data.ok) return setMsg({ type: 'error', text: data.error || `Error ${response.status}` });
     setConfig(data.config);
     setMsg({ type: 'ok', text: 'Imagen de fondo actualizada.' });
   }

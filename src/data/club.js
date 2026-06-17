@@ -45,8 +45,8 @@ export const externalLinks = {
 };
 
 // Navegación principal unificada. Los `to` internos usan react-router.
+// "Inicio" se omite: el logo de la marca ya enlaza a "/".
 export const navMain = [
-  { label: 'Inicio', to: '/' },
   { label: 'Historia', to: '/historia' },
   { label: 'Plantilla', to: '/plantilla' },
   { label: 'Calendario', to: '/calendario' },
@@ -55,9 +55,9 @@ export const navMain = [
   { label: 'Contacto', to: '/contacto' },
 ];
 
-// Accesos a los módulos funcionales de la app (lado derecho del header).
+// Módulos funcionales. `primary: true` → chip CTA destacado.
 export const navModules = [
-  { label: 'Entradas', to: '/entradas' },
+  { label: 'Entradas', to: '/entradas', primary: true },
   { label: 'Cuponera', to: '/cuponera' },
   { label: 'Parqueo', to: '/parqueo' },
 ];
