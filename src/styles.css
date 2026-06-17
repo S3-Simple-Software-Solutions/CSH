@@ -474,8 +474,11 @@ tr:last-child td { border-bottom: 0; }
 
 /* ───────── Croquis de parqueo sobre plano (PDF de fondo + overlay) ───────── */
 .plano-wrap { margin-top: 18px; }
-.plano { position: relative; width: 100%; max-width: 1180px; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.plano img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
+.plano { position: relative; width: 100%; max-width: 1180px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+/* Modo oscuro (default): el plano (líneas oscuras sobre claro) se invierte para leerse claro sobre fondo oscuro. */
+.plano img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; filter: invert(1) hue-rotate(180deg); }
+html[data-theme='light'] .plano { background: #fff; }
+html[data-theme='light'] .plano img { filter: none; }
 .plano-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
 .flow-arrow {
   position: absolute;
@@ -586,7 +589,8 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .editor-bar-end { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .editor-bar .btn { min-height: 36px; margin-top: 0; padding: 0 14px; }
 .editor-bar .btn:disabled { opacity: .42; cursor: not-allowed; }
-.plano.no-plan { background: repeating-linear-gradient(45deg, #f4f4f2, #f4f4f2 10px, #eceae6 10px, #eceae6 20px); }
+.plano.no-plan { background: repeating-linear-gradient(45deg, #16130f, #16130f 10px, #1d1813 10px, #1d1813 20px); }
+html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(45deg, #f4f4f2, #f4f4f2 10px, #eceae6 10px, #eceae6 20px); }
 .btn.icon-only { width: 36px; padding: 0; }
 .btn.ghost.active { border-color: var(--gold); background: rgba(201, 169, 97, .12); color: var(--paper); }
 .arrow-kind-select {
