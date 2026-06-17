@@ -20,7 +20,7 @@ function toPartido(r: PartidoRow): Partido {
 
 export async function findProximos(): Promise<Partido[]> {
   const rows = await query<PartidoRow>(
-    `select * from partidos where tipo='proximo' and estado in ('programado','pospuesto')
+    `select * from partidos where tipo='proximo' and estado in ('programado','pospuesto') and fecha >= now()
      order by fecha asc`,
   );
   return rows.map(toPartido);

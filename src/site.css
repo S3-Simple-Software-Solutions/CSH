@@ -118,6 +118,12 @@
 .share-btn.fb { border-color: #1877f2; color: #1877f2; }
 .share-btn.x { border-color: #fff; color: #fff; }
 .noticia-relacionadas-title { font-size: 22px; margin-bottom: 20px; }
+.match-list { margin-top: 24px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.match-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--line); font-size: 14px; background: var(--surface); }
+.match-row:last-child { border-bottom: none; }
+.match-row-date { min-width: 80px; }
+.match-row-teams { flex: 1; }
+.match-row-place { display: flex; align-items: center; gap: 4px; }
 .newsletter-cta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 32px 0; padding: 20px 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
 .newsletter-icon { color: var(--gold); flex-shrink: 0; }
 .newsletter-body { flex: 1; min-width: 160px; }
