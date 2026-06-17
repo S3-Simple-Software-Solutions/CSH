@@ -39,7 +39,8 @@ export default function Calendario() {
 
       {!loading && tab === 'proximos' && (
         <section className="cal-next">
-          {nextMatch ? (
+          {proximos.length === 0 && <p className="muted">No hay partidos próximos programados.</p>}
+          {nextMatch && (
             <div className="match-feature">
               <div className="match-feature-head">
                 <p className="eyebrow">Próximo partido</p>
@@ -59,8 +60,18 @@ export default function Calendario() {
               <Countdown targetISO={nextMatch.fecha} />
               <p className="match-feature-foot"><MapPin size={14} /> {nextMatch.estadio}</p>
             </div>
-          ) : (
-            <p className="muted">No hay partidos próximos programados.</p>
+          )}
+          {proximos.slice(1).length > 0 && (
+            <div className="match-list">
+              {proximos.slice(1).map((p) => (
+                <article key={p.id} className="match-row">
+                  <span className="match-row-date muted">{new Date(p.fecha).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="match-row-teams"><strong>{p.equipoLocal}</strong> vs <strong>{p.equipoVisita}</strong></span>
+                  <span className="muted">{p.competicion}</span>
+                  <span className="match-row-place muted"><MapPin size={12} /> {p.estadio}</span>
+                </article>
+              ))}
+            </div>
           )}
         </section>
       )}
