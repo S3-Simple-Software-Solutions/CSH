@@ -811,45 +811,13 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   }
 
   if (!fl) return <div className="plano-loading">Cargando croquis del plano...</div>;
-  const count = visibleStalls.length;
-  const editorHint = addingArrow
-    ? 'Hacé clic en el plano para ubicar la nueva flecha de circulación.'
-    : 'Hacé clic para marcar una plaza. Arrastrá sobre el plano para seleccionar varias plazas y aplicar acciones masivas.';
 
   return (
     <div className="plano-editor">
-      <div className="editor-bar">
-        <span className="hint">{editorHint}</span>
-        <div className="editor-actions">
-          <select
-            className="arrow-kind-select"
-            value={selectedArrowItem ? flowArrowKind(selectedArrowItem.kind) : arrowKind}
-            title="Tipo de flecha"
-            disabled={busy}
-            onChange={(e) => (selectedArrowItem ? changeArrowKind(e.target.value) : setArrowKind(flowArrowKind(e.target.value)))}
-          >
-            {FLOW_ARROW_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
-          </select>
-          <button
-            className={`btn ghost${addingArrow ? ' active' : ''}`}
-            onClick={() => {
-              setAddingArrow((value) => !value);
-              setSelectedIds([]);
-              setSelectedArrow(null);
-              setEditTarget(null);
-            }}
-            disabled={busy}
-            title="Agregar flecha de circulación"
-          >
-            <Plus size={16} />{addingArrow ? 'Ubicar flecha' : 'Agregar flecha'}
-          </button>
-          <button className="btn ghost danger" onClick={clearAll} disabled={busy}>Vaciar plano</button>
-          <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
-        </div>
-      </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
-      <div className="plano-wrap">
-        <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
+      <div className="plano-layout">
+        <div className="plano-wrap">
+          <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
           <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
           <div ref={overlayRef} className={`plano-overlay editing${addingArrow ? ' adding-arrow' : ''}`} onPointerDown={startBoxSelect} onClick={handleOverlayClick}>
             <FlowArrows arrows={flowArrows} editable selected={selectedArrow} onPointerDown={startArrowDrag} aspect={fl.aspect} />
@@ -877,31 +845,52 @@ function PlanoEditor({ floor, onClose, onSaved }) {
             )}
           </div>
         </div>
-      </div>
-      <div className="editor-props">
-        <span>{count} espacio{count === 1 ? '' : 's'} en Sótano -{floor}</span>
-        {selectedIds.length > 0 && (
-          <>
-            <b>{selectedIds.length === 1 ? (selectedStall?.nombre || selected) : `${selectedIds.length} seleccionados`}</b>
-            {selectedIds.length === 1 && <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy}>Editar plaza</button>}
-            <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy}><Check size={16} />Disponible</button>
-            <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy}><Car size={16} />Ocupado</button>
-            <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy}><EyeOff size={16} />No disponible</button>
-            <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy}><Trash2 size={16} />Borrar</button>
-            <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy}>Deseleccionar</button>
-          </>
-        )}
-        {selectedArrow && (
-          <>
-            <b>{selectedArrow}</b>
-            <span>{FLOW_ARROW_LABELS[flowArrowKind(selectedArrowItem?.kind)] || 'Flecha'} · {normalizeRotation(selectedArrowItem?.r || 0)}°</span>
-            <button className="btn ghost icon-only" onClick={() => rotateArrow(-45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la izquierda" aria-label="Girar flecha a la izquierda"><RotateCcw size={16} /></button>
-            <button className="btn ghost icon-only" onClick={() => rotateArrow(45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la derecha" aria-label="Girar flecha a la derecha"><RotateCw size={16} /></button>
-            {isTurnArrowKind(selectedArrowItem?.kind) && <button className="btn ghost" onClick={flipTurnDirection} disabled={busy || !selectedArrowItem} title="Cambiar curva izquierda/derecha"><ArrowLeftRight size={16} />Cambiar lado</button>}
-            <button className="btn ghost danger" onClick={() => removeArrow(selectedArrow)} disabled={busy}><Trash2 size={16} />Borrar flecha</button>
-            <button className="btn ghost" onClick={() => setSelectedArrow(null)} disabled={busy}>Deseleccionar</button>
-          </>
-        )}
+        </div>
+        <aside className="editor-controls">
+          <select
+            className="arrow-kind-select"
+            value={selectedArrowItem ? flowArrowKind(selectedArrowItem.kind) : arrowKind}
+            title="Tipo de flecha"
+            disabled={busy}
+            onChange={(e) => (selectedArrowItem ? changeArrowKind(e.target.value) : setArrowKind(flowArrowKind(e.target.value)))}
+          >
+            {FLOW_ARROW_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
+          </select>
+          <button
+            className={`btn ghost${addingArrow ? ' active' : ''}`}
+            onClick={() => {
+              setAddingArrow((value) => !value);
+              setSelectedIds([]);
+              setSelectedArrow(null);
+              setEditTarget(null);
+            }}
+            disabled={busy}
+            title="Agregar flecha de circulación"
+          >
+            <Plus size={16} />{addingArrow ? 'Ubicar flecha' : 'Agregar flecha'}
+          </button>
+          <button className="btn ghost danger" onClick={clearAll} disabled={busy}>Vaciar plano</button>
+          <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
+          {selectedIds.length > 0 && (
+            <>
+              {selectedIds.length === 1 && <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy}>Editar plaza</button>}
+              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy}><Check size={16} />Disponible</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy}><Car size={16} />Ocupado</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy}><EyeOff size={16} />No disponible</button>
+              <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy}><Trash2 size={16} />Borrar</button>
+              <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy}>Deseleccionar</button>
+            </>
+          )}
+          {selectedArrow && (
+            <>
+              <button className="btn ghost icon-only" onClick={() => rotateArrow(-45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la izquierda" aria-label="Girar flecha a la izquierda"><RotateCcw size={16} /></button>
+              <button className="btn ghost icon-only" onClick={() => rotateArrow(45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la derecha" aria-label="Girar flecha a la derecha"><RotateCw size={16} /></button>
+              {isTurnArrowKind(selectedArrowItem?.kind) && <button className="btn ghost" onClick={flipTurnDirection} disabled={busy || !selectedArrowItem} title="Cambiar curva izquierda/derecha"><ArrowLeftRight size={16} />Cambiar lado</button>}
+              <button className="btn ghost danger" onClick={() => removeArrow(selectedArrow)} disabled={busy}><Trash2 size={16} />Borrar flecha</button>
+              <button className="btn ghost" onClick={() => setSelectedArrow(null)} disabled={busy}>Deseleccionar</button>
+            </>
+          )}
+        </aside>
       </div>
       {editTarget && (
         <EditSpaceModal

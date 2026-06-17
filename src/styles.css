@@ -568,10 +568,14 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .toolbar-extra { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .toolbar-extra .btn { min-height: 38px; margin-top: 0; padding: 0 12px; }
 .plano-editor { margin-top: 18px; }
-.editor-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
-.editor-bar .hint { color: var(--muted); font-size: 13px; max-width: 60ch; }
-.editor-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.editor-actions .btn, .editor-props .btn { min-height: 36px; margin-top: 0; padding: 0 12px; }
+.plano-layout { display: flex; align-items: flex-start; gap: 16px; }
+.plano-layout .plano-wrap { flex: 1 1 auto; min-width: 0; margin-top: 0; }
+.editor-controls { flex: 0 0 200px; display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+.editor-controls .btn { min-height: 36px; margin-top: 0; padding: 0 12px; justify-content: center; }
+@media (max-width: 860px) {
+  .plano-layout { flex-direction: column; }
+  .editor-controls { flex: 1 1 auto; width: 100%; flex-direction: row; flex-wrap: wrap; }
+}
 .btn.icon-only { width: 36px; padding: 0; }
 .btn.ghost.active { border-color: var(--gold); background: rgba(201, 169, 97, .12); color: var(--paper); }
 .arrow-kind-select {
@@ -600,8 +604,6 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
   background: rgba(201, 169, 97, .18);
   box-shadow: inset 0 0 0 1px rgba(10, 9, 8, .32), 0 2px 10px rgba(0, 0, 0, .18);
 }
-.editor-props { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
-.editor-props b { font-family: monospace; color: var(--paper); }
 .check-row { display: flex; align-items: center; gap: 9px; letter-spacing: .06em; text-transform: none; color: var(--paper); }
 .check-row input { width: auto; margin: 0; accent-color: var(--gold); }
 .btn.ghost.danger { color: var(--red); border-color: rgba(214, 40, 40, .5); }
