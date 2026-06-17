@@ -496,7 +496,6 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
       <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
         <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
         <div className="plano-overlay">
-          {showFlow && <FlowArrows arrows={flowArrows} aspect={fl.aspect} />}
           {visibleStalls.map((st) => {
             const space = spaceById.get(st.id);
             const estado = space ? space.estado : 'disponible';
@@ -912,28 +911,6 @@ function PlanoEditor({ floor, onClose, onSaved }) {
       <div className="editor-bar">
         {editMode ? (
           <div className="editor-actions">
-            <select
-              className="arrow-kind-select"
-              value={selectedArrowItem ? flowArrowKind(selectedArrowItem.kind) : arrowKind}
-              title="Tipo de flecha"
-              disabled={busy}
-              onChange={(e) => (selectedArrowItem ? changeArrowKind(e.target.value) : setArrowKind(flowArrowKind(e.target.value)))}
-            >
-              {FLOW_ARROW_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
-            </select>
-            <button
-              className={`btn ghost${addingArrow ? ' active' : ''}`}
-              onClick={() => {
-                setAddingArrow((value) => !value);
-                setSelectedIds([]);
-                setSelectedArrow(null);
-                setEditTarget(null);
-              }}
-              disabled={busy}
-              title="Agregar flecha de circulación"
-            >
-              <Plus size={16} />{addingArrow ? 'Ubicar flecha' : 'Agregar flecha'}
-            </button>
             <button className="btn ghost danger" onClick={clearAll} disabled={busy}>Vaciar plano</button>
             {selectedIds.length > 0 && (
               <>
@@ -943,15 +920,6 @@ function PlanoEditor({ floor, onClose, onSaved }) {
                 <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy}><EyeOff size={16} />No disponible</button>
                 <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy}><Trash2 size={16} />Borrar</button>
                 <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy}>Deseleccionar</button>
-              </>
-            )}
-            {selectedArrow && (
-              <>
-                <button className="btn ghost icon-only" onClick={() => rotateArrow(-45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la izquierda" aria-label="Girar flecha a la izquierda"><RotateCcw size={16} /></button>
-                <button className="btn ghost icon-only" onClick={() => rotateArrow(45)} disabled={busy || !selectedArrowItem} title="Girar 45 grados a la derecha" aria-label="Girar flecha a la derecha"><RotateCw size={16} /></button>
-                {isTurnArrowKind(selectedArrowItem?.kind) && <button className="btn ghost" onClick={flipTurnDirection} disabled={busy || !selectedArrowItem} title="Cambiar curva izquierda/derecha"><ArrowLeftRight size={16} />Cambiar lado</button>}
-                <button className="btn ghost danger" onClick={() => removeArrow(selectedArrow)} disabled={busy}><Trash2 size={16} />Borrar flecha</button>
-                <button className="btn ghost" onClick={() => setSelectedArrow(null)} disabled={busy}>Deseleccionar</button>
               </>
             )}
           </div>
@@ -976,7 +944,6 @@ function PlanoEditor({ floor, onClose, onSaved }) {
             onPointerDown={editMode ? startBoxSelect : undefined}
             onClick={editMode ? handleOverlayClick : undefined}
           >
-            <FlowArrows arrows={flowArrows} editable={editMode} selected={editMode ? selectedArrow : null} onPointerDown={editMode ? startArrowDrag : undefined} aspect={fl.aspect} />
             {visibleStalls.map((st) => (
               <button
                 key={st.id}
@@ -1214,9 +1181,7 @@ function PublicParking() {
           <ReservationResult lookup={lookup} onResend={resend} onPay={() => setPaying(true)} />
         </section>
 
-        <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`}>
-          <FlowToggleButton showFlow={showFlow} setShowFlow={setShowFlow} />
-        </Toolbar>
+        <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`} counts={legendCounts(spaces, floor)} />
         <PlanoCroquis spaces={spaces} floor={floor} showFlow={showFlow} onSpace={(space) => space.estado === 'disponible' && setSelected(space)} />
       </main>
       {selected && <TakeSpaceModal space={selected} onClose={() => setSelected(null)} onDone={(m) => { setModal(m); setSelected(null); refresh(); }} />}
@@ -1259,18 +1224,35 @@ function ReservationResult({ lookup, onResend, onPay }) {
   );
 }
 
-function Toolbar({ floor, setFloor, stats, children }) {
+// Conteo por categoría del croquis, alineado con el color que se dibuja en cada plaza.
+function legendCounts(spaces, floor, reservations = []) {
+  const now = Date.now();
+  const resById = new Map(reservations.map((r) => [r.id, r]));
+  const counts = { disponible: 0, discapacitado: 0, reservado: 0, ocupado: 0, vencido: 0 };
+  spaces.filter((s) => s.piso === floor).forEach((s) => {
+    const session = resById.get(s.reservaId) || s.reserva;
+    const expired = session && new Date(session.fin).getTime() <= now;
+    if (expired) counts.vencido += 1;
+    else if (s.estado === 'ocupado') counts.ocupado += 1;
+    else if (s.estado === 'reservado') counts.reservado += 1;
+    else if (s.estado === 'disponible') counts[s.discapacitado ? 'discapacitado' : 'disponible'] += 1;
+  });
+  return counts;
+}
+
+function Toolbar({ floor, setFloor, stats, counts, children }) {
+  const n = (key) => (counts ? <b className="legend-count">{counts[key]}</b> : null);
   return (
     <div className="toolbar">
       <div className="tabs">
         {[1, 2].map((p) => <button key={p} className={floor === p ? 'active' : ''} onClick={() => setFloor(p)}>Sótano -{p}</button>)}
       </div>
       <div className="legend">
-        <span><i className="green" />Disponible</span>
-        <span><i className="blue" />Discapacitados</span>
-        <span><i className="orange" />Reservado</span>
-        <span><i className="red" />Ocupado</span>
-        <span><i className="wine" />Tiempo vencido</span>
+        <span><i className="green" />Disponible{n('disponible')}</span>
+        <span><i className="blue" />Discapacitados{n('discapacitado')}</span>
+        <span><i className="orange" />Reservado{n('reservado')}</span>
+        <span><i className="red" />Ocupado{n('ocupado')}</span>
+        <span><i className="wine" />Tiempo vencido{n('vencido')}</span>
         <span>{stats}</span>
       </div>
       {children && <div className="toolbar-extra">{children}</div>}
@@ -1632,8 +1614,7 @@ function AdminParking({ user }) {
   return (
     <main className="page">
       <p className="eyebrow">Zonas y reservas</p><h1>Gestion de parqueo</h1>
-      <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`}>
-        {!editing && <FlowToggleButton showFlow={showFlow} setShowFlow={setShowFlow} />}
+      <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`} counts={legendCounts(state.espacios, floor, state.reservas)}>
         {canEdit && !editing && <button className="btn ghost" onClick={() => setEditing(true)}>Editar plazas</button>}
       </Toolbar>
       {editing
