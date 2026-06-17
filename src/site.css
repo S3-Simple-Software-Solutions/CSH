@@ -1,22 +1,50 @@
 /* ===================== SITIO PÚBLICO ===================== */
 /* Header unificado */
 .site-top { position: sticky; top: 0; z-index: 40; background: var(--top-bg); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
-.site-top-inner { max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 68px; display: flex; align-items: center; gap: 20px; }
-.site-brand { display: inline-flex; align-items: center; gap: 11px; color: var(--paper); text-decoration: none; }
-.site-brand img { width: 36px; height: 40px; object-fit: contain; }
-.site-brand span { font-family: var(--font-display); font-weight: 900; font-size: 20px; letter-spacing: .04em; text-transform: uppercase; }
-.site-burger { display: none; margin-left: auto; background: none; border: 0; color: var(--paper); cursor: pointer; }
-.site-nav { display: flex; align-items: center; gap: 26px; flex: 1; justify-content: space-between; }
-.site-nav-main { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-.site-nav-main a { color: var(--muted); text-decoration: none; font-family: var(--font-label); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; padding: 4px 0; border-bottom: 2px solid transparent; }
+.site-top-inner { position: relative; max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 68px; display: flex; align-items: center; gap: 20px; }
+
+/* Marca */
+.site-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--paper); text-decoration: none; flex-shrink: 0; }
+.site-brand img { width: 34px; height: 38px; object-fit: contain; }
+.site-brand-name { font-family: var(--font-display); font-weight: 900; font-size: 19px; letter-spacing: .04em; text-transform: uppercase; line-height: 1; }
+
+/* Burger (solo mobile) */
+.site-burger { display: none; margin-left: auto; background: none; border: 0; color: var(--paper); cursor: pointer; padding: 4px; line-height: 0; }
+
+/* Nav contenedor */
+.site-nav { display: flex; align-items: center; gap: 0; flex: 1; }
+
+/* Bloque izquierdo: páginas del club */
+.site-nav-main { display: flex; align-items: center; gap: 16px; flex: 1; }
+.site-nav-main a { color: var(--muted); text-decoration: none; font-family: var(--font-label); font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; padding: 4px 0; border-bottom: 2px solid transparent; white-space: nowrap; transition: color .15s; }
 .site-nav-main a:hover { color: var(--paper); }
 .site-nav-main a.active { color: var(--gold); border-bottom-color: var(--gold); }
-.site-nav-modules { display: flex; align-items: center; gap: 9px; }
-.chip { display: inline-flex; align-items: center; gap: 5px; color: var(--paper); text-decoration: none; font-family: var(--font-label); font-size: 12px; letter-spacing: .05em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px; }
+
+/* Separador vertical entre bloques */
+.site-nav-divider { display: block; width: 1px; height: 22px; background: var(--line); margin: 0 14px; flex-shrink: 0; }
+
+/* Bloque derecho: módulos + utilidades */
+.site-nav-modules { display: flex; align-items: center; gap: 8px; }
+.site-nav-util-sep { display: block; width: 1px; height: 18px; background: var(--line); margin: 0 4px; flex-shrink: 0; }
+
+/* Chips base */
+.chip { display: inline-flex; align-items: center; gap: 5px; color: var(--paper); text-decoration: none; font-family: var(--font-label); font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; white-space: nowrap; transition: border-color .15s, color .15s, background .15s; }
 .chip:hover { border-color: var(--gold); color: var(--gold); }
 .chip.active { border-color: var(--gold); color: var(--gold); background: rgba(201,169,97,.1); }
-.chip.admin { border-color: rgba(214,40,40,.45); color: #ff8a8a; }
-.chip.admin:hover { background: rgba(214,40,40,.12); border-color: var(--red); }
+
+/* CTA principal: Entradas */
+.chip-cta { border-color: var(--gold); color: var(--gold); background: rgba(201,169,97,.1); font-weight: 600; }
+.chip-cta:hover { background: rgba(201,169,97,.2); color: var(--gold); }
+.chip-cta.active { background: rgba(201,169,97,.22); }
+
+/* Ghost: Tienda */
+.chip-ghost { color: var(--muted); border-color: transparent; }
+.chip-ghost:hover { color: var(--paper); border-color: var(--line); }
+
+/* Admin */
+.chip-admin { border-color: rgba(214,40,40,.45); color: #ff8a8a; }
+.chip-admin:hover { background: rgba(214,40,40,.12); border-color: var(--red); color: #ff8a8a; }
+.chip-admin.active { background: rgba(214,40,40,.15); border-color: var(--red); }
 
 /* Hero */
 .hero { position: relative; min-height: 560px; display: flex; align-items: flex-end; background-size: cover; background-position: center 30%; background-color: #0a0908; }
@@ -258,12 +286,40 @@
 .site-foot-legal a { color: var(--muted); }
 
 /* Responsive */
+@media (max-width: 1100px) {
+  /* Reducir gap para que quepa en pantallas medianas */
+  .site-nav-main { gap: 12px; }
+  .site-nav-main a { font-size: 12px; }
+  .site-nav-modules { gap: 6px; }
+  .chip { padding: 5px 10px; font-size: 11px; }
+  .site-nav-divider { margin: 0 10px; }
+}
 @media (max-width: 900px) {
   .site-burger { display: inline-flex; }
-  .site-nav { display: none; position: absolute; top: 68px; left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 16px; background: var(--surface); border-bottom: 1px solid var(--line); padding: 18px 24px; }
-  .site-nav.open { display: flex; }
-  .site-nav-main { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .site-nav-modules { flex-wrap: wrap; }
+  .site-nav {
+    display: none;
+    position: absolute; top: 68px; left: 0; right: 0;
+    flex-direction: column; align-items: stretch; gap: 0;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 0;
+    /* Animación al abrir */
+    opacity: 0; transform: translateY(-6px);
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  .site-nav.open { display: flex; opacity: 1; transform: translateY(0); }
+  /* Separadores horizontales en mobile */
+  .site-nav-divider { display: none; }
+  .site-nav-util-sep { display: none; }
+  /* Secciones del drawer */
+  .site-nav-section { flex-direction: column; align-items: flex-start; gap: 0; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .site-nav-section:last-child { border-bottom: none; }
+  /* Links del club */
+  .site-nav-main a { font-size: 14px; letter-spacing: .05em; padding: 8px 0; border-bottom: none; width: 100%; }
+  .site-nav-main a.active { color: var(--gold); }
+  /* Módulos */
+  .site-nav-modules { flex-wrap: wrap; gap: 8px; }
+  .chip-cta { width: 100%; justify-content: center; padding: 9px 16px; font-size: 13px; margin-bottom: 4px; }
+  .chip { font-size: 12px; }
   .contacto-grid { grid-template-columns: 1fr; }
   .tl-item { grid-template-columns: 1fr; }
   .tl-img { min-height: 160px; }

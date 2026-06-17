@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Pencil, Trash2, Plus } from 'lucide-react';
 import { api, uploadFile } from '../../utils/api.js';
 
-const CATEGORIAS = ['Noticias', 'Refuerzos', 'Comunicados', 'Crónicas', 'Cantera', 'Femenino', 'Entradas'];
+const DEFAULT_CATEGORIAS = ['Noticias', 'Refuerzos', 'Comunicados', 'Crónicas', 'Cantera', 'Femenino', 'Entradas'];
 
-function NoticiaModal({ noticia, onClose, onSaved }) {
+function NoticiaModal({ noticia, categorias, onClose, onSaved }) {
   const isEdit = Boolean(noticia?.id);
   const [form, setForm] = useState({
     titulo: noticia?.titulo ?? '',
@@ -58,7 +58,7 @@ function NoticiaModal({ noticia, onClose, onSaved }) {
           <div>
             <label>Categoría</label>
             <select value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
-              {CATEGORIAS.map((c) => <option key={c}>{c}</option>)}
+              {categorias.map((c) => <option key={c}>{c}</option>)}
             </select>
           </div>
           <div>
@@ -105,11 +105,17 @@ function ConfirmModal({ title, text, onConfirm, onClose, busy }) {
 
 export default function AdminNoticias() {
   const [noticias, setNoticias] = useState([]);
+  const [categorias, setCategorias] = useState(DEFAULT_CATEGORIAS);
   const [modal, setModal] = useState(null);
   const [delTarget, setDelTarget] = useState(null);
   const [delBusy, setDelBusy] = useState(false);
 
-  const load = () => api('/admin/api/noticias').then((d) => d.ok && setNoticias(d.noticias));
+  const load = () => api('/admin/api/noticias').then((d) => {
+    if (d.ok) {
+      setNoticias(d.noticias);
+      if (Array.isArray(d.categorias) && d.categorias.length) setCategorias(d.categorias);
+    }
+  });
   useEffect(() => { load(); }, []);
 
   async function toggleEstado(n) {
@@ -155,7 +161,7 @@ export default function AdminNoticias() {
           </tbody>
         </table>
       </div>
-      {modal !== null && <NoticiaModal noticia={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+      {modal !== null && <NoticiaModal noticia={modal?.id ? modal : null} categorias={categorias} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
       {delTarget && <ConfirmModal title="Eliminar noticia" text={`¿Eliminar "${delTarget.titulo}"? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>
   );

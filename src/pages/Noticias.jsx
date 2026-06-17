@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { NewsCard } from '../components/site.jsx';
 
-const CATEGORIAS = ['Todas', 'Noticias', 'Refuerzos', 'Comunicados', 'Crónicas', 'Cantera', 'Femenino', 'Entradas'];
+const DEFAULT_CATEGORIAS = ['Todas', 'Noticias', 'Refuerzos', 'Comunicados', 'Crónicas', 'Cantera', 'Femenino', 'Entradas'];
 
 export default function Noticias() {
   const [all, setAll] = useState([]);
+  const [categorias, setCategorias] = useState(DEFAULT_CATEGORIAS);
   const [cat, setCat] = useState('Todas');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/noticias').then((r) => r.json()).then((d) => {
-      if (d.ok) setAll(d.noticias.map((n) => ({ ...n, imagen: n.imagenPath })));
+      if (d.ok) {
+        setAll(d.noticias.map((n) => ({ ...n, imagen: n.imagenPath })));
+        if (Array.isArray(d.categorias) && d.categorias.length) setCategorias(d.categorias);
+      }
       setLoading(false);
     });
   }, []);
@@ -24,7 +28,7 @@ export default function Noticias() {
       <p className="sub">Todo lo que pasa en el Team: refuerzos, comunicados, crónicas y más.</p>
 
       <div className="tabs news-tabs">
-        {CATEGORIAS.map((c) => (
+        {categorias.map((c) => (
           <button key={c} className={cat === c ? 'active' : ''} onClick={() => setCat(c)}>{c}</button>
         ))}
       </div>

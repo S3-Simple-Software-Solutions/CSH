@@ -1,5 +1,33 @@
 import { ApiError } from '../../core/errors';
-import { deleteHeroImage, readHeroImage, readWebData, WEB_DEFAULTS, WebConfig, writeHeroImage, writeWebData } from './web.repository';
+import {
+  deleteHeroImage,
+  HERO_DEFAULT_IMAGE,
+  readHeroImage,
+  readWebData,
+  WEB_DEFAULTS,
+  WebConfig,
+  writeHeroImage,
+  writeWebData,
+} from './web.repository';
+
+export interface PublicHero {
+  kicker: string;
+  title: string;
+  number: string;
+  sub: string;
+  imageUrl: string;
+}
+
+export function resolvePublicHero(): PublicHero {
+  const config = readWebData();
+  return {
+    kicker: config.kicker || WEB_DEFAULTS.kicker,
+    title: config.title || WEB_DEFAULTS.title,
+    number: config.number || WEB_DEFAULTS.number,
+    sub: config.sub || WEB_DEFAULTS.sub,
+    imageUrl: config.imageVersion ? `/site-assets/hero?v=${config.imageVersion}` : HERO_DEFAULT_IMAGE,
+  };
+}
 
 export function getWebConfig() {
   return { config: readWebData(), defaults: WEB_DEFAULTS };
