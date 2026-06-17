@@ -526,7 +526,7 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
 
 // Editor visual del croquis: permite marcar y mover plazas sobre el plano.
 // Solo se monta para administradores de parqueo.
-function PlanoEditor({ floor, onClose, onSaved }) {
+function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
   const [floors, setFloors] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedArrow, setSelectedArrow] = useState(null);
@@ -536,8 +536,9 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const [selectionBox, setSelectionBox] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(autoEdit);
   const [confirmSave, setConfirmSave] = useState(false);
+  const [showPlan, setShowPlan] = useState(true);
   const overlayRef = useRef(null);
   const drag = useRef(null);
   const suppressClick = useRef(false);
@@ -551,12 +552,14 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   // nada se persiste hasta apretar "Guardar".
   const nextTempId = (prefix) => `tmp-${prefix}-${(tempSeq.current += 1)}`;
   const isTempId = (id) => typeof id === 'string' && id.startsWith('tmp-');
+  const snapshotFloor = (f) => ({
+    piso: f.piso,
+    stalls: (f.stalls || []).map((s) => ({ ...s })),
+    arrows: flowArrowsForFloor(f).map((a) => ({ ...a })),
+  });
   function enterEditMode() {
     if (!fl) return;
-    baseline.current = {
-      stalls: (fl.stalls || []).map((s) => ({ ...s })),
-      arrows: flowArrowsForFloor(fl).map((a) => ({ ...a })),
-    };
+    baseline.current = snapshotFloor(fl);
     setEditMode(true);
     setMsg(null);
   }
@@ -568,7 +571,13 @@ function PlanoEditor({ floor, onClose, onSaved }) {
     setEditTarget(null);
     baseline.current = null;
   }
+  // Cierra la edición: en modo embebido (autoEdit) vuelve a la vista del admin.
+  function finishEditing() {
+    if (autoEdit) onClose?.();
+    else exitEditMode();
+  }
   function cancelEditMode() {
+    if (autoEdit) { onClose?.(); return; }
     // Restaura el piso al snapshot tomado al entrar y descarta los cambios locales.
     const snap = baseline.current;
     if (snap) {
@@ -586,6 +595,17 @@ function PlanoEditor({ floor, onClose, onSaved }) {
   const selected = selectedIds.length === 1 ? selectedIds[0] : null;
   const selectedStall = visibleStalls.find((st) => st.id === selected) || null;
   const selectedArrowItem = flowArrows.find((arrow) => arrow.id === selectedArrow) || null;
+
+  // Toma el snapshot al entrar a edición (incluido autoEdit) y al cambiar de piso.
+  useEffect(() => {
+    if (!editMode || !fl) return;
+    if (!baseline.current || baseline.current.piso !== floor) {
+      baseline.current = snapshotFloor(fl);
+      setSelectedIds([]);
+      setSelectedArrow(null);
+      setEditTarget(null);
+    }
+  }, [editMode, fl, floor]);
 
   function frac(e) {
     const r = overlayRef.current.getBoundingClientRect();
@@ -891,14 +911,17 @@ function PlanoEditor({ floor, onClose, onSaved }) {
         if (Object.keys(patch).length) await call(`/admin/api/parqueo/flecha/${encodeURIComponent(a.id)}`, { method: 'PUT', body: JSON.stringify(patch) });
       }
 
-      await reload();
-      exitEditMode();
       onSaved?.();
-      setMsg({ type: 'ok', text: 'Cambios guardados.' });
+      if (autoEdit) {
+        finishEditing();
+      } else {
+        await reload();
+        exitEditMode();
+        setMsg({ type: 'ok', text: 'Cambios guardados.' });
+      }
     } catch (err) {
+      // Mantiene el estado local para que se pueda corregir y reintentar.
       setMsg({ type: 'error', text: err.message || 'No se pudieron guardar los cambios.' });
-      await reload();
-      exitEditMode();
     } finally {
       setBusy(false);
     }
@@ -911,17 +934,20 @@ function PlanoEditor({ floor, onClose, onSaved }) {
       <div className="editor-bar">
         {editMode ? (
           <div className="editor-actions">
-            <button className="btn ghost danger" onClick={clearAll} disabled={busy}>Vaciar plano</button>
-            {selectedIds.length > 0 && (
-              <>
-                {selectedIds.length === 1 && <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy}>Editar plaza</button>}
-                <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy}><Check size={16} />Disponible</button>
-                <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy}><Car size={16} />Ocupado</button>
-                <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy}><EyeOff size={16} />No disponible</button>
-                <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy}><Trash2 size={16} />Borrar</button>
-                <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy}>Deseleccionar</button>
-              </>
-            )}
+            <div className="btn-group">
+              <button className="btn ghost danger" onClick={clearAll} disabled={busy} title="Quitar todas las plazas (se aplica al guardar)"><Trash2 size={16} />Vaciar plano</button>
+              <button className="btn ghost" onClick={() => setShowPlan((v) => !v)} disabled={busy} title={showPlan ? 'Ocultar el plano de fondo' : 'Mostrar el plano de fondo'}>{showPlan ? <><EyeOff size={16} />Ocultar croquis</> : <><Eye size={16} />Mostrar croquis</>}</button>
+            </div>
+            <span className="btn-divider" aria-hidden />
+            <div className="btn-group">
+              <span className={`sel-count${selectedIds.length ? ' on' : ''}`}>{selectedIds.length ? `${selectedIds.length} seleccionada${selectedIds.length === 1 ? '' : 's'}` : 'Sin selección'}</span>
+              <button className="btn ghost" onClick={() => selectedStall && setEditTarget(selectedStall)} disabled={busy || selectedIds.length !== 1} title={selectedIds.length === 1 ? 'Editar la plaza seleccionada' : 'Seleccioná una sola plaza'}><Pencil size={16} />Editar plaza</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy || !selectedIds.length} title="Marcar como disponible"><Check size={16} />Disponible</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy || !selectedIds.length} title="Marcar como ocupado"><Car size={16} />Ocupado</button>
+              <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy || !selectedIds.length} title="Marcar como no disponible"><EyeOff size={16} />No disponible</button>
+              <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy || !selectedIds.length} title="Quitar las plazas seleccionadas"><Trash2 size={16} />Borrar</button>
+              <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy || !selectedIds.length}>Deseleccionar</button>
+            </div>
           </div>
         ) : (
           <button type="button" className="btn ghost editar-toggle" onClick={enterEditMode} disabled={busy} title="Editar el croquis">
@@ -929,15 +955,20 @@ function PlanoEditor({ floor, onClose, onSaved }) {
           </button>
         )}
         <div className="editor-bar-end">
-          {editMode && <button className="btn ghost" onClick={cancelEditMode} disabled={busy}>Cancelar</button>}
-          {editMode && <button className="btn" onClick={() => setConfirmSave(true)} disabled={busy}><Check size={16} />{busy ? 'Guardando…' : 'Guardar'}</button>}
-          <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
+          {editMode ? (
+            <>
+              <button className="btn ghost" onClick={cancelEditMode} disabled={busy}>Cancelar</button>
+              <button className="btn" onClick={() => setConfirmSave(true)} disabled={busy}><Check size={16} />{busy ? 'Guardando…' : 'Guardar'}</button>
+            </>
+          ) : (
+            <button className="btn ghost" onClick={onClose} disabled={busy}>Cerrar</button>
+          )}
         </div>
       </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <div className="plano-wrap">
-        <div className="plano" style={{ aspectRatio: String(fl.aspect) }}>
-          <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />
+        <div className={`plano${showPlan ? '' : ' no-plan'}`} style={{ aspectRatio: String(fl.aspect) }}>
+          {showPlan && <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />}
           <div
             ref={overlayRef}
             className={`plano-overlay${editMode ? ' editing' : ''}${editMode && addingArrow ? ' adding-arrow' : ''}`}
@@ -1618,7 +1649,7 @@ function AdminParking({ user }) {
         {canEdit && !editing && <button className="btn ghost" onClick={() => setEditing(true)}>Editar plazas</button>}
       </Toolbar>
       {editing
-        ? <PlanoEditor floor={floor} onClose={() => setEditing(false)} onSaved={refresh} />
+        ? <PlanoEditor floor={floor} autoEdit onClose={() => setEditing(false)} onSaved={refresh} />
         : <PlanoCroquis spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin showFlow={showFlow} onSpace={(space, reservation) => setModal({ space, reservation })} />}
       <section className="events"><h2>Log de eventos</h2><div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Tipo</th><th>Espacio</th><th>Placa</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>{events.map((e) => <tr key={e.id}><td>{fmtFullDate(e.timestamp)}</td><td>{e.tipo}</td><td>{e.espacioId}</td><td>{e.placa}</td><td>{e.userName}</td><td>{e.notas}</td></tr>)}</tbody></table></div></section>
       {modal && <AdminSpaceModal modal={modal} user={user} onClose={() => setModal(null)} afterAction={afterAction} />}

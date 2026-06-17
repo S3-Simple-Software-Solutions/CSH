@@ -570,9 +570,15 @@ html[data-theme='light'] .pspot { border-color: rgba(21, 83, 45, .78); }
 .toolbar-extra .btn { min-height: 38px; margin-top: 0; padding: 0 12px; }
 .plano-editor { margin-top: 18px; }
 .editor-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.editor-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.editor-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.editor-actions .btn-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.btn-divider { width: 1px; align-self: stretch; min-height: 28px; background: var(--line); }
+.sel-count { font-family: var(--font-label); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-right: 2px; }
+.sel-count.on { color: var(--gold); }
 .editor-bar-end { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .editor-bar .btn { min-height: 36px; margin-top: 0; padding: 0 14px; }
+.editor-bar .btn:disabled { opacity: .42; cursor: not-allowed; }
+.plano.no-plan { background: repeating-linear-gradient(45deg, #f4f4f2, #f4f4f2 10px, #eceae6 10px, #eceae6 20px); }
 .btn.icon-only { width: 36px; padding: 0; }
 .btn.ghost.active { border-color: var(--gold); background: rgba(201, 169, 97, .12); color: var(--paper); }
 .arrow-kind-select {
