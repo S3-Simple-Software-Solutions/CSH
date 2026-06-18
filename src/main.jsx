@@ -17,6 +17,40 @@ import NoticiaDetalle from './pages/NoticiaDetalle.jsx';
 import Socios from './pages/Socios.jsx';
 import Contacto from './pages/Contacto.jsx';
 
+function ReleaseBadge() {
+  const [release, setRelease] = React.useState(null);
+
+  React.useEffect(() => {
+    let active = true;
+    fetch('/api/version', { cache: 'no-store' })
+      .then((response) => response.json())
+      .then((data) => {
+        if (active && data?.ok) setRelease(data);
+      })
+      .catch(() => {
+        if (active) setRelease({ version: 'local' });
+      });
+    return () => { active = false; };
+  }, []);
+
+  if (!release?.version) return null;
+
+  return (
+    <div className="release-badge" title={release.sha ? `Commit ${release.sha}` : 'Version local'}>
+      {release.version}
+    </div>
+  );
+}
+
+function AppShell() {
+  return (
+    <>
+      <ReleaseBadge />
+      <RouterProvider router={router} />
+    </>
+  );
+}
+
 const router = createBrowserRouter([
   {
     element: <PublicLayout />,
@@ -43,4 +77,4 @@ const router = createBrowserRouter([
 ]);
 
 applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
-createRoot(document.getElementById('root')).render(<RouterProvider router={router} />);
+createRoot(document.getElementById('root')).render(<AppShell />);
