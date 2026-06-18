@@ -3,7 +3,7 @@ import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Ch
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
 import { StadiumMap } from './pages/entradas/StadiumMap.jsx';
-import { isErcVectorLayout } from './pages/entradas/stadiumErc.js';
+import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
@@ -2552,38 +2552,189 @@ function EventFormModal({ onClose, onDone }) {
 
 function TiposModal({ evento, onClose }) {
   const [tipos, setTipos] = useState([]);
-  const [form, setForm] = useState({ nombre: '', precioCrc: '', stockTotal: '' });
+  const [form, setForm] = useState({ sectorKey: '', precioCrc: '', stockTotal: '' });
   const [error, setError] = useState('');
-  const refresh = async () => { const d = await api(`/admin/api/entradas/eventos/${evento.id}`); if (d.ok) setTipos(d.tipos); };
+  const [adding, setAdding] = useState(false);
+
+  const refresh = async () => {
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}`);
+    if (d.ok) setTipos(d.tipos);
+  };
   useEffect(() => { refresh(); }, []);
+
+  const usedKeys = useMemo(() => {
+    const keys = new Set();
+    for (const t of tipos) {
+      const k = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
+      if (k) keys.add(k);
+    }
+    return keys;
+  }, [tipos]);
+
+  const usedNombres = useMemo(
+    () => new Set(tipos.map((t) => t.nombre.toLowerCase())),
+    [tipos],
+  );
+
+  const availableSectores = useMemo(
+    () => ERC_SECTORES.filter((s) => !usedKeys.has(s.key) && !usedNombres.has(s.nombre.toLowerCase())),
+    [usedKeys, usedNombres],
+  );
+
+  function pickSector(key) {
+    const s = ERC_SECTORES.find((x) => x.key === key);
+    if (!s) return setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
+    setForm({ sectorKey: key, precioCrc: String(s.precio), stockTotal: String(s.stock) });
+  }
+
+  async function createSector(payload) {
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!d.ok) throw new Error(d.error || 'Error al crear sector');
+    return d;
+  }
+
   async function add() {
     setError('');
-    const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, { method: 'POST', body: JSON.stringify({ nombre: form.nombre, precioCrc: Number(form.precioCrc), stockTotal: Number(form.stockTotal) }) });
-    if (!d.ok) return setError(d.error);
-    setForm({ nombre: '', precioCrc: '', stockTotal: '' }); refresh();
+    const s = ERC_SECTORES.find((x) => x.key === form.sectorKey);
+    if (!s) return setError('Selecciona un sector del listado');
+    const precioCrc = Number(form.precioCrc);
+    const stockTotal = Number(form.stockTotal);
+    if (!Number.isFinite(precioCrc) || precioCrc < 0) return setError('Precio inválido');
+    if (!Number.isFinite(stockTotal) || stockTotal < 0) return setError('Cupo inválido');
+    setAdding(true);
+    try {
+      await createSector({
+        nombre: s.nombre,
+        precioCrc,
+        stockTotal,
+        zoneKey: s.key,
+      });
+      setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdding(false);
+    }
   }
+
+  async function addAllMissing() {
+    setError('');
+    if (availableSectores.length === 0) return setError('Todos los sectores del catálogo ya están agregados');
+    setAdding(true);
+    try {
+      for (const s of availableSectores) {
+        await createSector({
+          nombre: s.nombre,
+          precioCrc: s.precio,
+          stockTotal: s.stock,
+          zoneKey: s.key,
+        });
+      }
+      setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdding(false);
+    }
+  }
+
   async function toggle(t) {
-    const d = await api(`/admin/api/entradas/tipos/${t.id}`, { method: 'PUT', body: JSON.stringify({ nombre: t.nombre, precioCrc: t.precioCrc, stockTotal: t.stockTotal, estado: t.estado === 'activo' ? 'inactivo' : 'activo' }) });
+    const d = await api(`/admin/api/entradas/tipos/${t.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        nombre: t.nombre,
+        precioCrc: t.precioCrc,
+        stockTotal: t.stockTotal,
+        estado: t.estado === 'activo' ? 'inactivo' : 'activo',
+      }),
+    });
     if (d.ok) refresh(); else setError(d.error);
   }
+
+  const selectedMeta = form.sectorKey ? ERC_ZONE_META[form.sectorKey] : null;
+
   return (
     <Modal title={`Sectores · ${evento.nombre}`} onClose={onClose}>
       <div className="tipos-list">
-        {tipos.map((t) => (
-          <div key={t.id} className="tipo-row">
-            <div><b>{t.nombre}</b><span>{money(t.precioCrc)} · {t.stockVendido}/{t.stockTotal} · {t.estado}</span></div>
-            <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
-          </div>
-        ))}
+        {tipos.map((t) => {
+          const key = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
+          const tier = key ? ERC_ZONE_META[key]?.tier : null;
+          return (
+            <div key={t.id} className="tipo-row">
+              <div>
+                <b>{t.nombre}</b>
+                {tier && <span className="tipo-tier">{tier}</span>}
+                <span>{money(t.precioCrc)} · {t.stockVendido}/{t.stockTotal} · {t.estado}</span>
+              </div>
+              <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
+            </div>
+          );
+        })}
       </div>
-      <label>Nuevo sector</label>
-      <input placeholder="Nombre (ej. Sol Sur)" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+
+      <p className="toolbar-hint">Elige un sector del catálogo ERC; el nombre y la zona del mapa se asignan automáticamente.</p>
+
+      {availableSectores.length > 0 && (
+        <button type="button" className="btn ghost sector-add-all" onClick={addAllMissing} disabled={adding}>
+          <Plus size={16} />Agregar todos los sectores faltantes ({availableSectores.length})
+        </button>
+      )}
+
+      <label>Sector</label>
+      <select
+        value={form.sectorKey}
+        onChange={(e) => pickSector(e.target.value)}
+        disabled={adding || availableSectores.length === 0}
+      >
+        <option value="">
+          {availableSectores.length === 0 ? 'Todos los sectores ya están agregados' : 'Seleccionar sector…'}
+        </option>
+        {availableSectores.map((s) => {
+          const meta = ERC_ZONE_META[s.key];
+          return (
+            <option key={s.key} value={s.key}>
+              {s.nombre} · {meta?.tier ?? '—'} · ₡{s.precio.toLocaleString('es-CR')} · cupo {s.stock}
+            </option>
+          );
+        })}
+      </select>
+
+      {selectedMeta && (
+        <p className="sector-pick-hint">
+          Zona en mapa: <strong>{selectedMeta.label}</strong> ({selectedMeta.tier})
+        </p>
+      )}
+
       <div className="two">
-        <div><label>Precio CRC</label><input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} /></div>
-        <div><label>Cupo</label><input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} /></div>
+        <div>
+          <label>Precio CRC</label>
+          <input
+            inputMode="numeric"
+            value={form.precioCrc}
+            onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })}
+            disabled={!form.sectorKey || adding}
+          />
+        </div>
+        <div>
+          <label>Cupo</label>
+          <input
+            inputMode="numeric"
+            value={form.stockTotal}
+            onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })}
+            disabled={!form.sectorKey || adding}
+          />
+        </div>
       </div>
+
       {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={add}><Plus size={16} />Agregar sector</button>
+      <button className="btn" onClick={add} disabled={adding || !form.sectorKey}>
+        <Plus size={16} />{adding ? 'Agregando…' : 'Agregar sector'}
+      </button>
     </Modal>
   );
 }

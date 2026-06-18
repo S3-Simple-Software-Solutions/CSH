@@ -66,10 +66,16 @@ export function StadiumSvgERC({
     return 0.55;
   }
 
-  function zoneStroke(status) {
+  function zoneStroke(status, key) {
     if (status === 'selected') return '#fff';
-    if (status === 'hover') return '#f0d078';
-    return 'rgba(255,255,255,0.25)';
+    if (status === 'hover') return ERC_ZONE_META[key]?.color ?? '#f0d078';
+    return 'rgba(255,255,255,0.28)';
+  }
+
+  function zoneFilter(status) {
+    if (status === 'selected') return 'url(#erc-glow)';
+    if (status === 'hover') return 'url(#erc-glow-soft)';
+    return undefined;
   }
 
   return (
@@ -88,8 +94,15 @@ export function StadiumSvgERC({
           <stop offset="0%" stopColor="#3d9b52" />
           <stop offset="100%" stopColor="#2d7a3e" />
         </linearGradient>
-        <filter id="erc-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="4" result="blur" />
+        <filter id="erc-glow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="5" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <filter id="erc-glow-soft" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="2.5" result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
             <feMergeNode in="SourceGraphic" />
@@ -139,11 +152,11 @@ export function StadiumSvgERC({
                 d={d}
                 fill={zoneFill(key, status)}
                 fillOpacity={zoneOpacity(status)}
-                stroke={zoneStroke(status)}
-                strokeWidth={status === 'selected' ? 3 : 1.5}
+                stroke={zoneStroke(status, key)}
+                strokeWidth={status === 'selected' ? 3 : status === 'hover' ? 2 : 1.5}
                 className="stadium-zone"
-                style={{ transition: 'fill-opacity 0.15s, stroke 0.15s' }}
-                filter={status === 'selected' ? 'url(#erc-glow)' : undefined}
+                style={{ transition: 'fill-opacity 0.2s ease, stroke 0.2s ease' }}
+                filter={zoneFilter(status)}
                 pointerEvents="all"
               />
             ))}
