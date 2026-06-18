@@ -180,6 +180,7 @@ export async function adminCrearEvento(body: any, user: AdminUser) {
 export async function adminActualizarEvento(id: string, body: any, user: AdminUser) {
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
   const evento = await getEntradasRepository().actualizarEvento(String(id), buildEventoInput(body));
+  await getEntradasRepository().logEvento('evento_actualizado', { eventoId: evento.id, user: actorOf(user), notas: evento.nombre });
   return { evento };
 }
 
@@ -204,6 +205,11 @@ function buildTipoInput(body: any): TipoInput {
 export async function adminCrearTipo(eventoId: string, body: any, user: AdminUser) {
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
   const tipo = await getEntradasRepository().crearTipo(String(eventoId), buildTipoInput(body));
+  await getEntradasRepository().logEvento('sector_creado', {
+    eventoId: tipo.eventoId,
+    user: actorOf(user),
+    notas: `${tipo.nombre} · CRC ${tipo.precioCrc} · cupo ${tipo.stockTotal}`,
+  });
   return { tipo };
 }
 
@@ -211,6 +217,11 @@ export async function adminActualizarTipo(id: string, body: any, user: AdminUser
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
   const input = buildTipoInput(body);
   const tipo = await getEntradasRepository().actualizarTipo(String(id), input);
+  await getEntradasRepository().logEvento('sector_actualizado', {
+    eventoId: tipo.eventoId,
+    user: actorOf(user),
+    notas: `${tipo.nombre} · ${tipo.estado} · CRC ${tipo.precioCrc} · ${tipo.stockVendido}/${tipo.stockTotal}`,
+  });
   return { tipo };
 }
 

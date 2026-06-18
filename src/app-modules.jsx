@@ -2281,13 +2281,15 @@ function AdminEventosTab() {
   const [eventos, setEventos] = useState([]);
   const [modal, setModal] = useState(null);
   const [msg, setMsg] = useState(null);
+  const [logRefreshKey, setLogRefreshKey] = useState(0);
   const refresh = async () => { const d = await api('/admin/api/entradas/eventos'); if (d.ok) setEventos(d.eventos); };
+  const refreshLog = () => setLogRefreshKey((key) => key + 1);
   useEffect(() => { refresh(); }, []);
   async function setEstado(ev, estado) {
     setMsg(null);
     const d = await api(`/admin/api/entradas/eventos/${ev.evento.id}/estado`, { method: 'POST', body: JSON.stringify({ estado }) });
     if (!d.ok) return setMsg({ type: 'error', text: d.error });
-    setMsg({ type: 'ok', text: `${ev.evento.nombre}: ${estado}.` }); refresh();
+    setMsg({ type: 'ok', text: `${ev.evento.nombre}: ${estado}.` }); refresh(); refreshLog();
   }
   return (
     <>
@@ -2311,11 +2313,83 @@ function AdminEventosTab() {
           </tr>
         ))}
       </tbody></table></div>
+      <EntradasLogPanel eventos={eventos} refreshKey={logRefreshKey} />
       {modal?.type === 'detalle' && <EventDetalleModal evento={modal.evento} onClose={() => setModal(null)} />}
-      {modal?.type === 'evento' && <EventFormModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); }} />}
-      {modal?.type === 'tipos' && <TiposModal evento={modal.evento} onClose={() => { setModal(null); refresh(); }} />}
-      {modal?.type === 'cortesia' && <CortesiaModal evento={modal.evento} tipos={modal.tipos} onClose={() => setModal(null)} />}
+      {modal?.type === 'evento' && <EventFormModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); refreshLog(); }} />}
+      {modal?.type === 'tipos' && <TiposModal evento={modal.evento} onClose={() => { setModal(null); refresh(); refreshLog(); }} />}
+      {modal?.type === 'cortesia' && <CortesiaModal evento={modal.evento} tipos={modal.tipos} onClose={() => { setModal(null); refresh(); refreshLog(); }} />}
     </>
+  );
+}
+
+const ENTRADAS_LOG_LABELS = {
+  compra: 'Compra',
+  cortesia: 'Cortesia',
+  evento_actualizado: 'Evento actualizado',
+  evento_creado: 'Evento creado',
+  evento_estado: 'Cambio de estado',
+  reenvio: 'Reenvio',
+  sector_actualizado: 'Sector actualizado',
+  sector_creado: 'Sector creado',
+  validacion: 'Ingreso validado',
+};
+
+function entradaLogLabel(tipo) {
+  return ENTRADAS_LOG_LABELS[tipo] || String(tipo || '').replace(/_/g, ' ');
+}
+
+function EntradasLogPanel({ eventos, refreshKey }) {
+  const [rows, setRows] = useState([]);
+  const [eventoId, setEventoId] = useState('');
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const eventNames = useMemo(() => Object.fromEntries((eventos || []).map((ev) => [ev.evento.id, ev.evento.nombre])), [eventos]);
+
+  async function loadLog(nextEventoId = eventoId) {
+    setLoading(true);
+    setError('');
+    const params = new URLSearchParams({ limit: '50' });
+    if (nextEventoId) params.set('eventoId', nextEventoId);
+    const data = await api(`/admin/api/entradas/log?${params.toString()}`);
+    setLoading(false);
+    if (!data.ok) {
+      setError(data.error || 'No se pudo cargar el log.');
+      return;
+    }
+    setRows(data.eventos || []);
+    setTotal(data.total || 0);
+  }
+
+  useEffect(() => { loadLog(eventoId); }, [eventoId, refreshKey]);
+
+  return (
+    <section className="events">
+      <h2><Clock size={22} /> Log de eventos y entradas</h2>
+      <div className="actions left">
+        <select value={eventoId} onChange={(e) => setEventoId(e.target.value)} aria-label="Filtrar log por evento">
+          <option value="">Todos los eventos</option>
+          {(eventos || []).map((ev) => <option key={ev.evento.id} value={ev.evento.id}>{ev.evento.nombre}</option>)}
+        </select>
+        <button className="btn ghost" onClick={() => loadLog()} disabled={loading}><RotateCw size={16} />{loading ? 'Cargando' : 'Refrescar'}</button>
+        <span className="muted">{total} registros</span>
+      </div>
+      {error && <div className="error">{error}</div>}
+      <div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Tipo</th><th>Evento</th><th>Boleto</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>
+        {rows.map((row) => (
+          <tr key={row.id}>
+            <td>{fmtFullDate(row.timestamp)}</td>
+            <td><span className="pill">{entradaLogLabel(row.tipo)}</span></td>
+            <td>{eventNames[row.eventoId] || row.eventoId || 'General'}</td>
+            <td>{row.boletoId || '-'}</td>
+            <td>{row.userName || '-'}</td>
+            <td>{row.notas || '-'}</td>
+          </tr>
+        ))}
+        {!loading && rows.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>Sin registros para mostrar.</td></tr>}
+        {loading && rows.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>Cargando log...</td></tr>}
+      </tbody></table></div>
+    </section>
   );
 }
 

@@ -58,6 +58,8 @@ export async function ensureEntradasSchema(): Promise<void> {
     create index if not exists idx_entrada_tipos_evento on entrada_tipos(evento_id);
     create index if not exists idx_entrada_boletos_evento on entrada_boletos(evento_id);
     create index if not exists idx_entrada_boletos_orden on entrada_boletos(orden_id);
+    create index if not exists idx_entrada_log_evento_created on entrada_log(evento_id, created_at desc);
+    create index if not exists idx_entrada_log_created on entrada_log(created_at desc);
   `);
 
   const count = Number((await query<{ count: number }>('select count(*)::int as count from entrada_eventos'))[0].count);

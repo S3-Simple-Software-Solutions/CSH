@@ -496,7 +496,8 @@ tr:last-child td { border-bottom: 0; }
 .table { overflow-x: auto; }
 .estado { cursor: pointer; }
 .events { margin-top: 34px; }
-.events h2 { margin: 0; font-size: 28px; }
+.events h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 28px; }
+.events .actions select { min-width: min(280px, 100%); }
 .login { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .login form { width: min(420px, 100%); border: 1px solid rgba(201,169,97,.45); border-radius: 8px; background: var(--surface); padding: 30px; }
 .login img { width: 78px; display: block; margin: 0 auto 16px; }
