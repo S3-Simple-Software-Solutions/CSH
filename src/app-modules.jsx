@@ -1804,7 +1804,7 @@ function AdminUsers() {
   return (
     <main className="page">
       <p className="eyebrow">Cuentas y permisos</p><h1>Gestion de usuarios</h1>
-      <div className="table"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Area</th><th>Estado</th><th></th></tr></thead><tbody>{users.map((u) => <tr key={u.id}><td>{u.name}</td><td>{u.email}</td><td>{u.role}</td><td>{u.area}</td><td><span className="pill">{u.status}</span></td><td><button className="btn ghost" onClick={() => setTarget(u)}>Cambiar clave</button></td></tr>)}</tbody></table></div>
+      <div className="table"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Area</th><th>Estado</th><th></th></tr></thead><tbody>{users.map((u) => <tr key={u.id}><td>{u.name}</td><td>{u.email}</td><td>{u.role}</td><td>{u.area}</td><td><span className="pill">{u.status}</span></td><td>{u.passwordManagedByEnv ? <span className="muted">Clave por entorno</span> : <button className="btn ghost" onClick={() => setTarget(u)}>Cambiar clave</button>}</td></tr>)}</tbody></table></div>
       {target && <PasswordModal user={target} onClose={() => setTarget(null)} />}
     </main>
   );

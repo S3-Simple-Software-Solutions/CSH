@@ -15,13 +15,15 @@ export interface AdminUser {
   sponsor?: string;
 }
 
+export const ENV_ADMIN_USER_ID = 'u-001';
+
 // Conjunto de usuarios DEMO para pruebas con el cliente.
 // Convención de contraseña: <usuario>1921 (p. ej. usuario "socio" -> "socio1921").
 // Los ids 'demo-*' son únicos para que la tabla admin_passwords no sobreescriba
 // estas contraseñas y los accesos documentados funcionen siempre.
 export const ADMIN_USERS: AdminUser[] = [
   // Administrador real: credenciales por variables de entorno (no es un usuario demo).
-  { id: 'u-001', name: 'Administrador CSH', username: env.ADMIN_USER, email: env.ADMIN_EMAIL, password: env.ADMIN_PASS || env.AUTH_PASS, role: 'Super admin', area: 'Administracion', status: 'Activo', parkingRole: 'admin', couponRole: 'admin', eventsRole: 'admin' },
+  { id: ENV_ADMIN_USER_ID, name: 'Administrador CSH', username: env.ADMIN_USER, email: env.ADMIN_EMAIL, password: env.ADMIN_PASS || env.AUTH_PASS, role: 'Super admin', area: 'Administracion', status: 'Activo', parkingRole: 'admin', couponRole: 'admin', eventsRole: 'admin' },
 
   // Acceso total: parqueo + cuponera + entradas.
   { id: 'demo-superadmin', name: 'Super Admin Demo', username: 'superadmin', email: 'superadmin@herediano.com', password: 'superadmin1921', role: 'Super admin', area: 'Administracion', status: 'Demo', parkingRole: 'admin', couponRole: 'admin', eventsRole: 'admin' },

@@ -14,4 +14,7 @@ ALL_SECRETS
 node_modules/
 .playwright-cli/
 output/
+/current
+/releases/
+/shared/
 .DS_Store

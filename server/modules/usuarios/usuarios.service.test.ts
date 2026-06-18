@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { canManageCoupons, canManageEvents, canOperateGate, canViewSales, findAdminUser } from './usuarios.service';
-import { findUserById } from './usuarios.data';
+import { canManageCoupons, canManageEvents, canOperateGate, canViewSales, findAdminUser, isPasswordManagedByEnv } from './usuarios.service';
+import { ADMIN_USERS, findUserById } from './usuarios.data';
+import { applyPasswordOverrideRows } from './usuarios.schema';
 
 describe('usuarios service permissions', () => {
   it('finds admin users by username or email with exact password match', () => {
@@ -23,5 +24,21 @@ describe('usuarios service permissions', () => {
     expect(canOperateGate(findUserById('demo-comercial'))).toBe(false);
     expect(canViewSales(findUserById('demo-comercial'))).toBe(true);
     expect(canViewSales(findUserById('demo-socio'))).toBe(false);
+  });
+
+  it('keeps the primary admin password controlled by environment variables', () => {
+    const users = ADMIN_USERS.map((user) => ({ ...user }));
+    const admin = users.find((user) => user.id === 'u-001')!;
+    const originalAdminPassword = admin.password;
+
+    applyPasswordOverrideRows([
+      { user_id: 'u-001', password: 'stale-database-password' },
+      { user_id: 'demo-operador', password: 'operator-override' },
+    ], users);
+
+    expect(admin.password).toBe(originalAdminPassword);
+    expect(users.find((user) => user.id === 'demo-operador')?.password).toBe('operator-override');
+    expect(isPasswordManagedByEnv(admin)).toBe(true);
+    expect(isPasswordManagedByEnv(users.find((user) => user.id === 'demo-operador'))).toBe(false);
   });
 });
