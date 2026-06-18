@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, Map, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
+import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, Map as MapIcon, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
 import { StadiumMap } from './pages/entradas/StadiumMap.jsx';
@@ -2439,7 +2439,7 @@ function AdminEventosTab() {
             <td>{money(ev.ingresosCrc)}</td>
             <td className="row-actions" onClick={(e) => e.stopPropagation()}>
               <button className="btn ghost" onClick={() => setModal({ type: 'tipos', evento: ev.evento })}><LayoutGrid size={16} />Sectores</button>
-              <button className="btn ghost" onClick={() => setModal({ type: 'mapa', evento: ev.evento, tipos: ev.tipos })}><Map size={16} />Mapa</button>
+              <button className="btn ghost" onClick={() => setModal({ type: 'mapa', evento: ev.evento, tipos: ev.tipos })}><MapIcon size={16} />Mapa</button>
               {ev.evento.estado === 'publicado'
                 ? <button className="btn ghost" onClick={() => setEstado(ev, 'finalizado')}><Lock size={16} />Cerrar</button>
                 : <button className="btn ghost" onClick={() => setEstado(ev, 'publicado')}><Send size={16} />Publicar</button>}
