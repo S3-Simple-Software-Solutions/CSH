@@ -1,8 +1,64 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Link } from 'react-router-dom';
-import { ExternalLink, Menu, ShieldCheck, X } from 'lucide-react';
-import { ThemeToggle } from '../app-modules.jsx';
+import { ExternalLink, LogIn, LogOut, Menu, ShieldCheck, User, X } from 'lucide-react';
+import { ThemeToggle, isAdminUser } from '../app-modules.jsx';
+import { api } from '../utils/api.js';
 import { club, navMain, navModules, externalLinks } from '../data/club.js';
+
+// Control de sesión del navbar público: muestra "Iniciar sesión" si no hay sesión,
+// o el nombre del usuario. Un admin enlaza al panel; un socio solo aparece logueado.
+function SessionControl({ onNavigate }) {
+  const [user, setUser] = useState(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api('/api/session').then((data) => {
+      if (!alive) return;
+      setUser(data && data.user ? data.user : null);
+      setReady(true);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  async function logout() {
+    await api('/admin/logout', { method: 'POST', body: '{}' });
+    location.href = '/';
+  }
+
+  if (!ready) return null;
+
+  if (!user) {
+    return (
+      <Link className="chip chip-admin" to="/admin" onClick={onNavigate}>
+        <LogIn size={13} />
+        Iniciar sesión
+      </Link>
+    );
+  }
+
+  const firstName = (user.name || '').split(' ')[0] || 'Mi cuenta';
+
+  return (
+    <span className="site-nav-user">
+      {isAdminUser(user) ? (
+        <Link className="chip chip-admin" to="/admin" onClick={onNavigate} title={user.name}>
+          <ShieldCheck size={13} />
+          {firstName}
+        </Link>
+      ) : (
+        <span className="chip chip-user" title={user.name}>
+          <User size={13} />
+          {firstName}
+        </span>
+      )}
+      <button className="chip chip-ghost" onClick={logout} title="Cerrar sesión">
+        <LogOut size={13} />
+        Salir
+      </button>
+    </span>
+  );
+}
 
 export default function SiteHeader() {
   const [open, setOpen] = useState(false);
@@ -96,10 +152,7 @@ export default function SiteHeader() {
 
             <ThemeToggle />
 
-            <Link className="chip chip-admin" to="/admin" onClick={close}>
-              <ShieldCheck size={13} />
-              Admin
-            </Link>
+            <SessionControl onNavigate={close} />
           </div>
         </nav>
 

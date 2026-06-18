@@ -1581,6 +1581,18 @@ function UnderConstruction({ modulo }) {
   );
 }
 
+// Un usuario tiene acceso al panel admin si tiene algún rol operativo elevado.
+// Los socios (todos sus roles en 'socio'/'ninguno') solo navegan el sitio público autenticados.
+function isAdminUser(user) {
+  if (!user) return false;
+  return (
+    user.parkingRole === 'admin' ||
+    user.couponRole === 'admin' ||
+    user.couponRole === 'patrocinador' ||
+    (user.eventsRole && user.eventsRole !== 'ninguno')
+  );
+}
+
 function AdminApp() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1595,6 +1607,8 @@ function AdminApp() {
   async function logout() { await api('/admin/logout', { method: 'POST', body: '{}' }); location.href = '/admin'; }
   if (loading) return <main className="page"><p>Cargando...</p></main>;
   if (!user) return <AdminLogin />;
+  // Un socio autenticado no entra al panel: se le devuelve al sitio público ya logueado.
+  if (!isAdminUser(user)) { location.replace('/'); return <main className="page"><p>Redirigiendo...</p></main>; }
   return (
     <div className="admin-shell">
       <aside>
@@ -1631,7 +1645,8 @@ function AdminLogin() {
     e.preventDefault();
     const data = await api('/admin/sign-in', { method: 'POST', body: JSON.stringify(form) });
     if (!data.ok) return setError(data.error);
-    location.href = '/admin';
+    // Admin → panel de administración; socio → de vuelta al sitio público, ya autenticado.
+    location.href = isAdminUser(data.user) ? '/admin' : '/';
   }
   return (
     <main className="login">
@@ -2435,4 +2450,4 @@ function AdminPuertaTab() {
   );
 }
 
-export { PublicParking, PublicCoupons, PublicEntradas, AdminApp, ThemeToggle, applyTheme, THEME_KEY };
+export { PublicParking, PublicCoupons, PublicEntradas, AdminApp, ThemeToggle, applyTheme, THEME_KEY, isAdminUser };

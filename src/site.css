@@ -46,6 +46,11 @@
 .chip-admin:hover { background: rgba(214,40,40,.12); border-color: var(--red); color: #ff8a8a; }
 .chip-admin.active { background: rgba(214,40,40,.15); border-color: var(--red); }
 
+/* Sesión (usuario logueado en el navbar público) */
+.site-nav-user { display: inline-flex; align-items: center; gap: 6px; }
+.chip-user { border-color: var(--line); color: var(--paper); cursor: default; }
+.chip-user:hover { border-color: var(--line); color: var(--paper); }
+
 /* Hero */
 .hero { position: relative; min-height: 560px; display: flex; align-items: flex-end; background-size: cover; background-position: center 30%; background-color: #0a0908; }
 .hero.compact { min-height: 380px; }
