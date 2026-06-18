@@ -1,0 +1,252 @@
+name: Rollback CSH
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Exact release version to activate, for example csh-main-42-a1b2c3d
+        required: true
+        type: string
+      reason:
+        description: Optional rollback reason for the workflow summary
+        required: false
+        type: string
+
+# Rollback only consumes versions created by Deploy CSH. It does not create a
+# new GitHub release, and it never deploys an arbitrary branch or SHA.
+permissions:
+  contents: read
+
+concurrency:
+  group: csh-production-deploy
+  cancel-in-progress: false
+
+env:
+  APP_ROOT: /home/tony/Desktop/APP_CSH
+  REPO_URL: https://github.com/S3-Simple-Software-Solutions/CSH.git
+
+jobs:
+  rollback:
+    name: Roll Back Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate selected release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_VERSION" =~ ^csh-main-[0-9]+-[0-9a-f]{7}$ ]]; then
+            echo "::error::Release version must match csh-main-<run_number>-<short_sha>."
+            exit 1
+          fi
+
+          if ! gh release view "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" >/tmp/release.json 2>/tmp/release-error.log; then
+            cat /tmp/release-error.log
+            echo "::error::Release '$RELEASE_VERSION' does not exist. Choose a version created by Deploy CSH."
+            exit 1
+          fi
+
+          TAG_NAME="$(gh release view "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          RELEASE_URL="$(gh release view "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
+
+          if [ "$TAG_NAME" != "$RELEASE_VERSION" ]; then
+            echo "::error::Release tag '$TAG_NAME' does not match requested version '$RELEASE_VERSION'."
+            exit 1
+          fi
+
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Parse ALL_SECRETS
+        id: vars
+        shell: bash
+        env:
+          ALL_SECRETS: ${{ secrets.ALL_SECRETS }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$ALL_SECRETS" > /tmp/secrets.env
+
+          get() {
+            local line
+            line="$(grep -m1 "^$1=" /tmp/secrets.env || true)"
+            printf '%s' "${line#*=}"
+          }
+
+          echo "ngrok_host=$(get NGROK_HOST)" >> "$GITHUB_OUTPUT"
+          echo "ngrok_port=$(get NGROK_PORT)" >> "$GITHUB_OUTPUT"
+          echo "deploy_user=$(get DEPLOY_USER)" >> "$GITHUB_OUTPUT"
+
+          DEPLOY_SSH_KEY_B64="$(get DEPLOY_SSH_KEY_B64)"
+          if [ -z "$DEPLOY_SSH_KEY_B64" ]; then
+            echo "::error::DEPLOY_SSH_KEY_B64 is missing from ALL_SECRETS"
+            exit 1
+          fi
+
+          printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+
+          # Keep runtime env in sync before restarting an older release.
+          {
+            echo "DATABASE_URL=$(get DATABASE_URL)"
+            echo "HEREDIANO_SECRET=$(get HEREDIANO_SECRET)"
+            echo "HEREDIANO_USER=$(get HEREDIANO_USER)"
+            echo "HEREDIANO_PASS=$(get HEREDIANO_PASS)"
+            echo "HEREDIANO_ADMIN_USER=$(get HEREDIANO_ADMIN_USER)"
+            echo "HEREDIANO_ADMIN_EMAIL=$(get HEREDIANO_ADMIN_EMAIL)"
+            echo "HEREDIANO_ADMIN_PASS=$(get HEREDIANO_ADMIN_PASS)"
+            echo "HEREDIANO_CONTACT_EMAIL=$(get HEREDIANO_CONTACT_EMAIL)"
+            echo "HEREDIANO_SESSION_HOURS=$(get HEREDIANO_SESSION_HOURS)"
+            echo "HEREDIANO_ADMIN_SESSION_HOURS=$(get HEREDIANO_ADMIN_SESSION_HOURS)"
+            echo "HEREDIANO_SMTP_HOST=$(get HEREDIANO_SMTP_HOST)"
+            echo "HEREDIANO_SMTP_PORT=$(get HEREDIANO_SMTP_PORT)"
+            echo "HEREDIANO_SMTP_SECURE=$(get HEREDIANO_SMTP_SECURE)"
+            echo "HEREDIANO_MAIL_FROM=$(get HEREDIANO_MAIL_FROM)"
+            echo "HEREDIANO_APP_URL=$(get HEREDIANO_APP_URL)"
+            echo "HEREDIANO_SMTP_USER=$(get HEREDIANO_SMTP_USER)"
+            echo "HEREDIANO_SMTP_PASS=$(get HEREDIANO_SMTP_PASS)"
+          } > /tmp/app.env
+
+      - name: Activate selected version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NGROK_HOST: ${{ steps.vars.outputs.ngrok_host }}
+          NGROK_PORT: ${{ steps.vars.outputs.ngrok_port }}
+          DEPLOY_USER: ${{ steps.vars.outputs.deploy_user }}
+        run: |
+          set -euo pipefail
+
+          scp -i /tmp/deploy_key \
+              -P "$NGROK_PORT" \
+              -o StrictHostKeyChecking=no \
+              /tmp/app.env \
+              "$DEPLOY_USER@$NGROK_HOST:/tmp/csh-app.env"
+
+          ssh -i /tmp/deploy_key \
+              -p "$NGROK_PORT" \
+              -o StrictHostKeyChecking=no \
+              "$DEPLOY_USER@$NGROK_HOST" \
+              "APP_ROOT='$APP_ROOT' REPO_URL='$REPO_URL' RELEASE_VERSION='$RELEASE_VERSION' RELEASE_URL='$RELEASE_URL' RUN_URL='$RUN_URL' bash -se" <<'ENDSSH'
+            set -euo pipefail
+
+            SHARED_DIR="$APP_ROOT/shared"
+            RELEASES_DIR="$APP_ROOT/releases"
+            CURRENT_LINK="$APP_ROOT/current"
+            SOURCE_DIR="$APP_ROOT/source"
+            RELEASE_DIR="$RELEASES_DIR/$RELEASE_VERSION"
+            TMP_RELEASE="$RELEASES_DIR/.tmp-rollback-$RELEASE_VERSION-$$"
+            PREVIOUS_RELEASE="$(basename "$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)")"
+
+            echo "== Preparing rollback to $RELEASE_VERSION =="
+            mkdir -p "$SHARED_DIR" "$RELEASES_DIR"
+            install -m 600 /tmp/csh-app.env "$SHARED_DIR/.env"
+            rm -f /tmp/csh-app.env
+
+            # Fast path: if the release directory already exists on the host,
+            # rollback is just a symlink switch plus service restart.
+            if [ ! -d "$RELEASE_DIR" ]; then
+              echo "Release is not cached on this host; rebuilding from GitHub tag $RELEASE_VERSION."
+
+              if [ ! -d "$SOURCE_DIR/.git" ]; then
+                if [ -d "$APP_ROOT/.git" ]; then
+                  SOURCE_DIR="$APP_ROOT"
+                else
+                  git clone "$REPO_URL" "$SOURCE_DIR"
+                fi
+              fi
+
+              cd "$SOURCE_DIR"
+              git remote set-url origin "$REPO_URL" || true
+              git fetch --prune --tags origin
+              TARGET_SHA="$(git rev-list -n 1 "$RELEASE_VERSION")"
+
+              rm -rf "$TMP_RELEASE"
+              mkdir -p "$TMP_RELEASE"
+              git archive "$TARGET_SHA" | tar -x -C "$TMP_RELEASE"
+
+              cd "$TMP_RELEASE"
+              npm ci
+              npm run build
+
+              cat > RELEASE_MANIFEST.json <<EOF
+          {
+            "version": "$RELEASE_VERSION",
+            "sha": "$TARGET_SHA",
+            "source": "rollback-rebuild",
+            "releaseUrl": "$RELEASE_URL",
+            "runUrl": "$RUN_URL",
+            "rebuiltAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+              mv "$TMP_RELEASE" "$RELEASE_DIR"
+            fi
+
+            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+
+            echo "== Ensuring systemd service points at current release =="
+            mkdir -p ~/.config/systemd/user
+            cat > ~/.config/systemd/user/csh.service <<UNIT
+          [Unit]
+          Description=CSH Herediano app
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory=$CURRENT_LINK
+          EnvironmentFile=$SHARED_DIR/.env
+          ExecStart=/bin/bash -lc 'npm start'
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=default.target
+          UNIT
+
+            systemctl --user daemon-reload
+            systemctl --user enable csh.service
+            systemctl --user restart csh.service
+
+            echo "== Health check =="
+            for attempt in {1..30}; do
+              if curl --fail --silent --show-error http://127.0.0.1:8088/healthz; then
+                echo "Rollback health check passed"
+                echo "Previous release: ${PREVIOUS_RELEASE:-unknown}"
+                echo "Active release: $RELEASE_VERSION"
+                exit 0
+              fi
+              echo "Waiting for rolled back app health... ($attempt/30)"
+              sleep 2
+            done
+
+            echo "Rollback health check failed"
+            systemctl --user status csh.service --no-pager || true
+            journalctl --user -u csh.service -n 100 --no-pager || true
+            exit 1
+          ENDSSH
+
+      - name: Rollback summary
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          {
+            echo "### CSH rollback"
+            echo ""
+            echo "- Active version: \`$RELEASE_VERSION\`"
+            echo "- Release: $RELEASE_URL"
+            echo "- Triggered by: \`$GITHUB_ACTOR\`"
+            if [ -n "$REASON" ]; then
+              echo "- Reason: $REASON"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
