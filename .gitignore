@@ -17,4 +17,6 @@ output/
 /current
 /releases/
 /shared/
+/current-dev
+/releases-dev/
 .DS_Store
