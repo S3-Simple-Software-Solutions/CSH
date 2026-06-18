@@ -2444,17 +2444,16 @@ function AdminEventosTab() {
         ))}
       </tbody></table></div>
       <EntradasLogPanel eventos={eventos} refreshKey={logRefreshKey} />
-      {modal?.type === 'detalle' && <EventDetalleModal evento={modal.evento} onClose={() => setModal(null)} actions={{
-        sectores: () => setModal({ type: 'tipos', evento: modal.evento }),
-        mapa: () => setModal({ type: 'mapa', evento: modal.evento, tipos: modal.tipos }),
-        cortesia: () => setModal({ type: 'cortesia', evento: modal.evento, tipos: modal.tipos }),
-        cerrar: () => { setEstado({ evento: modal.evento }, 'finalizado'); setModal(null); },
-        publicar: () => { setEstado({ evento: modal.evento }, 'publicado'); setModal(null); },
-      }} />}
+      {modal?.type === 'detalle' && (
+        <EventDetalleModal
+          evento={modal.evento}
+          tipos={modal.tipos}
+          onClose={() => { setModal(null); refresh(); refreshLog(); }}
+          onToggleEstado={() => { setEstado({ evento: modal.evento }, modal.evento.estado === 'publicado' ? 'finalizado' : 'publicado'); setModal(null); }}
+          onChanged={() => { refresh(); refreshLog(); }}
+        />
+      )}
       {modal?.type === 'evento' && <EventFormModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); refreshLog(); }} />}
-      {modal?.type === 'tipos' && <TiposModal evento={modal.evento} onClose={() => { setModal(null); refresh(); refreshLog(); }} />}
-      {modal?.type === 'mapa' && <StadiumMapEditor evento={modal.evento} tipos={modal.tipos} onClose={() => setModal(null)} onSaved={() => { refresh(); refreshLog(); }} />}
-      {modal?.type === 'cortesia' && <CortesiaModal evento={modal.evento} tipos={modal.tipos} onClose={() => { setModal(null); refresh(); refreshLog(); }} />}
     </>
   );
 }
@@ -2574,7 +2573,7 @@ function EventFormModal({ onClose, onDone }) {
   );
 }
 
-function TiposModal({ evento, onClose }) {
+function TiposModal({ evento, onClose, asPanel }) {
   const [tipos, setTipos] = useState([]);
   const [form, setForm] = useState({ sectorKey: '', precioCrc: '', stockTotal: '' });
   const [gramForm, setGramForm] = useState({ key: '', nombre: '', precioCrc: '', stockTotal: '' });
@@ -2718,8 +2717,8 @@ function TiposModal({ evento, onClose }) {
     return k && k.startsWith('gramilla-');
   });
 
-  return (
-    <Modal title={`Sectores · ${evento.nombre}`} onClose={onClose}>
+  const inner = (
+    <>
 
       {/* Lista de sectores existentes */}
       {tipos.length > 0 && (
@@ -2837,11 +2836,12 @@ function TiposModal({ evento, onClose }) {
           )}
         </div>
       )}
-    </Modal>
+    </>
   );
+  return asPanel ? inner : <Modal title={`Sectores · ${evento.nombre}`} onClose={onClose}>{inner}</Modal>;
 }
 
-function CortesiaModal({ evento, tipos, onClose }) {
+function CortesiaModal({ evento, tipos, onClose, asPanel }) {
   const [form, setForm] = useState({ tipoId: tipos?.[0]?.id || '', nombre: '', email: '' });
   const [msg, setMsg] = useState(null);
   async function submit() {
@@ -2850,8 +2850,8 @@ function CortesiaModal({ evento, tipos, onClose }) {
     if (!d.ok) return setMsg({ type: 'error', text: d.error });
     setMsg({ type: 'ok', text: `Cortesia ${d.boleto.codigo} emitida${d.emailSent ? ' y enviada' : ''}.` });
   }
-  return (
-    <Modal title="Emitir cortesia" onClose={onClose}>
+  const inner = (
+    <>
       <p className="muted">{evento.nombre}</p>
       <label>Sector</label>
       <select value={form.tipoId} onChange={(e) => setForm({ ...form, tipoId: e.target.value })}>{(tipos || []).map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}</select>
@@ -2859,8 +2859,9 @@ function CortesiaModal({ evento, tipos, onClose }) {
       <label>Correo</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <button className="btn" onClick={submit}>Emitir cortesia gratis</button>
-    </Modal>
+    </>
   );
+  return asPanel ? inner : <Modal title="Emitir cortesia" onClose={onClose}>{inner}</Modal>;
 }
 
 function AdminVentasTab() {
@@ -2900,30 +2901,41 @@ function BarRow({ label, value, max, display, sub }) {
   );
 }
 
-function EventDetalleModal({ evento, onClose, actions }) {
+function EventDetalleModal({ evento, tipos, onClose, onToggleEstado, onChanged }) {
+  const [tab, setTab] = useState('detalles');
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   useEffect(() => {
+    if (tab !== 'detalles') return undefined;
+    let alive = true;
+    setData(null); setError(null);
     api(`/admin/api/entradas/ventas/${evento.id}`)
-      .then((d) => { if (d.ok) setData(d); else setError(d.error || 'No se pudo cargar el detalle'); })
-      .catch(() => setError('No se pudo cargar el detalle'));
-  }, [evento.id]);
+      .then((d) => { if (!alive) return; if (d.ok) setData(d); else setError(d.error || 'No se pudo cargar el detalle'); })
+      .catch(() => { if (alive) setError('No se pudo cargar el detalle'); });
+    return () => { alive = false; };
+  }, [evento.id, tab]);
 
   return (
     <Modal title={evento.nombre} onClose={onClose} wide>
-      {actions && (
-        <div className="modal-toolbar">
-          <button className="btn ghost" onClick={actions.sectores}><LayoutGrid size={16} />Sectores</button>
-          <button className="btn ghost" onClick={actions.mapa}><MapIcon size={16} />Mapa</button>
-          {evento.estado === 'publicado'
-            ? <button className="btn ghost" onClick={actions.cerrar}><Lock size={16} />Cerrar</button>
-            : <button className="btn ghost" onClick={actions.publicar}><Send size={16} />Publicar</button>}
-          <button className="btn ghost" onClick={actions.cortesia}><Gift size={16} />Cortesia</button>
-        </div>
-      )}
-      {error && <div className="error">{error}</div>}
-      {!error && !data && <p className="muted">Cargando detalle…</p>}
-      {data && <EventDetalleContenido evento={evento} data={data} />}
+      <div className="modal-toolbar">
+        <button className={`btn ghost${tab === 'detalles' ? ' active' : ''}`} onClick={() => setTab('detalles')}><BarChart3 size={16} />Detalles</button>
+        <button className={`btn ghost${tab === 'sectores' ? ' active' : ''}`} onClick={() => setTab('sectores')}><LayoutGrid size={16} />Sectores</button>
+        <button className={`btn ghost${tab === 'mapa' ? ' active' : ''}`} onClick={() => setTab('mapa')}><MapIcon size={16} />Mapa</button>
+        <button className={`btn ghost${tab === 'cortesia' ? ' active' : ''}`} onClick={() => setTab('cortesia')}><Gift size={16} />Cortesia</button>
+        {onToggleEstado && (evento.estado === 'publicado'
+          ? <button className="btn ghost" onClick={onToggleEstado}><Lock size={16} />Finalizar</button>
+          : <button className="btn ghost" onClick={onToggleEstado}><Send size={16} />Publicar</button>)}
+      </div>
+
+      {tab === 'detalles' && <>
+        {error && <div className="error">{error}</div>}
+        {!error && !data && <p className="muted">Cargando detalle…</p>}
+        {data && <EventDetalleContenido evento={evento} data={data} />}
+      </>}
+      {tab === 'sectores' && <TiposModal evento={evento} asPanel onClose={() => setTab('detalles')} />}
+      {tab === 'mapa' && <StadiumMapEditor evento={evento} tipos={tipos} embedded onClose={() => setTab('detalles')} onSaved={onChanged} />}
+      {tab === 'cortesia' && <CortesiaModal evento={evento} tipos={tipos} asPanel onClose={() => setTab('detalles')} />}
+
       <div className="modal-actions">
         <button className="btn ghost" onClick={onClose}>Cerrar</button>
       </div>

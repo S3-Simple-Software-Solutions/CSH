@@ -33,7 +33,7 @@ const TEMPLATES = [
  * Editor admin alineado al SVG vectorial ERC.
  * Soporta modo partido (tribunas ERC) y modo espectáculo (tribunas + gramilla).
  */
-export function StadiumMapEditor({ evento, tipos: tiposInit, onClose, onSaved }) {
+export function StadiumMapEditor({ evento, tipos: tiposInit, onClose, onSaved, embedded }) {
   const [tipos, setTipos] = useState(tiposInit ?? []);
   const [zonas, setZonas] = useState({});
   const [selectedKey, setSelectedKey] = useState(ERC_ZONE_KEYS[0]);
@@ -182,13 +182,15 @@ export function StadiumMapEditor({ evento, tipos: tiposInit, onClose, onSaved })
   const allMeta = (key) => ERC_ZONE_META[key] ?? GRAMILLA_ZONE_META[key];
 
   return (
-    <div className="stadium-editor-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
-      <div className="stadium-editor stadium-editor--vector">
-        <div className="stadium-editor-header">
-          <h2>Mapa ERC — {evento.nombre}</h2>
-          {esEspectaculo && <span className="badge badge--espectaculo">Espectáculo</span>}
-          <button className="btn ghost" onClick={onClose}>Cerrar</button>
-        </div>
+    <div className={embedded ? 'stadium-editor-embed' : 'stadium-editor-overlay'} onClick={embedded ? undefined : (e) => { if (e.target === e.currentTarget) onClose?.(); }}>
+      <div className={`stadium-editor stadium-editor--vector${embedded ? ' stadium-editor--embedded' : ''}`}>
+        {!embedded && (
+          <div className="stadium-editor-header">
+            <h2>Mapa ERC — {evento.nombre}</h2>
+            {esEspectaculo && <span className="badge badge--espectaculo">Espectáculo</span>}
+            <button className="btn ghost" onClick={onClose}>Cerrar</button>
+          </div>
+        )}
 
         {!useVector ? (
           <div className="stadium-editor-promo">

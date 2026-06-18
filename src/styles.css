@@ -910,6 +910,11 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
 .stadium-editor-header h2 { margin: 0; font-size: 1.05rem; }
 .stadium-editor-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 .stadium-editor-footer { display: flex; gap: .6rem; padding: .85rem 1.1rem; border-top: 1px solid var(--border); justify-content: flex-end; }
+/* Editor de mapa embebido como tab dentro del modal de detalle */
+.stadium-editor-embed { width: 100%; }
+.stadium-editor--embedded { background: transparent; border: 0; border-radius: 0; max-width: none; max-height: none; overflow: visible; }
+.stadium-editor--embedded .stadium-editor-body { max-height: 58vh; }
+.stadium-editor--embedded .stadium-editor-footer { padding: .85rem 0 0; }
 
 .stadium-editor-toolbar {
   width: 220px; min-width: 180px;
