@@ -1,6 +1,6 @@
 import { pool, query } from '../../core/db';
 import { ApiError } from '../../core/errors';
-import { AdminUser, ENV_ADMIN_USER_ID } from './usuarios.data';
+import { AdminUser, ENV_ADMIN_USER_ID, UserProfile } from './usuarios.data';
 import { hashPassword, verifyPassword } from './usuarios.passwords';
 
 interface UserRow {
@@ -14,6 +14,7 @@ interface UserRow {
   status: string;
   sponsor: string | null;
   password_managed_by: 'env' | 'database';
+  profile: UserProfile | null;
   role_ids: string[] | null;
 }
 
@@ -79,6 +80,7 @@ async function userRows(whereSql = '', params: unknown[] = [], orderSql = ''): P
        u.status,
        u.sponsor,
        u.password_managed_by,
+       u.profile,
        coalesce(array_remove(array_agg(ur.role_id order by ur.role_id), null), '{}'::text[]) as role_ids
      from app_users u
      left join app_user_roles ur on ur.user_id = u.id
@@ -168,6 +170,8 @@ export async function listUsers() {
       eventsRole: user.eventsRole,
       sponsor: user.sponsor,
       passwordManagedByEnv: isPasswordManagedByEnv(user),
+      category: row.profile?.category ?? 'staff',
+      profile: row.profile ?? null,
     };
   });
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
@@ -159,7 +159,7 @@ function ThemeToggle() {
   const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || 'dark');
   useEffect(() => { applyTheme(theme); }, [theme]);
   return (
-    <button className="icon-text ghost" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}>
+    <button className="theme-toggle" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}>
       {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
     </button>
   );
@@ -1597,41 +1597,54 @@ function AdminApp() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [route, setRoute] = useState(location.pathname);
+  const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
     api('/api/session').then((data) => { setUser(data.user); setLoading(false); });
-    const onPop = () => setRoute(location.pathname);
+    const onPop = () => { setRoute(location.pathname); setMenuOpen(false); };
     addEventListener('popstate', onPop);
     return () => removeEventListener('popstate', onPop);
   }, []);
-  const navigate = (path) => { history.pushState(null, '', path); setRoute(path); };
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+  const navigate = (path) => { history.pushState(null, '', path); setRoute(path); setMenuOpen(false); };
   async function logout() { await api('/admin/logout', { method: 'POST', body: '{}' }); location.href = '/admin'; }
   if (loading) return <main className="page"><p>Cargando...</p></main>;
   if (!user) return <AdminLogin />;
   // Un socio autenticado no entra al panel: se le devuelve al sitio público ya logueado.
   if (!isAdminUser(user)) { location.replace('/'); return <main className="page"><p>Redirigiendo...</p></main>; }
   return (
-    <div className="admin-shell">
-      <aside>
-        <a className="side-brand" onClick={() => navigate('/admin')}><img src="/brand/logo-shield.png" alt="" /><b>Herediano</b><span>Admin</span></a>
-        <button className={route === '/admin' ? 'active' : ''} onClick={() => navigate('/admin')}><Shield size={17} />Resumen</button>
-        <button className={route === '/admin/parqueo' ? 'active' : ''} onClick={() => navigate('/admin/parqueo')}><Car size={17} />Gestion de parqueo</button>
-        {user.eventsRole && user.eventsRole !== 'ninguno' && <button className={route === '/admin/entradas' ? 'active' : ''} onClick={() => navigate('/admin/entradas')}><CalendarDays size={17} />Gestion de entradas</button>}
-        <button className={route === '/admin/cuponera' ? 'active' : ''} onClick={() => navigate('/admin/cuponera')}><Ticket size={17} />Cuponera</button>
-        <button className={route === '/admin/usuarios' ? 'active' : ''} onClick={() => navigate('/admin/usuarios')}><Users size={17} />Gestion de usuarios</button>
-        <button className={route === '/admin/web' ? 'active' : ''} onClick={() => navigate('/admin/web')}><Globe size={17} />Gestion de la pagina web</button>
-        {Object.entries(WIP_MODULES).map(([path, mod]) => {
-          const Icon = mod.icon;
-          return <button key={path} className={route === path ? 'active' : ''} onClick={() => navigate(path)}><Icon size={17} />{mod.title}</button>;
-        })}
-        <p className="side-section-label">Contenido del sitio</p>
-        <button className={route === '/admin/jugadores' ? 'active' : ''} onClick={() => navigate('/admin/jugadores')}><Users2 size={17} />Jugadores</button>
-        <button className={route === '/admin/noticias' ? 'active' : ''} onClick={() => navigate('/admin/noticias')}><Newspaper size={17} />Noticias</button>
-        <button className={route === '/admin/partidos' ? 'active' : ''} onClick={() => navigate('/admin/partidos')}><Trophy size={17} />Partidos</button>
-        <button className={route === '/admin/sponsors' ? 'active' : ''} onClick={() => navigate('/admin/sponsors')}><ShoppingBag size={17} />Sponsors</button>
-        <button className={route === '/admin/mensajes' ? 'active' : ''} onClick={() => navigate('/admin/mensajes')}><MessageSquare size={17} />Mensajes</button>
+    <div className={menuOpen ? 'admin-shell nav-open' : 'admin-shell'}>
+      <button className="admin-nav-backdrop" aria-label="Cerrar menu" onClick={() => setMenuOpen(false)} />
+      <aside aria-label="Menu administrativo">
+            <div className="admin-nav-head">
+              <a className="side-brand" onClick={() => navigate('/admin')}><img src="/brand/logo-shield.png" alt="" /><b>Herediano</b><span>Admin</span></a>
+              <button className="admin-nav-close" onClick={() => setMenuOpen(false)} aria-label="Cerrar menu"><X size={18} /></button>
+            </div>
+            <button className={route === '/admin' ? 'active' : ''} onClick={() => navigate('/admin')}><Shield size={17} />Resumen</button>
+            <button className={route === '/admin/parqueo' ? 'active' : ''} onClick={() => navigate('/admin/parqueo')}><Car size={17} />Gestion de parqueo</button>
+            {user.eventsRole && user.eventsRole !== 'ninguno' && <button className={route === '/admin/entradas' ? 'active' : ''} onClick={() => navigate('/admin/entradas')}><CalendarDays size={17} />Gestion de entradas</button>}
+            <button className={route === '/admin/cuponera' ? 'active' : ''} onClick={() => navigate('/admin/cuponera')}><Ticket size={17} />Cuponera</button>
+            <button className={route === '/admin/usuarios' ? 'active' : ''} onClick={() => navigate('/admin/usuarios')}><Users size={17} />Gestion de usuarios</button>
+            <button className={route === '/admin/web' ? 'active' : ''} onClick={() => navigate('/admin/web')}><Globe size={17} />Gestion de la pagina web</button>
+            {Object.entries(WIP_MODULES).map(([path, mod]) => {
+              const Icon = mod.icon;
+              return <button key={path} className={route === path ? 'active' : ''} onClick={() => navigate(path)}><Icon size={17} />{mod.title}</button>;
+            })}
+            <p className="side-section-label">Contenido del sitio</p>
+            <button className={route === '/admin/jugadores' ? 'active' : ''} onClick={() => navigate('/admin/jugadores')}><Users2 size={17} />Jugadores</button>
+            <button className={route === '/admin/noticias' ? 'active' : ''} onClick={() => navigate('/admin/noticias')}><Newspaper size={17} />Noticias</button>
+            <button className={route === '/admin/partidos' ? 'active' : ''} onClick={() => navigate('/admin/partidos')}><Trophy size={17} />Partidos</button>
+            <button className={route === '/admin/sponsors' ? 'active' : ''} onClick={() => navigate('/admin/sponsors')}><ShoppingBag size={17} />Sponsors</button>
+            <button className={route === '/admin/mensajes' ? 'active' : ''} onClick={() => navigate('/admin/mensajes')}><MessageSquare size={17} />Mensajes</button>
       </aside>
       <section className="admin-main">
-        <AdminTopBar user={user} onLogout={logout} />
+        <AdminTopBar user={user} onLogout={logout} onMenu={() => setMenuOpen(true)} />
         {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
@@ -1800,13 +1813,100 @@ function AdminWeb() {
 function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [target, setTarget] = useState(null);
+  const [detail, setDetail] = useState(null);
   useEffect(() => { api('/admin/api/users').then((data) => data.ok && setUsers(data.users)); }, []);
   return (
     <main className="page">
       <p className="eyebrow">Cuentas y permisos</p><h1>Gestion de usuarios</h1>
-      <div className="table"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Area</th><th>Estado</th><th></th></tr></thead><tbody>{users.map((u) => <tr key={u.id}><td>{u.name}</td><td>{u.email}</td><td>{u.role}</td><td>{u.area}</td><td><span className="pill">{u.status}</span></td><td>{u.passwordManagedByEnv ? <span className="muted">Clave por entorno</span> : <button className="btn ghost" onClick={() => setTarget(u)}>Cambiar clave</button>}</td></tr>)}</tbody></table></div>
+      <UsersAnalytics users={users} />
+      <div className="table"><table>
+        <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Area</th><th>Estado</th><th></th></tr></thead>
+        <tbody>{users.map((u) => (
+          <tr key={u.id} className="clickable-row" onClick={() => setDetail(u)}>
+            <td><button className="link-cell" onClick={(e) => { e.stopPropagation(); setDetail(u); }}>{u.name}</button></td>
+            <td>{u.email}</td>
+            <td>{u.role}</td>
+            <td>{u.area}</td>
+            <td><span className={`pill ${u.status.toLowerCase()}`}>{u.status}</span></td>
+            <td className="row-actions" onClick={(e) => e.stopPropagation()}>{u.passwordManagedByEnv ? <span className="muted">Clave por entorno</span> : <button className="btn ghost" onClick={() => setTarget(u)}>Cambiar clave</button>}</td>
+          </tr>
+        ))}</tbody>
+      </table></div>
+      {detail && <UserDetailModal user={detail} onClose={() => setDetail(null)} onChangePassword={() => { setTarget(detail); setDetail(null); }} />}
       {target && <PasswordModal user={target} onClose={() => setTarget(null)} />}
     </main>
+  );
+}
+
+function UsersAnalytics({ users }) {
+  const miembros = users.filter((u) => u.profile?.metricas);
+  if (!miembros.length) return null;
+  const m = (u) => u.profile.metricas;
+  const sum = (f) => miembros.reduce((acc, u) => acc + (f(u) || 0), 0);
+  const avg = (f) => Math.round(sum(f) / miembros.length);
+  const socios = miembros.filter((u) => u.profile.category === 'socio').length;
+  const fans = miembros.filter((u) => u.profile.category === 'aficionado').length;
+  return (
+    <div className="user-stats">
+      <div><span>Socios</span><b>{socios}</b></div>
+      <div><span>Aficionados</span><b>{fans}</b></div>
+      <div><span>Asistencia media</span><b>{avg((u) => m(u).asistenciaPct)}%</b></div>
+      <div><span>Partidos prom.</span><b>{avg((u) => m(u).partidosAsistidos)}</b></div>
+      <div><span>Gasto acumulado</span><b>{money(sum((u) => m(u).gastoTotalCrc))}</b></div>
+      <div><span>Puntos fidelidad</span><b>{sum((u) => m(u).puntosFidelidad).toLocaleString('es-CR')}</b></div>
+    </div>
+  );
+}
+
+function UserDetailModal({ user, onClose, onChangePassword }) {
+  const p = user.profile;
+  const dl = (label, value) => <div><span>{label}</span><b>{value}</b></div>;
+  const permisos = `parqueo:${user.parkingRole} · cupones:${user.couponRole}${user.eventsRole !== 'ninguno' ? ` · eventos:${user.eventsRole}` : ''}`;
+  return (
+    <Modal title={user.name} onClose={onClose} wide>
+      <div className="user-detail-head">
+        <span className={`pill ${user.status.toLowerCase()}`}>{user.status}</span>
+        <span className="pill">{user.role}</span>
+        <span className="muted">{user.area}</span>
+      </div>
+      {!p ? <p className="muted">Esta cuenta no tiene perfil ampliado.</p> : <>
+        <h3 className="detail-section"><Users size={15} />Informacion personal</h3>
+        <div className="detail-grid">
+          {dl('Telefono', p.personal.telefono)}
+          {dl('Cedula', p.personal.cedula)}
+          {dl('Nacimiento', p.personal.nacimiento)}
+          {dl('Provincia', p.personal.provincia)}
+          {dl('Genero', p.personal.genero)}
+        </div>
+        <h3 className="detail-section"><Activity size={15} />Cuenta y app</h3>
+        <div className="detail-grid">
+          {dl('Correo', user.email)}
+          {dl('Usuario', user.username)}
+          {dl('Registrado', p.app.registrado)}
+          {dl('Ultimo acceso', p.app.ultimoAcceso)}
+          {dl('Plataforma', p.app.plataforma)}
+          {dl('Notificaciones', p.app.notificaciones ? 'Activas' : 'Inactivas')}
+          {dl('Sesiones (30d)', p.app.sesiones30d)}
+          {dl('Permisos', permisos)}
+        </div>
+        {p.metricas && <>
+          <h3 className="detail-section"><TrendingUp size={15} />Metricas {p.category === 'socio' ? 'del socio' : 'del aficionado'}</h3>
+          <div className="detail-grid">
+            {p.metricas.numeroMiembro && dl('No. miembro', p.metricas.numeroMiembro)}
+            {p.metricas.membresia && dl('Membresia', p.metricas.membresia)}
+            {dl('Antiguedad', `${p.metricas.antiguedadMeses} meses`)}
+            {dl('Partidos asistidos', p.metricas.partidosAsistidos)}
+            {dl('% asistencia', `${p.metricas.asistenciaPct}%`)}
+            {dl('Entradas compradas', p.metricas.entradasCompradas)}
+            {dl('Gasto total', money(p.metricas.gastoTotalCrc))}
+            {dl('Cupones usados', p.metricas.cuponesUsados)}
+            {dl('Reservas parqueo', p.metricas.reservasParqueo)}
+            {dl('Puntos fidelidad', p.metricas.puntosFidelidad.toLocaleString('es-CR'))}
+          </div>
+        </>}
+      </>}
+      {!user.passwordManagedByEnv && <button className="btn ghost" style={{ marginTop: 22 }} onClick={onChangePassword}>Cambiar clave</button>}
+    </Modal>
   );
 }
 function PasswordModal({ user, onClose }) {
@@ -2300,7 +2400,7 @@ function AdminEventosTab() {
           <tr key={ev.evento.id} className="clickable-row" onClick={() => setModal({ type: 'detalle', evento: ev.evento })}>
             <td><button className="link-cell" onClick={(e) => { e.stopPropagation(); setModal({ type: 'detalle', evento: ev.evento }); }}>{ev.evento.nombre}</button></td>
             <td>{fmtFullDate(ev.evento.fecha)}</td>
-            <td><span className="pill">{ev.evento.estado}</span></td>
+            <td><span className={`pill ${ev.evento.estado}`}>{ev.evento.estado}</span></td>
             <td>{ev.boletosVendidos}</td>
             <td>{money(ev.ingresosCrc)}</td>
             <td className="row-actions" onClick={(e) => e.stopPropagation()}>
@@ -2488,7 +2588,7 @@ function AdminVentasTab() {
         <div><span>Ingresos validados</span><b>{totalUsados}</b></div>
       </section>
       <div className="table"><table><thead><tr><th>Evento</th><th>Estado</th><th>Vendidos</th><th>Ingresados</th><th>Ingresos</th></tr></thead><tbody>
-        {eventos.map((e) => <tr key={e.evento.id}><td>{e.evento.nombre}</td><td><span className="pill">{e.evento.estado}</span></td><td>{e.boletosVendidos}</td><td>{e.boletosUsados}</td><td>{money(e.ingresosCrc)}</td></tr>)}
+        {eventos.map((e) => <tr key={e.evento.id}><td>{e.evento.nombre}</td><td><span className={`pill ${e.evento.estado}`}>{e.evento.estado}</span></td><td>{e.boletosVendidos}</td><td>{e.boletosUsados}</td><td>{money(e.ingresosCrc)}</td></tr>)}
       </tbody></table></div>
     </>
   );
@@ -2546,7 +2646,7 @@ function EventDetalleContenido({ evento, data }) {
       <div className="event-meta">
         <span><CalendarDays size={14} /> {fmtFullDate(evento.fecha)}</span>
         {evento.venue && <span>📍 {evento.venue}</span>}
-        <span className="pill">{evento.estado}</span>
+        <span className={`pill ${evento.estado}`}>{evento.estado}</span>
       </div>
       {evento.descripcion && <p className="muted event-desc">{evento.descripcion}</p>}
 
