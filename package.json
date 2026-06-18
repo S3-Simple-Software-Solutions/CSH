@@ -12,6 +12,7 @@
     "build": "npm run build:client && npm run build:server",
     "start": "node dist-server/index.js",
     "check": "tsc -p tsconfig.server.json --noEmit && npm run build:client",
+    "test:unit": "DATABASE_URL=postgres://unit:unit@localhost:5432/unit vitest run",
     "sync:branches": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-branches.ps1",
     "finish:feature": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/finish-feature.ps1"
   },
@@ -50,6 +51,7 @@
     "@types/qrcode": "^1.5.6",
     "concurrently": "^10.0.3",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }
