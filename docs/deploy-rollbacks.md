@@ -2,16 +2,16 @@
 
 ## Versiones
 
-Cada `push` a `main` ejecuta `Deploy CSH` y crea una version con este formato:
+Cada `push` a `main` ejecuta `Deploy CSH` y crea la siguiente version numerica:
 
 ```text
-csh-main-<run_number>-<short_sha>
+0.3, 0.4, 0.5, ...
 ```
 
 Ejemplo:
 
 ```text
-csh-main-42-a1b2c3d
+0.3
 ```
 
 Esa version se guarda como GitHub Release y tambien como una carpeta inmutable en
@@ -41,7 +41,7 @@ Para volver a una version anterior:
 1. Ir a **Actions** en GitHub.
 2. Abrir **Rollback CSH**.
 3. Ejecutar **Run workflow**.
-4. Escribir el `release_version` exacto, por ejemplo `csh-main-42-a1b2c3d`.
+4. Escribir el `release_version` exacto, por ejemplo `0.3`.
 5. Opcionalmente escribir el motivo en `reason`.
 
 El workflow valida que la version exista como GitHub Release. Si la carpeta de

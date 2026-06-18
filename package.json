@@ -1,6 +1,6 @@
 {
   "name": "app_csh",
-  "version": "1.0.0",
+  "version": "0.3",
   "description": "Cached Club Sport Herediano proxy with login, admin shell, and parking management module.",
   "main": "dist-server/index.js",
   "scripts": {
