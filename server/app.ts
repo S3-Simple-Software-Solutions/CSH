@@ -3,6 +3,7 @@ import path from 'path';
 import { query } from './core/db';
 import { errorHandler } from './core/middleware';
 import { DIST_DIR, PUBLIC_DIR } from './config/constants';
+import { getReleaseInfo } from './config/release';
 import { authRouter } from './modules/auth/auth.routes';
 import { parqueoRouter } from './modules/parqueo/parqueo.routes';
 import { cuponeraRouter } from './modules/cuponera/cuponera.routes';
@@ -31,6 +32,11 @@ export function createApp() {
     } catch {
       res.status(503).json({ ok: false });
     }
+  });
+
+  app.get('/api/version', (_req, res) => {
+    res.setHeader('cache-control', 'no-store');
+    res.json({ ok: true, ...getReleaseInfo() });
   });
 
   // Routers de dominio (rutas API y de sesion).

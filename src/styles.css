@@ -58,6 +58,30 @@ body {
 }
 button, input, select { font: inherit; }
 a { color: var(--gold); }
+.release-badge {
+  position: fixed;
+  top: 6px;
+  left: 8px;
+  z-index: 100;
+  max-width: min(260px, calc(100vw - 16px));
+  padding: 3px 7px;
+  border: 1px solid rgba(201, 169, 97, .34);
+  border-radius: 4px;
+  background: rgba(10, 9, 8, .74);
+  color: var(--gold-light);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+html[data-theme='light'] .release-badge {
+  background: rgba(255, 253, 248, .78);
+  color: var(--gold);
+}
 /* AdminTopBar — barra de contexto del panel admin */
 .admin-topbar {
   height: 68px;
