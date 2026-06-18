@@ -5,7 +5,7 @@ import { getEntradasRepository } from './entradas.repository';
 import { sendEntradasEmail } from './entradas.mail';
 import { extractCodigo } from './entradas.helpers';
 import { CompraLinea, EventoInput, MapaBatchInput, MapaEventoInput, MapaTipoInput, MapPoint, MapRect, MapZoneKey, PagoEntrada, TipoInput } from './entradas.types';
-import { ERC_ZONE_KEYS, mapaFromZoneKey } from './entradas.erc.zones';
+import { isValidZoneKey, mapaFromZoneKey } from './entradas.erc.zones';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_POR_LINEA = 10;
@@ -162,12 +162,15 @@ function buildEventoInput(body: any): EventoInput {
   if (nombre.length < 3) throw new ApiError(400, 'Nombre del evento muy corto');
   const fecha = String(body?.fecha || '').trim();
   if (!fecha || Number.isNaN(new Date(fecha).getTime())) throw new ApiError(400, 'Fecha invalida');
+  const rawFormato = String(body?.formato || '').trim();
+  const formato = rawFormato === 'espectaculo' ? 'espectaculo' : 'partido';
   return {
     nombre,
     descripcion: String(body?.descripcion || '').trim(),
     venue: String(body?.venue || '').trim(),
     fecha,
     imagenUrl: String(body?.imagenUrl || '').trim(),
+    formato,
   };
 }
 
@@ -207,7 +210,7 @@ export async function adminCrearTipo(eventoId: string, body: any, user: AdminUse
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
   let tipo = await getEntradasRepository().crearTipo(String(eventoId), buildTipoInput(body));
   const zoneKey = String(body?.zoneKey || '').trim();
-  if (zoneKey && (ERC_ZONE_KEYS as readonly string[]).includes(zoneKey)) {
+  if (zoneKey && isValidZoneKey(zoneKey)) {
     const mapa = mapaFromZoneKey(zoneKey);
     if (mapa) tipo = await getEntradasRepository().actualizarMapaTipo(tipo.id, mapa);
   }
@@ -300,8 +303,8 @@ function validateMapaTipo(input: MapaTipoInput): void {
     }
   } else if (input.shape === 'zone') {
     const z = input.points as MapZoneKey;
-    if (!z?.key || !ERC_ZONE_KEYS.includes(z.key as typeof ERC_ZONE_KEYS[number]))
-      throw new ApiError(400, `Zona ERC inválida: ${z?.key ?? 'sin key'}`);
+    if (!z?.key || !isValidZoneKey(z.key))
+      throw new ApiError(400, `Zona inválida: ${z?.key ?? 'sin key'}`);
   } else {
     throw new ApiError(400, `Shape inválido: ${input.shape}`);
   }
@@ -314,8 +317,23 @@ export async function adminGetMapaEvento(eventoId: string, user: AdminUser) {
   return result;
 }
 
-export async function adminActualizarMapaEvento(eventoId: string, input: MapaEventoInput, user: AdminUser) {
+export async function adminActualizarMapaEvento(eventoId: string, rawInput: any, user: AdminUser) {
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const input: MapaEventoInput = { mapImageUrl: rawInput.mapImageUrl };
+  if ('fieldTemplate' in rawInput) {
+    const t = rawInput.fieldTemplate;
+    if (t !== null && !['2', '3', '4'].includes(String(t)))
+      throw new ApiError(400, 'fieldTemplate debe ser "2", "3" o "4"');
+    input.fieldTemplate = t === null ? null : String(t);
+  }
+  if ('fieldSplits' in rawInput) {
+    const s = rawInput.fieldSplits;
+    if (s !== null) {
+      if (!Array.isArray(s) || s.some((v: any) => typeof v !== 'number' || v <= 0 || v >= 1))
+        throw new ApiError(400, 'fieldSplits debe ser array de números en (0,1)');
+    }
+    input.fieldSplits = s;
+  }
   return getEntradasRepository().actualizarMapaEvento(eventoId, input);
 }
 

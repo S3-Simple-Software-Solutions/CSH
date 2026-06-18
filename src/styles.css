@@ -934,8 +934,9 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
 .toolbar-sector input[type="color"] { width: 22px; height: 22px; border: none; padding: 0; cursor: pointer; border-radius: 3px; }
 .btn.xs { padding: .15rem .4rem; font-size: .78rem; }
 
-.stadium-editor-map { flex: 1; overflow: auto; padding: .75rem; display: flex; align-items: flex-start; }
+.stadium-editor-map { flex: 1; overflow: auto; padding: .75rem; display: flex; align-items: flex-start; position: relative; }
 .stadium-editor-map .plano { width: 100%; }
+.stadium-editor-map > svg.editor-split-overlay { position: absolute; top: 0.75rem; left: 0.75rem; right: 0.75rem; bottom: 0; width: calc(100% - 1.5rem); height: calc(100% - 0.75rem); }
 
 /* ── Mapa vectorial ERC 2D ─────────────────────────────────────── */
 .stadium-map-wrap--vector {
@@ -966,9 +967,21 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
   }
 }
 .stadium-map-plano--vector {
-  background: radial-gradient(ellipse at 50% 40%, rgba(201,169,97,.08) 0%, transparent 55%), #0a0a0a;
+  background: radial-gradient(ellipse at 50% 35%, rgba(201,169,97,.1) 0%, transparent 58%), #080808;
   padding: 0;
-  box-shadow: 0 8px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(201,169,97,.12);
+  box-shadow: 0 12px 40px rgba(0,0,0,.5), inset 0 1px 0 rgba(201,169,97,.15);
+}
+.stadium-svg-erc--v2 {
+  filter: drop-shadow(0 4px 20px rgba(0,0,0,.35));
+}
+.stadium-north-label {
+  fill: #c9a961;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.stadium-zone-label--full {
+  font-size: 14px;
 }
 .stadium-svg-erc {
   display: block;
@@ -1057,6 +1070,202 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
   border-left: 1px solid var(--line);
   margin-left: 0.1rem;
   padding-left: 0.45rem;
+}
+
+/* Chip de gramilla: borde verde izquierdo para distinguirlos */
+.stadium-chip--gramilla {
+  border-left: 3px solid #5a9e40;
+}
+.stadium-chip--gramilla .stadium-chip-tier {
+  color: #5a9e40;
+}
+
+/* Zonas gramilla: label más pequeño */
+.stadium-zone-label--gramilla {
+  font-size: 9px;
+  font-weight: 700;
+  fill: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,.9);
+}
+.stadium-zone-label--gramilla.stadium-zone-label--full {
+  font-size: 11px;
+}
+
+/* === Formato selector en EventFormModal === */
+.evento-formato-opts {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+.evento-formato-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  padding: 0.65rem 0.85rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  background: transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+.evento-formato-opt input[type="radio"] { display: none; }
+.evento-formato-opt.active {
+  border-color: var(--gold);
+  background: rgba(201,169,97,.08);
+}
+.evento-formato-opt-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.evento-formato-opt-desc {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* === Secciones del TiposModal === */
+.tipos-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.tipos-section--gramilla {
+  border-top-color: rgba(90,158,64,.35);
+}
+.tipos-section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 0.6rem;
+}
+.tipos-section--gramilla .tipos-section-title {
+  color: #5a9e40;
+}
+.tipo-row--gramilla {
+  border-left: 3px solid #5a9e40;
+  padding-left: 0.5rem;
+}
+.tipo-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.btn--green {
+  background: rgba(90,158,64,.18);
+  color: #5a9e40;
+  border: 1.5px solid #5a9e40;
+}
+.btn--green:hover {
+  background: rgba(90,158,64,.28);
+}
+
+/* === Tabs editor (tribunas / gramilla) === */
+.editor-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 0;
+  border-bottom: 1.5px solid var(--line);
+}
+.editor-tab {
+  padding: 0.55rem 1.1rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1.5px;
+}
+.editor-tab.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+/* === Plantillas gramilla === */
+.template-opts {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.75rem;
+  flex-wrap: wrap;
+}
+.template-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.5rem 0.85rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  background: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+  flex: 1;
+  min-width: 70px;
+}
+.template-opt.active {
+  border-color: #5a9e40;
+  background: rgba(90,158,64,.1);
+  color: #5a9e40;
+}
+.template-opt-desc {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+.toolbar-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+/* Sliders splits */
+.splits-panel { margin-bottom: 0.5rem; }
+.split-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.split-row input[type="range"] { width: 100%; cursor: pointer; }
+
+/* Overlay SVG con líneas de split en el editor */
+.editor-split-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Badge espectáculo */
+.badge--espectaculo {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(90,158,64,.2);
+  color: #5a9e40;
+  border: 1px solid rgba(90,158,64,.4);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  margin-left: 0.5rem;
 }
 
 .stadium-tooltip {

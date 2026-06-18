@@ -3,9 +3,11 @@ import { StadiumSvgERC } from './StadiumSvgERC.jsx';
 import {
   ERC_ZONE_KEYS,
   ERC_ZONE_META,
+  GRAMILLA_ZONE_META,
   isErcVectorLayout,
   nombreToZoneKey,
 } from './stadiumErc.js';
+import { gramillaKeysForTemplate } from './stadiumFieldGeometry.js';
 
 function tiposByZoneKey(tipos) {
   const map = {};
@@ -17,14 +19,16 @@ function tiposByZoneKey(tipos) {
     } else {
       key = nombreToZoneKey(t.nombre);
     }
-    if (key && ERC_ZONE_KEYS.includes(key) && !map[key]) map[key] = t;
+    // Acepta tribunas ERC y zonas de gramilla
+    const valid = ERC_ZONE_KEYS.includes(key) || /^gramilla-[1-4]$/.test(key);
+    if (key && valid && !map[key]) map[key] = t;
   }
   return map;
 }
 
 function ZonePanel({ tipo, zoneKey, qty, onUpdate, onClose, compact }) {
   const max = Math.min(tipo.disponibles, 10);
-  const meta = zoneKey ? ERC_ZONE_META[zoneKey] : null;
+  const meta = zoneKey ? (ERC_ZONE_META[zoneKey] ?? GRAMILLA_ZONE_META[zoneKey]) : null;
   const agotado = tipo.disponibles <= 0;
 
   return (
@@ -70,33 +74,36 @@ function PanelEmpty() {
   );
 }
 
-function MapTooltip({ tipo, zoneKey }) {
-  const meta = ERC_ZONE_META[zoneKey];
+function MapTooltip({ tipo, zoneKey, meta }) {
+  const m = meta ?? ERC_ZONE_META[zoneKey] ?? GRAMILLA_ZONE_META[zoneKey];
   return (
     <div className="stadium-tooltip" role="status">
-      <strong>{meta?.label ?? tipo.nombre}</strong>
-      {meta?.tier && <span className="stadium-tooltip-tier">{meta.tier}</span>}
+      <strong>{m?.label ?? tipo.nombre}</strong>
+      {m?.tier && <span className="stadium-tooltip-tier">{m.tier}</span>}
       <span>₡{tipo.precioCrc.toLocaleString('es-CR')}</span>
       <span>{tipo.disponibles > 0 ? `${tipo.disponibles} disponibles` : 'Agotado'}</span>
     </div>
   );
 }
 
-function MapLegendChips({ tiposByKey, selectedKey, hoveredKey, onSelect }) {
+function MapLegendChips({ tiposByKey, selectedKey, hoveredKey, onSelect, gramillaKeys = [] }) {
+  const allKeys = [...ERC_ZONE_KEYS, ...gramillaKeys];
   return (
     <div className="stadium-legend-chips" aria-label="Sectores y precios">
-      {ERC_ZONE_KEYS.map((key) => {
+      {allKeys.map((key) => {
         const t = tiposByKey[key];
         if (!t || t.estado === 'inactivo') return null;
-        const meta = ERC_ZONE_META[key];
+        const meta = ERC_ZONE_META[key] ?? GRAMILLA_ZONE_META[key];
+        if (!meta) return null;
         const agotado = t.disponibles <= 0;
         const active = selectedKey === key;
         const hover = hoveredKey === key;
+        const isGram = key.startsWith('gramilla-');
         return (
           <button
             key={key}
             type="button"
-            className={`stadium-chip${active ? ' active' : ''}${hover ? ' hover' : ''}${agotado ? ' agotado' : ''}`}
+            className={`stadium-chip${active ? ' active' : ''}${hover ? ' hover' : ''}${agotado ? ' agotado' : ''}${isGram ? ' stadium-chip--gramilla' : ''}`}
             disabled={agotado}
             onClick={() => onSelect(key, t)}
             aria-pressed={active}
@@ -112,14 +119,18 @@ function MapLegendChips({ tiposByKey, selectedKey, hoveredKey, onSelect }) {
   );
 }
 
-/** Mapa vectorial ERC (2D desde arriba). */
-function ErcVectorMap({ tipos, qty, onUpdate }) {
+/** Mapa vectorial ERC (2D desde arriba). Soporta partidos y espectáculos. */
+function ErcVectorMap({ evento, tipos, qty, onUpdate }) {
   const [hoveredKey, setHoveredKey] = useState(null);
   const [panelTipo, setPanelTipo] = useState(null);
   const tiposMap = useMemo(() => tiposByZoneKey(tipos), [tipos]);
   const selectedKey = panelTipo
     ? (panelTipo.mapa?.points?.key ?? nombreToZoneKey(panelTipo.nombre))
     : null;
+
+  const fieldTemplate = evento?.fieldTemplate ?? null;
+  const fieldSplits = evento?.fieldSplits ?? null;
+  const gramillaKeys = fieldTemplate ? gramillaKeysForTemplate(fieldTemplate) : [];
 
   function selectZone(key, t) {
     if (!t || t.disponibles <= 0) return;
@@ -135,12 +146,18 @@ function ErcVectorMap({ tipos, qty, onUpdate }) {
   }
 
   const hoveredTipo = hoveredKey ? tiposMap[hoveredKey] : null;
+  const hoveredMeta = hoveredKey
+    ? (ERC_ZONE_META[hoveredKey] ?? GRAMILLA_ZONE_META[hoveredKey])
+    : null;
 
   return (
     <div className="stadium-map-wrap stadium-map-wrap--vector">
       <div className="stadium-map-stage">
         <div className="stadium-map-plano stadium-map-plano--vector">
           <StadiumSvgERC
+            venue={evento?.venue}
+            fieldTemplate={fieldTemplate}
+            fieldSplits={fieldSplits}
             tiposByKey={tiposMap}
             hoveredKey={hoveredKey}
             selectedKey={selectedKey}
@@ -148,7 +165,7 @@ function ErcVectorMap({ tipos, qty, onUpdate }) {
             onZoneHover={setHoveredKey}
           />
           {hoveredTipo && !panelTipo && (
-            <MapTooltip tipo={hoveredTipo} zoneKey={hoveredKey} />
+            <MapTooltip tipo={hoveredTipo} zoneKey={hoveredKey} meta={hoveredMeta} />
           )}
         </div>
         <MapLegendChips
@@ -156,6 +173,7 @@ function ErcVectorMap({ tipos, qty, onUpdate }) {
           selectedKey={selectedKey}
           hoveredKey={hoveredKey}
           onSelect={handleChipSelect}
+          gramillaKeys={gramillaKeys}
         />
       </div>
       <aside className="stadium-map-sidebar">
@@ -247,7 +265,7 @@ function PhotoOverlayMap({ evento, tipos, qty, onUpdate }) {
  */
 export function StadiumMap({ evento, tipos, qty, onUpdate }) {
   if (isErcVectorLayout(evento)) {
-    return <ErcVectorMap tipos={tipos} qty={qty} onUpdate={onUpdate} />;
+    return <ErcVectorMap evento={evento} tipos={tipos} qty={qty} onUpdate={onUpdate} />;
   }
   return <PhotoOverlayMap evento={evento} tipos={tipos} qty={qty} onUpdate={onUpdate} />;
 }

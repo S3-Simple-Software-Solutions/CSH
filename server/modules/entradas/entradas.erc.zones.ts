@@ -21,8 +21,25 @@ export const ERC_SECTORES = [
   { nombre: 'Socio', precio: 5000, stock: 200, key: 'socio', color: '#7a5c20' },
 ];
 
+export const GRAMILLA_ZONE_KEYS = ['gramilla-1', 'gramilla-2', 'gramilla-3', 'gramilla-4'] as const;
+export type GramilllaZoneKey = typeof GRAMILLA_ZONE_KEYS[number];
+
+/** Colores default por zona de gramilla (tono verde/dorado distinto de tribunas). */
+export const GRAMILLA_SECTORES: Record<GramilllaZoneKey, { nombre: string; color: string; precio: number; stock: number }> = {
+  'gramilla-1': { nombre: 'Gramilla A', color: '#5a9e40', precio: 15000, stock: 300 },
+  'gramilla-2': { nombre: 'Gramilla B', color: '#3e8c62', precio: 15000, stock: 300 },
+  'gramilla-3': { nombre: 'Gramilla C', color: '#2e7d50', precio: 15000, stock: 300 },
+  'gramilla-4': { nombre: 'Gramilla D', color: '#c9a961', precio: 15000, stock: 300 },
+};
+
+export function isValidZoneKey(key: string): boolean {
+  return (ERC_ZONE_KEYS as readonly string[]).includes(key) || /^gramilla-[1-4]$/.test(key);
+}
+
 export function mapaFromZoneKey(key: string): { shape: 'zone'; points: { key: string }; color: string } | null {
-  const s = ERC_SECTORES.find((x) => x.key === key);
-  if (!s) return null;
-  return { shape: 'zone', points: { key }, color: s.color };
+  const tribuna = ERC_SECTORES.find((x) => x.key === key);
+  if (tribuna) return { shape: 'zone', points: { key }, color: tribuna.color };
+  const gKey = key as GramilllaZoneKey;
+  if (GRAMILLA_SECTORES[gKey]) return { shape: 'zone', points: { key }, color: GRAMILLA_SECTORES[gKey].color };
+  return null;
 }

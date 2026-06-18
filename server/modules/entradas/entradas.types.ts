@@ -17,6 +17,8 @@ export type TipoEstado = 'activo' | 'inactivo';
 export type OrdenEstado = 'pagada' | 'cancelada';
 export type BoletoEstado = 'valido' | 'usado' | 'cancelado';
 
+export type EventoFormato = 'partido' | 'espectaculo';
+
 export interface Evento {
   id: string;
   slug: string;
@@ -29,6 +31,9 @@ export interface Evento {
   creadoAt: string;
   mapImageUrl: string;
   mapVersion: number;
+  formato: EventoFormato;
+  fieldTemplate: string | null;
+  fieldSplits: number[] | null;
 }
 
 export interface TicketType {
@@ -54,6 +59,8 @@ export interface MapaTipoInput {
 
 export interface MapaEventoInput {
   mapImageUrl?: string;
+  fieldTemplate?: string | null;
+  fieldSplits?: number[] | null;
 }
 
 export interface MapaBatchInput {
@@ -133,6 +140,7 @@ export interface EventoInput {
   venue?: string;
   fecha: string;
   imagenUrl?: string;
+  formato?: EventoFormato;
 }
 
 export interface TipoInput {

@@ -1,5 +1,6 @@
 /** Claves estables para zonas del Estadio Eladio Rosabal Cordero (vista 2D). */
 export const ERC_LAYOUT = 'vector:erc-v1';
+export const ERC_ESPECTACULO_LAYOUT = 'vector:erc-espectaculo-v1';
 
 export const ERC_ZONE_KEYS = [
   'sol-norte',
@@ -12,11 +13,11 @@ export const ERC_ZONE_KEYS = [
 
 /** Tier + color por sector (escala dorado Herediano según precio). */
 export const ERC_ZONE_META = {
-  'socio': { label: 'Socio', short: 'S', tier: 'Económico', color: '#7a5c20', labelX: 135, labelY: 480 },
-  'sol-norte': { label: 'Sol Norte', short: 'SN', tier: 'General', color: '#b8923f', labelX: 500, labelY: 95 },
-  'sol-sur': { label: 'Sol Sur', short: 'SS', tier: 'General', color: '#c9a961', labelX: 500, labelY: 625 },
-  'lateral-oeste': { label: 'Lateral Oeste', short: 'LO', tier: 'Preferente', color: '#d4a84b', labelX: 135, labelY: 260 },
-  'lateral-este': { label: 'Lateral Este', short: 'LE', tier: 'Preferente', color: '#e0b85c', labelX: 865, labelY: 360 },
+  'socio': { label: 'Socio', short: 'S', tier: 'Económico', color: '#7a5c20', labelX: 130, labelY: 478 },
+  'sol-norte': { label: 'Sol Norte', short: 'SN', tier: 'General', color: '#b8923f', labelX: 500, labelY: 108 },
+  'sol-sur': { label: 'Sol Sur', short: 'SS', tier: 'General', color: '#c9a961', labelX: 500, labelY: 612 },
+  'lateral-oeste': { label: 'Lateral Oeste', short: 'LO', tier: 'Preferente', color: '#d4a84b', labelX: 128, labelY: 218 },
+  'lateral-este': { label: 'Lateral Este', short: 'LE', tier: 'Preferente', color: '#e0b85c', labelX: 872, labelY: 360 },
   'palco': { label: 'Palco', short: 'P', tier: 'VIP', color: '#f5e6b8', labelX: 500, labelY: 360 },
 };
 
@@ -48,6 +49,26 @@ export function isErcVectorLayout(evento) {
   const url = evento?.mapImageUrl ?? '';
   return url === ERC_LAYOUT || url.startsWith('vector:erc');
 }
+
+export function isErcEspectaculoLayout(evento) {
+  const url = evento?.mapImageUrl ?? '';
+  return url === ERC_ESPECTACULO_LAYOUT || evento?.formato === 'espectaculo';
+}
+
+/** Metadatos visuales por zona de gramilla (colores verdes/dorados). */
+export const GRAMILLA_ZONE_META = {
+  'gramilla-1': { label: 'Gramilla A', short: 'GA', tier: 'Gramilla', color: '#5a9e40' },
+  'gramilla-2': { label: 'Gramilla B', short: 'GB', tier: 'Gramilla', color: '#3e8c62' },
+  'gramilla-3': { label: 'Gramilla C', short: 'GC', tier: 'Gramilla', color: '#2e7d50' },
+  'gramilla-4': { label: 'Gramilla D', short: 'GD', tier: 'Gramilla', color: '#c9a961' },
+};
+
+export const GRAMILLA_SECTORES = [
+  { nombre: 'Gramilla A', precio: 15000, stock: 300, key: 'gramilla-1' },
+  { nombre: 'Gramilla B', precio: 15000, stock: 300, key: 'gramilla-2' },
+  { nombre: 'Gramilla C', precio: 15000, stock: 300, key: 'gramilla-3' },
+  { nombre: 'Gramilla D', precio: 15000, stock: 300, key: 'gramilla-4' },
+];
 
 export function zoneColor(key) {
   return ERC_ZONE_META[key]?.color ?? '#c9a961';

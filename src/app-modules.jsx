@@ -3,7 +3,8 @@ import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Ch
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
 import { StadiumMap } from './pages/entradas/StadiumMap.jsx';
-import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
+import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
+import { gramillaKeysForTemplate } from './pages/entradas/stadiumFieldGeometry.js';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
@@ -2530,7 +2531,7 @@ function EntradasLogPanel({ eventos, refreshKey }) {
 }
 
 function EventFormModal({ onClose, onDone }) {
-  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '' });
+  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '', formato: 'partido' });
   const [error, setError] = useState('');
   async function submit() {
     setError('');
@@ -2540,10 +2541,33 @@ function EventFormModal({ onClose, onDone }) {
   }
   return (
     <Modal title="Nuevo evento" onClose={onClose}>
-      <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
-      <label>Lugar</label><input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} />
-      <label>Fecha y hora</label><input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
-      <label>Descripcion</label><input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+      <label>Nombre</label>
+      <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
+      <label>Lugar</label>
+      <input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} />
+      <label>Fecha y hora</label>
+      <input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+      <label>Descripcion</label>
+      <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+      <label>Formato</label>
+      <div className="evento-formato-opts">
+        {[
+          { value: 'partido', label: 'Partido', desc: '6 tribunas del estadio' },
+          { value: 'espectaculo', label: 'Espectáculo', desc: 'Tribunas + zonas en la gramilla' },
+        ].map(({ value, label, desc }) => (
+          <label key={value} className={`evento-formato-opt${form.formato === value ? ' active' : ''}`}>
+            <input
+              type="radio"
+              name="formato"
+              value={value}
+              checked={form.formato === value}
+              onChange={() => setForm({ ...form, formato: value })}
+            />
+            <span className="evento-formato-opt-label">{label}</span>
+            <span className="evento-formato-opt-desc">{desc}</span>
+          </label>
+        ))}
+      </div>
       {error && <div className="error">{error}</div>}
       <button className="btn" onClick={submit}>Crear evento</button>
     </Modal>
@@ -2553,8 +2577,11 @@ function EventFormModal({ onClose, onDone }) {
 function TiposModal({ evento, onClose }) {
   const [tipos, setTipos] = useState([]);
   const [form, setForm] = useState({ sectorKey: '', precioCrc: '', stockTotal: '' });
+  const [gramForm, setGramForm] = useState({ key: '', nombre: '', precioCrc: '', stockTotal: '' });
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
+  const esEspectaculo = evento?.formato === 'espectaculo';
+  const fieldTemplate = evento?.fieldTemplate ?? '2';
 
   const refresh = async () => {
     const d = await api(`/admin/api/entradas/eventos/${evento.id}`);
@@ -2581,10 +2608,22 @@ function TiposModal({ evento, onClose }) {
     [usedKeys, usedNombres],
   );
 
+  // Slots gramilla disponibles según plantilla
+  const gramillaSlots = useMemo(() => {
+    if (!esEspectaculo) return [];
+    return gramillaKeysForTemplate(fieldTemplate).filter((k) => !usedKeys.has(k));
+  }, [esEspectaculo, fieldTemplate, usedKeys]);
+
   function pickSector(key) {
     const s = ERC_SECTORES.find((x) => x.key === key);
     if (!s) return setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
     setForm({ sectorKey: key, precioCrc: String(s.precio), stockTotal: String(s.stock) });
+  }
+
+  function pickGramillaSlot(key) {
+    const meta = GRAMILLA_ZONE_META[key];
+    const defaults = GRAMILLA_SECTORES.find((x) => x.key === key);
+    setGramForm({ key, nombre: meta?.label ?? key, precioCrc: String(defaults?.precio ?? 15000), stockTotal: String(defaults?.stock ?? 300) });
   }
 
   async function createSector(payload) {
@@ -2606,12 +2645,7 @@ function TiposModal({ evento, onClose }) {
     if (!Number.isFinite(stockTotal) || stockTotal < 0) return setError('Cupo inválido');
     setAdding(true);
     try {
-      await createSector({
-        nombre: s.nombre,
-        precioCrc,
-        stockTotal,
-        zoneKey: s.key,
-      });
+      await createSector({ nombre: s.nombre, precioCrc, stockTotal, zoneKey: s.key });
       setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
       await refresh();
     } catch (err) {
@@ -2627,14 +2661,30 @@ function TiposModal({ evento, onClose }) {
     setAdding(true);
     try {
       for (const s of availableSectores) {
-        await createSector({
-          nombre: s.nombre,
-          precioCrc: s.precio,
-          stockTotal: s.stock,
-          zoneKey: s.key,
-        });
+        await createSector({ nombre: s.nombre, precioCrc: s.precio, stockTotal: s.stock, zoneKey: s.key });
       }
       setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function addGramilla() {
+    setError('');
+    if (!gramForm.key) return setError('Selecciona un slot de gramilla');
+    const nombre = gramForm.nombre.trim() || GRAMILLA_ZONE_META[gramForm.key]?.label;
+    const precioCrc = Number(gramForm.precioCrc);
+    const stockTotal = Number(gramForm.stockTotal);
+    if (nombre.length < 2) return setError('Nombre de zona muy corto');
+    if (!Number.isFinite(precioCrc) || precioCrc < 0) return setError('Precio inválido');
+    if (!Number.isFinite(stockTotal) || stockTotal < 0) return setError('Cupo inválido');
+    setAdding(true);
+    try {
+      await createSector({ nombre, precioCrc, stockTotal, zoneKey: gramForm.key });
+      setGramForm({ key: '', nombre: '', precioCrc: '', stockTotal: '' });
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -2658,83 +2708,135 @@ function TiposModal({ evento, onClose }) {
 
   const selectedMeta = form.sectorKey ? ERC_ZONE_META[form.sectorKey] : null;
 
+  // Separar tipos por categoría para mostrarlos agrupados
+  const tiposTribuna = tipos.filter((t) => {
+    const k = t.mapa?.points?.key;
+    return !k || !k.startsWith('gramilla-');
+  });
+  const tiposGramilla = tipos.filter((t) => {
+    const k = t.mapa?.points?.key;
+    return k && k.startsWith('gramilla-');
+  });
+
   return (
     <Modal title={`Sectores · ${evento.nombre}`} onClose={onClose}>
-      <div className="tipos-list">
-        {tipos.map((t) => {
-          const key = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
-          const tier = key ? ERC_ZONE_META[key]?.tier : null;
-          return (
-            <div key={t.id} className="tipo-row">
-              <div>
-                <b>{t.nombre}</b>
-                {tier && <span className="tipo-tier">{tier}</span>}
-                <span>{money(t.precioCrc)} · {t.stockVendido}/{t.stockTotal} · {t.estado}</span>
+
+      {/* Lista de sectores existentes */}
+      {tipos.length > 0 && (
+        <div className="tipos-list">
+          {(esEspectaculo ? [...tiposTribuna, ...tiposGramilla] : tipos).map((t) => {
+            const key = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
+            const meta = (key ? (ERC_ZONE_META[key] ?? GRAMILLA_ZONE_META[key]) : null);
+            const tier = meta?.tier;
+            const isGram = key?.startsWith('gramilla-');
+            return (
+              <div key={t.id} className={`tipo-row${isGram ? ' tipo-row--gramilla' : ''}`}>
+                <div>
+                  {meta && <span className="tipo-swatch" style={{ background: meta.color }} />}
+                  <b>{t.nombre}</b>
+                  {tier && <span className="tipo-tier">{tier}</span>}
+                  <span>{money(t.precioCrc)} · {t.stockVendido}/{t.stockTotal} · {t.estado}</span>
+                </div>
+                <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
               </div>
-              <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
-      <p className="toolbar-hint">Elige un sector del catálogo ERC; el nombre y la zona del mapa se asignan automáticamente.</p>
-
-      {availableSectores.length > 0 && (
-        <button type="button" className="btn ghost sector-add-all" onClick={addAllMissing} disabled={adding}>
-          <Plus size={16} />Agregar todos los sectores faltantes ({availableSectores.length})
+      {/* === Bloque Tribunas === */}
+      <div className="tipos-section">
+        <h4 className="tipos-section-title">Tribunas</h4>
+        <p className="toolbar-hint">Elige un sector del catálogo ERC; el nombre y la zona del mapa se asignan automáticamente.</p>
+        {availableSectores.length > 0 && (
+          <button type="button" className="btn ghost sector-add-all" onClick={addAllMissing} disabled={adding}>
+            <Plus size={16} />Agregar todos los faltantes ({availableSectores.length})
+          </button>
+        )}
+        <label>Sector tribuna</label>
+        <select
+          value={form.sectorKey}
+          onChange={(e) => pickSector(e.target.value)}
+          disabled={adding || availableSectores.length === 0}
+        >
+          <option value="">
+            {availableSectores.length === 0 ? 'Todas las tribunas ya están' : 'Seleccionar tribuna…'}
+          </option>
+          {availableSectores.map((s) => {
+            const meta = ERC_ZONE_META[s.key];
+            return (
+              <option key={s.key} value={s.key}>
+                {s.nombre} · {meta?.tier ?? '—'} · ₡{s.precio.toLocaleString('es-CR')} · cupo {s.stock}
+              </option>
+            );
+          })}
+        </select>
+        {selectedMeta && (
+          <p className="sector-pick-hint">Zona en mapa: <strong>{selectedMeta.label}</strong> ({selectedMeta.tier})</p>
+        )}
+        <div className="two">
+          <div>
+            <label>Precio CRC</label>
+            <input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} disabled={!form.sectorKey || adding} />
+          </div>
+          <div>
+            <label>Cupo</label>
+            <input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} disabled={!form.sectorKey || adding} />
+          </div>
+        </div>
+        {error && <div className="error">{error}</div>}
+        <button className="btn" onClick={add} disabled={adding || !form.sectorKey}>
+          <Plus size={16} />{adding ? 'Agregando…' : 'Agregar tribuna'}
         </button>
-      )}
-
-      <label>Sector</label>
-      <select
-        value={form.sectorKey}
-        onChange={(e) => pickSector(e.target.value)}
-        disabled={adding || availableSectores.length === 0}
-      >
-        <option value="">
-          {availableSectores.length === 0 ? 'Todos los sectores ya están agregados' : 'Seleccionar sector…'}
-        </option>
-        {availableSectores.map((s) => {
-          const meta = ERC_ZONE_META[s.key];
-          return (
-            <option key={s.key} value={s.key}>
-              {s.nombre} · {meta?.tier ?? '—'} · ₡{s.precio.toLocaleString('es-CR')} · cupo {s.stock}
-            </option>
-          );
-        })}
-      </select>
-
-      {selectedMeta && (
-        <p className="sector-pick-hint">
-          Zona en mapa: <strong>{selectedMeta.label}</strong> ({selectedMeta.tier})
-        </p>
-      )}
-
-      <div className="two">
-        <div>
-          <label>Precio CRC</label>
-          <input
-            inputMode="numeric"
-            value={form.precioCrc}
-            onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })}
-            disabled={!form.sectorKey || adding}
-          />
-        </div>
-        <div>
-          <label>Cupo</label>
-          <input
-            inputMode="numeric"
-            value={form.stockTotal}
-            onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })}
-            disabled={!form.sectorKey || adding}
-          />
-        </div>
       </div>
 
-      {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={add} disabled={adding || !form.sectorKey}>
-        <Plus size={16} />{adding ? 'Agregando…' : 'Agregar sector'}
-      </button>
+      {/* === Bloque Gramilla (solo espectáculo) === */}
+      {esEspectaculo && (
+        <div className="tipos-section tipos-section--gramilla">
+          <h4 className="tipos-section-title">Zonas de gramilla</h4>
+          <p className="toolbar-hint">
+            Plantilla activa: <strong>{fieldTemplate} partes</strong>. Agrega un sector por cada zona de la gramilla.
+            Puedes cambiar la plantilla y los límites en el editor de mapa.
+          </p>
+          {gramillaSlots.length === 0 ? (
+            <p className="muted">Todas las zonas de gramilla ya tienen sector.</p>
+          ) : (
+            <>
+              <label>Zona de gramilla</label>
+              <select
+                value={gramForm.key}
+                onChange={(e) => pickGramillaSlot(e.target.value)}
+                disabled={adding}
+              >
+                <option value="">Seleccionar zona…</option>
+                {gramillaSlots.map((k) => {
+                  const meta = GRAMILLA_ZONE_META[k];
+                  return <option key={k} value={k}>{meta?.label ?? k}</option>;
+                })}
+              </select>
+              {gramForm.key && (
+                <>
+                  <label>Nombre visible</label>
+                  <input value={gramForm.nombre} onChange={(e) => setGramForm({ ...gramForm, nombre: e.target.value })} disabled={adding} placeholder={GRAMILLA_ZONE_META[gramForm.key]?.label} />
+                  <div className="two">
+                    <div>
+                      <label>Precio CRC</label>
+                      <input inputMode="numeric" value={gramForm.precioCrc} onChange={(e) => setGramForm({ ...gramForm, precioCrc: e.target.value.replace(/\D/g, '') })} disabled={adding} />
+                    </div>
+                    <div>
+                      <label>Cupo</label>
+                      <input inputMode="numeric" value={gramForm.stockTotal} onChange={(e) => setGramForm({ ...gramForm, stockTotal: e.target.value.replace(/\D/g, '') })} disabled={adding} />
+                    </div>
+                  </div>
+                  <button className="btn btn--green" onClick={addGramilla} disabled={adding}>
+                    <Plus size={16} />{adding ? 'Agregando…' : 'Agregar zona gramilla'}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }

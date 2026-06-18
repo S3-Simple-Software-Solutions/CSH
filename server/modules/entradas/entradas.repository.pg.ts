@@ -34,6 +34,9 @@ function toEvento(row: any): Evento {
     creadoAt: row.creado_at.toISOString(),
     mapImageUrl: row.map_image_url ?? '/brand/estadio.jpg',
     mapVersion: Number(row.map_version ?? 0),
+    formato: (row.formato ?? 'partido') as 'partido' | 'espectaculo',
+    fieldTemplate: row.field_template ?? null,
+    fieldSplits: row.field_splits ?? null,
   };
 }
 
@@ -248,9 +251,11 @@ export class PgEntradasRepository implements EntradasRepository {
     let slug = slugify(input.nombre) || id.toLowerCase();
     const exists = await query<any>('select 1 from entrada_eventos where slug = $1', [slug]);
     if (exists[0]) slug = `${slug}-${id.slice(-4).toLowerCase()}`;
+    const formato = input.formato === 'espectaculo' ? 'espectaculo' : 'partido';
+    const mapImageUrl = formato === 'espectaculo' ? 'vector:erc-espectaculo-v1' : '/brand/estadio.jpg';
     const rows = await query<any>(
-      'insert into entrada_eventos (id, slug, nombre, descripcion, venue, fecha, estado, imagen_url) values ($1,$2,$3,$4,$5,$6,$7,$8) returning *',
-      [id, slug, input.nombre, input.descripcion || '', input.venue || '', new Date(input.fecha), 'borrador', input.imagenUrl || ''],
+      'insert into entrada_eventos (id, slug, nombre, descripcion, venue, fecha, estado, imagen_url, formato, map_image_url, field_template) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *',
+      [id, slug, input.nombre, input.descripcion || '', input.venue || '', new Date(input.fecha), 'borrador', input.imagenUrl || '', formato, mapImageUrl, formato === 'espectaculo' ? '2' : null],
     );
     return toEvento(rows[0]);
   }
@@ -493,8 +498,18 @@ export class PgEntradasRepository implements EntradasRepository {
 
   async actualizarMapaEvento(eventoId: string, input: MapaEventoInput): Promise<Evento> {
     const rows = await query<any>(
-      'update entrada_eventos set map_image_url = coalesce($1, map_image_url), map_version = map_version + 1 where id = $2 returning *',
-      [input.mapImageUrl ?? null, eventoId],
+      `update entrada_eventos set
+         map_image_url  = coalesce($1, map_image_url),
+         field_template = case when $2::text is not null then $2::text else field_template end,
+         field_splits   = case when $3::jsonb is not null then $3::jsonb else field_splits end,
+         map_version    = map_version + 1
+       where id = $4 returning *`,
+      [
+        input.mapImageUrl ?? null,
+        input.fieldTemplate !== undefined ? (input.fieldTemplate ?? null) : null,
+        input.fieldSplits !== undefined ? (input.fieldSplits ? JSON.stringify(input.fieldSplits) : null) : null,
+        eventoId,
+      ],
     );
     if (!rows[0]) throw new Error('Evento no encontrado');
     return toEvento(rows[0]);
