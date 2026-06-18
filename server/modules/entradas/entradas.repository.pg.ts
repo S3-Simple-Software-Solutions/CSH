@@ -12,6 +12,7 @@ import {
   TicketType,
   TipoInput,
   VentasEvento,
+  VentasPorDia,
 } from './entradas.types';
 import { EntradasRepository, LogEntradaInput } from './entradas.repository';
 import { boletoCodigo, genId, qrData, slugify } from './entradas.helpers';
@@ -309,6 +310,33 @@ export class PgEntradasRepository implements EntradasRepository {
       boletosUsados: Number(agg[0].usados),
       ingresosCrc: Number(ingresos[0].total),
     };
+  }
+
+  async ventasPorDiaEvento(eventoId: string): Promise<VentasPorDia[]> {
+    const TZ = 'America/Costa_Rica';
+    const ingDia = await query<any>(
+      `select to_char(created_at at time zone $2, 'YYYY-MM-DD') as fecha,
+              count(*)::int as ordenes,
+              coalesce(sum(total_crc),0)::int as ingresos
+       from entrada_ordenes where evento_id = $1 and estado='pagada'
+       group by 1 order by 1`,
+      [eventoId, TZ],
+    );
+    const bolDia = await query<any>(
+      `select to_char(o.created_at at time zone $2, 'YYYY-MM-DD') as fecha,
+              count(b.id) filter (where b.estado <> 'cancelado')::int as boletos
+       from entrada_ordenes o join entrada_boletos b on b.orden_id = o.id
+       where o.evento_id = $1 and o.estado='pagada'
+       group by 1`,
+      [eventoId, TZ],
+    );
+    const boletosByFecha = new Map<string, number>(bolDia.map((r: any) => [r.fecha, Number(r.boletos)]));
+    return ingDia.map((r: any) => ({
+      fecha: r.fecha,
+      ordenes: Number(r.ordenes),
+      ingresos: Number(r.ingresos),
+      boletos: boletosByFecha.get(r.fecha) ?? 0,
+    }));
   }
 
   async validarBoleto(codigo: string, actor: { id: string; name: string }): Promise<Boleto> {

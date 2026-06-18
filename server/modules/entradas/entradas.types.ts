@@ -118,6 +118,13 @@ export interface VentasEvento {
   ingresosCrc: number;
 }
 
+export interface VentasPorDia {
+  fecha: string; // YYYY-MM-DD (zona America/Costa_Rica)
+  boletos: number;
+  ingresos: number;
+  ordenes: number;
+}
+
 export interface ListLogOptions {
   limit: number;
   offset: number;

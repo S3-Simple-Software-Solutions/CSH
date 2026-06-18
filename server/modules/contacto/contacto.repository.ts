@@ -1,5 +1,9 @@
 import { pool, query } from '../../core/db';
-import type { ContactMessage, ContactMessageRow, EstadoMensaje } from './contacto.types';
+import type { ContactMessage, ContactMessageRow, ContactReply, ContactReplyRow, EstadoMensaje } from './contacto.types';
+
+function toReply(r: ContactReplyRow): ContactReply {
+  return { id: r.id, messageId: r.message_id, cuerpo: r.cuerpo, adminName: r.admin_name, creadoAt: r.creado_at };
+}
 
 function toMessage(r: ContactMessageRow): ContactMessage {
   return {
@@ -49,4 +53,23 @@ export async function updateMessageEstado(id: string, estado: EstadoMensaje): Pr
 export async function deleteMessage(id: string): Promise<boolean> {
   const result = await pool.query('delete from contact_messages where id=$1', [id]);
   return (result.rowCount ?? 0) > 0;
+}
+
+export async function insertReply(fields: {
+  id: string; messageId: string; cuerpo: string; adminName: string;
+}): Promise<ContactReply> {
+  const rows = await query<ContactReplyRow>(
+    `insert into contact_replies (id, message_id, cuerpo, admin_name)
+     values ($1,$2,$3,$4) returning *`,
+    [fields.id, fields.messageId, fields.cuerpo, fields.adminName],
+  );
+  return toReply(rows[0]);
+}
+
+export async function findRepliesByMessage(messageId: string): Promise<ContactReply[]> {
+  const rows = await query<ContactReplyRow>(
+    'select * from contact_replies where message_id=$1 order by creado_at asc',
+    [messageId],
+  );
+  return rows.map(toReply);
 }
