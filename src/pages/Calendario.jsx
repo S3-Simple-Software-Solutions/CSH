@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { standings } from '../data/calendar.js';
+import { escudoFor } from '../data/escudos.js';
 
 const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -19,10 +20,6 @@ function horaLabel(iso) {
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-function initials(nombre) {
-  return nombre.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
-}
-
 function resultClass(p) {
   const esLocal = p.equipoLocal.toLowerCase().includes('herediano');
   const gl = p.golesLocal ?? 0;
@@ -32,12 +29,9 @@ function resultClass(p) {
 }
 
 function TeamSlot({ nombre, side }) {
-  const esHerediano = nombre.toLowerCase().includes('herediano');
   return (
     <div className={`cal-team${side === 'right' ? ' right' : ''}`}>
-      {esHerediano
-        ? <img src="/brand/logo-shield.png" alt="Herediano" className="cal-logo" />
-        : <span className="cal-badge">{initials(nombre)}</span>}
+      <img src={escudoFor(nombre)} alt={nombre} className="cal-logo" />
       <span className="cal-team-name">{nombre}</span>
     </div>
   );

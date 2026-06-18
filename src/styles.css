@@ -529,6 +529,10 @@ tr:last-child td { border-bottom: 0; }
 .thumb-placeholder { width: 40px; height: 40px; border-radius: 4px; background: var(--surface); }
 /* Logos de sponsor: contain (sin recortar) sobre chip claro para que se lean los logos oscuros/transparentes. */
 .thumb-logo { width: 72px; height: 40px; object-fit: contain; border-radius: 4px; background: #fff; padding: 4px; }
+/* Escudos de equipos en la tabla de partidos */
+.partido-cell { display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.partido-team { display: inline-flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
+.escudo-mini { width: 30px; height: 30px; object-fit: contain; flex-shrink: 0; }
 .drag-handle { cursor: grab; color: var(--muted); padding: 4px; }
 .drag-handle:active { cursor: grabbing; }
 .row-new td { background: rgba(251,146,60,.05); }

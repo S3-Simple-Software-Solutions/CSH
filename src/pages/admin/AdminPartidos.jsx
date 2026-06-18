@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pencil, Trash2, Plus } from 'lucide-react';
 import { api } from '../../utils/api.js';
+import { escudoFor } from '../../data/escudos.js';
 
 const ESTADOS = ['programado', 'jugado', 'cancelado', 'pospuesto'];
 
@@ -137,7 +138,19 @@ export default function AdminPartidos() {
               <tr key={p.id}>
                 <td><span className={`pill${p.tipo === 'proximo' ? '' : ' ok'}`}>{p.tipo === 'proximo' ? 'Próximo' : 'Resultado'}</span></td>
                 <td className="muted">{p.competicion}</td>
-                <td><strong>{p.equipoLocal}</strong> vs <strong>{p.equipoVisita}</strong></td>
+                <td>
+                  <span className="partido-cell">
+                    <span className="partido-team">
+                      <img src={escudoFor(p.equipoLocal)} alt="" className="escudo-mini" />
+                      <strong>{p.equipoLocal}</strong>
+                    </span>
+                    <span className="muted">vs</span>
+                    <span className="partido-team">
+                      <img src={escudoFor(p.equipoVisita)} alt="" className="escudo-mini" />
+                      <strong>{p.equipoVisita}</strong>
+                    </span>
+                  </span>
+                </td>
                 <td className="muted">{new Date(p.fecha).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                 <td className="muted">{p.golesLocal != null ? `${p.golesLocal} - ${p.golesVisita}` : '—'}</td>
                 <td><span className="pill">{p.estado}</span></td>
