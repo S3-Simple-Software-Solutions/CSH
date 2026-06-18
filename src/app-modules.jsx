@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, Map as MapIcon, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
+import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, Map as MapIcon, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
 import { StadiumMap } from './pages/entradas/StadiumMap.jsx';
@@ -1641,6 +1641,7 @@ function AdminApp() {
               const Icon = mod.icon;
               return <button key={path} className={route === path ? 'active' : ''} onClick={() => navigate(path)}><Icon size={17} />{mod.title}</button>;
             })}
+            {user.isSuperAdmin && <button className={route === '/admin/analytics' ? 'active' : ''} onClick={() => navigate('/admin/analytics')}><Sparkles size={17} />Analytics</button>}
             <p className="side-section-label">Contenido del sitio</p>
             <button className={route === '/admin/jugadores' ? 'active' : ''} onClick={() => navigate('/admin/jugadores')}><Users2 size={17} />Jugadores</button>
             <button className={route === '/admin/noticias' ? 'active' : ''} onClick={() => navigate('/admin/noticias')}><Newspaper size={17} />Noticias</button>
@@ -1650,7 +1651,7 @@ function AdminApp() {
       </aside>
       <section className="admin-main">
         <AdminTopBar user={user} onLogout={logout} onMenu={() => setMenuOpen(true)} />
-        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
+        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/analytics' ? <AdminAnalytics user={user} /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
   );
@@ -1926,6 +1927,87 @@ function PasswordModal({ user, onClose }) {
     setMsg({ type: 'ok', text: `Clave actualizada para ${user.name}.` });
   }
   return <Modal title="Cambiar clave" onClose={onClose}><p className="muted">{user.email}</p><label>Nueva contrasena</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /><label>Confirmar</label><input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />{msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}<button className="btn" onClick={save}>Guardar clave</button></Modal>;
+}
+
+const ANALYTICS_LOG_LABELS = { query_usuarios: 'Usuarios', query_entradas_log: 'Log de entradas', query_parqueo_eventos: 'Eventos de parqueo' };
+
+function AnalyticsLogBlock({ log }) {
+  const rows = Array.isArray(log.rows) ? log.rows : [];
+  const filtros = log.input && Object.keys(log.input).length ? JSON.stringify(log.input) : 'sin filtros';
+  return (
+    <div className="analytics-log">
+      <div className="analytics-log-head">
+        <span className="pill">{ANALYTICS_LOG_LABELS[log.tool] || log.tool}</span>
+        <span className="muted">{filtros} · {rows.length} registro{rows.length === 1 ? '' : 's'}</span>
+      </div>
+      {rows.length === 0
+        ? <p className="muted">Sin coincidencias.</p>
+        : <pre className="analytics-log-rows">{rows.map((r) => JSON.stringify(r)).join('\n')}</pre>}
+    </div>
+  );
+}
+
+function AdminAnalytics() {
+  const [pregunta, setPregunta] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function ask(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const q = pregunta.trim();
+    if (!q || loading) return;
+    setLoading(true); setError(null); setResult(null);
+    const d = await api('/admin/api/analytics/query', { method: 'POST', body: JSON.stringify({ pregunta: q }) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error || 'No se pudo procesar la consulta.');
+    setResult(d);
+  }
+
+  const ejemplos = [
+    '¿Qué socio tiene más puntos de fidelidad?',
+    '¿Cuántas cortesías se emitieron y a quién?',
+    '¿Qué placas entraron al parqueo recientemente?',
+  ];
+
+  return (
+    <main className="page">
+      <p className="eyebrow">Inteligencia de datos</p>
+      <h1>Analytics</h1>
+      <p className="sub">Preguntá en lenguaje natural sobre personas, entradas y parqueo. El agente responde y muestra los registros que analizó.</p>
+
+      <form className="analytics-prompt" onSubmit={ask}>
+        <textarea
+          value={pregunta}
+          onChange={(e) => setPregunta(e.target.value)}
+          placeholder="Ej: ¿Qué socio gastó más este año?"
+          rows={2}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(e); } }}
+        />
+        <button className="btn" type="submit" disabled={loading}><Sparkles size={16} />{loading ? 'Analizando…' : 'Preguntar'}</button>
+      </form>
+      <div className="analytics-examples">
+        {ejemplos.map((ej) => <button key={ej} type="button" className="chip chip-ghost" onClick={() => setPregunta(ej)}>{ej}</button>)}
+      </div>
+
+      {error && <div className="error" style={{ marginTop: 16 }}>{error}</div>}
+
+      {result && (
+        <>
+          <section className="analytics-card" style={{ marginTop: 22 }}>
+            <h3><Sparkles size={15} />Respuesta del agente</h3>
+            <p className="analytics-answer">{result.answer}</p>
+          </section>
+          <section style={{ marginTop: 18 }}>
+            <h3 className="detail-section"><BarChart3 size={15} />Logs analizados</h3>
+            {(!result.logs || result.logs.length === 0)
+              ? <p className="muted">El agente respondió sin consultar registros.</p>
+              : result.logs.map((log, i) => <AnalyticsLogBlock key={i} log={log} />)}
+          </section>
+        </>
+      )}
+    </main>
+  );
 }
 
 function AdminParking({ user }) {

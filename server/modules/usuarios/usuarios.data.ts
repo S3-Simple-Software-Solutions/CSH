@@ -11,6 +11,7 @@ export interface AdminUser {
   eventsRole: 'admin' | 'operador' | 'comercial' | 'ninguno';
   sponsor?: string;
   passwordManagedByEnv?: boolean;
+  isSuperAdmin?: boolean;
 }
 
 export type UserCategory = 'staff' | 'socio' | 'aficionado';

@@ -60,6 +60,7 @@ function toAdminUser(row: UserRow): AdminUser {
     eventsRole: eventsRole(roles),
     sponsor: row.sponsor || undefined,
     passwordManagedByEnv: row.password_managed_by === 'env',
+    isSuperAdmin: hasRole(roles, 'system:admin'),
   };
 }
 
