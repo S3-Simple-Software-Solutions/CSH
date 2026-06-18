@@ -11,7 +11,7 @@ function SortableRow({ sponsor, onEdit, onDelete, onToggleActivo }) {
   return (
     <tr ref={setNodeRef} style={style}>
       <td><button className="icon-text ghost drag-handle" {...attributes} {...listeners} title="Arrastrar"><GripVertical size={15} /></button></td>
-      <td>{sponsor.logoPath ? <img src={sponsor.logoPath} alt={sponsor.nombre} className="thumb" /> : <div className="thumb-placeholder" />}</td>
+      <td>{sponsor.logoPath ? <img src={sponsor.logoPath} alt={sponsor.nombre} className="thumb-logo" /> : <div className="thumb-placeholder" />}</td>
       <td><strong>{sponsor.nombre}</strong></td>
       <td>{sponsor.esApparel ? <span className="pill ok">Apparel</span> : <span className="pill">Patrocinador</span>}</td>
       <td>
