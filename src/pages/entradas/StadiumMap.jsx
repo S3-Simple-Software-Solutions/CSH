@@ -22,27 +22,33 @@ function tiposByZoneKey(tipos) {
   return map;
 }
 
-function ZonePanel({ tipo, qty, onUpdate, onClose }) {
+function ZonePanel({ tipo, zoneKey, qty, onUpdate, onClose, compact }) {
   const max = Math.min(tipo.disponibles, 10);
+  const meta = zoneKey ? ERC_ZONE_META[zoneKey] : null;
+  const agotado = tipo.disponibles <= 0;
+
   return (
-    <div className="stadium-panel">
-      <button className="stadium-panel-close" onClick={onClose} aria-label="Cerrar panel">✕</button>
+    <div className={`stadium-panel${compact ? ' stadium-panel--sidebar' : ''}`}>
+      {onClose && (
+        <button className="stadium-panel-close" onClick={onClose} aria-label="Cerrar panel">✕</button>
+      )}
+      {meta?.tier && (
+        <span className="stadium-panel-tier" style={{ borderColor: meta.color, color: meta.color }}>
+          {meta.tier}
+        </span>
+      )}
       <h3 className="stadium-panel-name">{tipo.nombre}</h3>
       <p className="stadium-panel-price">₡{tipo.precioCrc.toLocaleString('es-CR')}</p>
-      <p className="stadium-panel-avail">{tipo.disponibles.toLocaleString('es-CR')} disponibles</p>
-      <div className="stepper">
-        <button
-          disabled={qty <= 0}
-          onClick={() => onUpdate(tipo.id, -1)}
-          aria-label="Quitar uno"
-        >−</button>
-        <span>{qty}</span>
-        <button
-          disabled={qty >= max || tipo.disponibles <= 0}
-          onClick={() => onUpdate(tipo.id, +1)}
-          aria-label="Agregar uno"
-        >+</button>
-      </div>
+      <p className="stadium-panel-avail">
+        {agotado ? 'Agotado' : `${tipo.disponibles.toLocaleString('es-CR')} disponibles`}
+      </p>
+      {!agotado && (
+        <div className="stepper">
+          <button disabled={qty <= 0} onClick={() => onUpdate(tipo.id, -1)} aria-label="Quitar uno">−</button>
+          <span>{qty}</span>
+          <button disabled={qty >= max} onClick={() => onUpdate(tipo.id, +1)} aria-label="Agregar uno">+</button>
+        </div>
+      )}
       {qty > 0 && (
         <p className="stadium-panel-subtotal">
           Subtotal: ₡{(qty * tipo.precioCrc).toLocaleString('es-CR')}
@@ -52,39 +58,62 @@ function ZonePanel({ tipo, qty, onUpdate, onClose }) {
   );
 }
 
+function PanelEmpty() {
+  return (
+    <div className="stadium-panel stadium-panel--empty stadium-panel--sidebar">
+      <div className="stadium-panel-empty-icon" aria-hidden="true">◎</div>
+      <h3 className="stadium-panel-name">Selecciona tu tribuna</h3>
+      <p className="stadium-panel-hint">
+        Haz click en una zona del mapa o en un chip de la leyenda para ver precio y disponibilidad.
+      </p>
+    </div>
+  );
+}
+
 function MapTooltip({ tipo, zoneKey }) {
   const meta = ERC_ZONE_META[zoneKey];
   return (
     <div className="stadium-tooltip" role="status">
       <strong>{meta?.label ?? tipo.nombre}</strong>
+      {meta?.tier && <span className="stadium-tooltip-tier">{meta.tier}</span>}
       <span>₡{tipo.precioCrc.toLocaleString('es-CR')}</span>
       <span>{tipo.disponibles > 0 ? `${tipo.disponibles} disponibles` : 'Agotado'}</span>
     </div>
   );
 }
 
-function MapLegend({ tiposByKey }) {
+function MapLegendChips({ tiposByKey, selectedKey, hoveredKey, onSelect }) {
   return (
-    <ul className="stadium-legend" aria-label="Leyenda de zonas">
+    <div className="stadium-legend-chips" aria-label="Sectores y precios">
       {ERC_ZONE_KEYS.map((key) => {
         const t = tiposByKey[key];
         if (!t || t.estado === 'inactivo') return null;
         const meta = ERC_ZONE_META[key];
         const agotado = t.disponibles <= 0;
+        const active = selectedKey === key;
+        const hover = hoveredKey === key;
         return (
-          <li key={key} className={agotado ? 'agotado' : ''}>
-            <span className="legend-swatch" style={{ background: agotado ? '#555' : meta.color }} />
-            <span className="legend-name">{meta.label}</span>
-            <span className="legend-price">₡{t.precioCrc.toLocaleString('es-CR')}</span>
-          </li>
+          <button
+            key={key}
+            type="button"
+            className={`stadium-chip${active ? ' active' : ''}${hover ? ' hover' : ''}${agotado ? ' agotado' : ''}`}
+            disabled={agotado}
+            onClick={() => onSelect(key, t)}
+            aria-pressed={active}
+          >
+            <span className="stadium-chip-swatch" style={{ background: agotado ? '#555' : meta.color }} />
+            <span className="stadium-chip-name">{meta.short}</span>
+            <span className="stadium-chip-price">₡{t.precioCrc.toLocaleString('es-CR')}</span>
+            <span className="stadium-chip-tier">{meta.tier}</span>
+          </button>
         );
       })}
-    </ul>
+    </div>
   );
 }
 
 /** Mapa vectorial ERC (2D desde arriba). */
-function ErcVectorMap({ evento, tipos, qty, onUpdate }) {
+function ErcVectorMap({ tipos, qty, onUpdate }) {
   const [hoveredKey, setHoveredKey] = useState(null);
   const [panelTipo, setPanelTipo] = useState(null);
   const tiposMap = useMemo(() => tiposByZoneKey(tipos), [tipos]);
@@ -92,15 +121,24 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate }) {
     ? (panelTipo.mapa?.points?.key ?? nombreToZoneKey(panelTipo.nombre))
     : null;
 
-  function handleZoneClick(key, t) {
+  function selectZone(key, t) {
+    if (!t || t.disponibles <= 0) return;
     setPanelTipo((prev) => (prev?.id === t.id ? null : t));
+  }
+
+  function handleZoneClick(key, t) {
+    selectZone(key, t);
+  }
+
+  function handleChipSelect(key, t) {
+    selectZone(key, t);
   }
 
   const hoveredTipo = hoveredKey ? tiposMap[hoveredKey] : null;
 
   return (
     <div className="stadium-map-wrap stadium-map-wrap--vector">
-      <div className="stadium-map-main">
+      <div className="stadium-map-stage">
         <div className="stadium-map-plano stadium-map-plano--vector">
           <StadiumSvgERC
             tiposByKey={tiposMap}
@@ -113,23 +151,33 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate }) {
             <MapTooltip tipo={hoveredTipo} zoneKey={hoveredKey} />
           )}
         </div>
-        <MapLegend tiposByKey={tiposMap} />
-      </div>
-      {panelTipo && (
-        <ZonePanel
-          tipo={panelTipo}
-          qty={qty[panelTipo.id] ?? 0}
-          onUpdate={onUpdate}
-          onClose={() => setPanelTipo(null)}
+        <MapLegendChips
+          tiposByKey={tiposMap}
+          selectedKey={selectedKey}
+          hoveredKey={hoveredKey}
+          onSelect={handleChipSelect}
         />
-      )}
+      </div>
+      <aside className="stadium-map-sidebar">
+        {panelTipo
+          ? (
+            <ZonePanel
+              tipo={panelTipo}
+              zoneKey={selectedKey}
+              qty={qty[panelTipo.id] ?? 0}
+              onUpdate={onUpdate}
+              onClose={() => setPanelTipo(null)}
+              compact
+            />
+          )
+          : <PanelEmpty />}
+      </aside>
     </div>
   );
 }
 
 /** Fallback: overlay sobre foto (eventos sin layout vectorial). */
 function PhotoOverlayMap({ evento, tipos, qty, onUpdate }) {
-  const [hovered, setHovered] = useState(null);
   const [panelTipo, setPanelTipo] = useState(null);
   const tiposConMapa = tipos.filter((t) => t.mapa && t.estado === 'activo' && t.mapa.shape !== 'zone');
 
@@ -150,8 +198,6 @@ function PhotoOverlayMap({ evento, tipos, qty, onUpdate }) {
       strokeWidth: status === 'selected' ? 0.006 : 0.003,
       style: { cursor: t.disponibles > 0 ? 'pointer' : 'not-allowed' },
       onClick: () => { if (t.disponibles > 0) setPanelTipo((p) => (p?.id === t.id ? null : t)); },
-      onMouseEnter: () => setHovered(t.id),
-      onMouseLeave: () => setHovered(null),
     };
 
     if (z.shape === 'rect') {
@@ -183,7 +229,13 @@ function PhotoOverlayMap({ evento, tipos, qty, onUpdate }) {
         </svg>
       </div>
       {panelTipo && (
-        <ZonePanel tipo={panelTipo} qty={qty[panelTipo.id] ?? 0} onUpdate={onUpdate} onClose={() => setPanelTipo(null)} />
+        <ZonePanel
+          tipo={panelTipo}
+          zoneKey={nombreToZoneKey(panelTipo.nombre)}
+          qty={qty[panelTipo.id] ?? 0}
+          onUpdate={onUpdate}
+          onClose={() => setPanelTipo(null)}
+        />
       )}
     </div>
   );
@@ -195,7 +247,7 @@ function PhotoOverlayMap({ evento, tipos, qty, onUpdate }) {
  */
 export function StadiumMap({ evento, tipos, qty, onUpdate }) {
   if (isErcVectorLayout(evento)) {
-    return <ErcVectorMap evento={evento} tipos={tipos} qty={qty} onUpdate={onUpdate} />;
+    return <ErcVectorMap tipos={tipos} qty={qty} onUpdate={onUpdate} />;
   }
   return <PhotoOverlayMap evento={evento} tipos={tipos} qty={qty} onUpdate={onUpdate} />;
 }

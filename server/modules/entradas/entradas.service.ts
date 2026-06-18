@@ -5,7 +5,7 @@ import { getEntradasRepository } from './entradas.repository';
 import { sendEntradasEmail } from './entradas.mail';
 import { extractCodigo } from './entradas.helpers';
 import { CompraLinea, EventoInput, MapaBatchInput, MapaEventoInput, MapaTipoInput, MapPoint, MapRect, MapZoneKey, PagoEntrada, TipoInput } from './entradas.types';
-import { ERC_ZONE_KEYS } from './entradas.erc.zones';
+import { ERC_ZONE_KEYS, mapaFromZoneKey } from './entradas.erc.zones';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_POR_LINEA = 10;
@@ -205,7 +205,12 @@ function buildTipoInput(body: any): TipoInput {
 
 export async function adminCrearTipo(eventoId: string, body: any, user: AdminUser) {
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
-  const tipo = await getEntradasRepository().crearTipo(String(eventoId), buildTipoInput(body));
+  let tipo = await getEntradasRepository().crearTipo(String(eventoId), buildTipoInput(body));
+  const zoneKey = String(body?.zoneKey || '').trim();
+  if (zoneKey && (ERC_ZONE_KEYS as readonly string[]).includes(zoneKey)) {
+    const mapa = mapaFromZoneKey(zoneKey);
+    if (mapa) tipo = await getEntradasRepository().actualizarMapaTipo(tipo.id, mapa);
+  }
   await getEntradasRepository().logEvento('sector_creado', {
     eventoId: tipo.eventoId,
     user: actorOf(user),

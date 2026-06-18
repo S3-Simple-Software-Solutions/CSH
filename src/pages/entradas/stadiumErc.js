@@ -10,14 +10,14 @@ export const ERC_ZONE_KEYS = [
   'socio',
 ];
 
-/** Colores base del club — variaciones dorado/ámbar para distinguir zonas. */
+/** Tier + color por sector (escala dorado Herediano según precio). */
 export const ERC_ZONE_META = {
-  'sol-norte': { label: 'Sol Norte', short: 'SN', color: '#d4a84b', labelX: 500, labelY: 95 },
-  'sol-sur': { label: 'Sol Sur', short: 'SS', color: '#c9a961', labelX: 500, labelY: 625 },
-  'lateral-este': { label: 'Lateral Este', short: 'LE', color: '#e8c468', labelX: 865, labelY: 360 },
-  'lateral-oeste': { label: 'Lateral Oeste', short: 'LO', color: '#b8923f', labelX: 135, labelY: 260 },
-  'palco': { label: 'Palco', short: 'P', color: '#f0d078', labelX: 500, labelY: 360 },
-  'socio': { label: 'Socio', short: 'S', color: '#a67c32', labelX: 135, labelY: 480 },
+  'socio': { label: 'Socio', short: 'S', tier: 'Económico', color: '#7a5c20', labelX: 135, labelY: 480 },
+  'sol-norte': { label: 'Sol Norte', short: 'SN', tier: 'General', color: '#b8923f', labelX: 500, labelY: 95 },
+  'sol-sur': { label: 'Sol Sur', short: 'SS', tier: 'General', color: '#c9a961', labelX: 500, labelY: 625 },
+  'lateral-oeste': { label: 'Lateral Oeste', short: 'LO', tier: 'Preferente', color: '#d4a84b', labelX: 135, labelY: 260 },
+  'lateral-este': { label: 'Lateral Este', short: 'LE', tier: 'Preferente', color: '#e0b85c', labelX: 865, labelY: 360 },
+  'palco': { label: 'Palco', short: 'P', tier: 'VIP', color: '#f5e6b8', labelX: 500, labelY: 360 },
 };
 
 /** Sectores demo con precios y stock. */
@@ -47,6 +47,10 @@ export function nombreToZoneKey(nombre) {
 export function isErcVectorLayout(evento) {
   const url = evento?.mapImageUrl ?? '';
   return url === ERC_LAYOUT || url.startsWith('vector:erc');
+}
+
+export function zoneColor(key) {
+  return ERC_ZONE_META[key]?.color ?? '#c9a961';
 }
 
 export function mapaFromZoneKey(key) {
