@@ -127,7 +127,7 @@ export function StadiumSvgERC({
           <g
             key={key}
             className={`stadium-zone-group stadium-zone--${status}`}
-            style={{ cursor }}
+            style={{ cursor: canInteract ? 'pointer' : 'default' }}
             tabIndex={canInteract ? 0 : -1}
             role={canInteract ? 'button' : undefined}
             aria-label={canInteract ? `${ERC_ZONE_META[key]?.label ?? key} · ₡${t.precioCrc.toLocaleString('es-CR')} · ${t.disponibles} disponibles` : undefined}
