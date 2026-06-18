@@ -4,6 +4,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from 
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { api, uploadFile } from '../../utils/api.js';
+import { useEscClose } from '../../utils/useEscClose.js';
 
 const CATEGORIAS = ['Porteros', 'Defensas', 'Mediocampistas', 'Mediocampistas Ofensivos', 'Delanteros', 'Staff'];
 const MAX_DESTACADOS = 5;
@@ -45,6 +46,7 @@ function SortableRow({ jugador, onEdit, onDelete, onToggleDestacado, onToggleAct
 }
 
 function JugadorModal({ jugador, onClose, onSaved }) {
+  useEscClose(onClose);
   const isEdit = Boolean(jugador?.id);
   const [form, setForm] = useState({
     nombre: jugador?.nombre ?? '',
@@ -120,6 +122,7 @@ function JugadorModal({ jugador, onClose, onSaved }) {
 }
 
 function ConfirmModal({ title, text, onConfirm, onClose, busy }) {
+  useEscClose(onClose);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>

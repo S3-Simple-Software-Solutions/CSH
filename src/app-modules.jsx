@@ -11,6 +11,7 @@ import AdminPartidos from './pages/admin/AdminPartidos.jsx';
 import AdminSponsors from './pages/admin/AdminSponsors.jsx';
 import AdminMensajes from './pages/admin/AdminMensajes.jsx';
 import QRCode from 'qrcode';
+import { useEscClose } from './utils/useEscClose.js';
 import sotano1Img from './croquis/sotano-1.png';
 import sotano2Img from './croquis/sotano-2.png';
 import './styles.css';
@@ -2161,6 +2162,7 @@ function AdminSpaceModal({ modal, user, onClose, afterAction }) {
 }
 
 function Modal({ title, children, onClose, wide = false }) {
+  useEscClose(onClose);
   return <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}><section className={`modal${wide ? ' wide' : ''}`}><div className="modal-head"><h3>{title}</h3><button onClick={onClose}>×</button></div>{children}</section></div>;
 }
 function MessageModal({ title, text, onClose }) {

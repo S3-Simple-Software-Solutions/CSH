@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Pencil, Trash2, Plus } from 'lucide-react';
 import { api } from '../../utils/api.js';
 import { escudoFor } from '../../data/escudos.js';
+import { useEscClose } from '../../utils/useEscClose.js';
 
 const ESTADOS = ['programado', 'jugado', 'cancelado', 'pospuesto'];
 
 function PartidoModal({ partido, onClose, onSaved }) {
+  useEscClose(onClose);
   const isEdit = Boolean(partido?.id);
   const [tipo, setTipo] = useState(partido?.tipo ?? 'proximo');
   const [form, setForm] = useState({
@@ -94,6 +96,7 @@ function PartidoModal({ partido, onClose, onSaved }) {
 }
 
 function ConfirmModal({ title, text, onConfirm, onClose, busy }) {
+  useEscClose(onClose);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>

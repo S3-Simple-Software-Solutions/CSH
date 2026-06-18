@@ -4,6 +4,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from 
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { api, uploadFile } from '../../utils/api.js';
+import { useEscClose } from '../../utils/useEscClose.js';
 
 function SortableRow({ sponsor, onEdit, onDelete, onToggleActivo }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sponsor.id });
@@ -28,6 +29,7 @@ function SortableRow({ sponsor, onEdit, onDelete, onToggleActivo }) {
 }
 
 function SponsorModal({ sponsor, onClose, onSaved }) {
+  useEscClose(onClose);
   const isEdit = Boolean(sponsor?.id);
   const [form, setForm] = useState({
     nombre: sponsor?.nombre ?? '',
@@ -92,6 +94,7 @@ function SponsorModal({ sponsor, onClose, onSaved }) {
 }
 
 function ConfirmModal({ title, text, onConfirm, onClose, busy }) {
+  useEscClose(onClose);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>

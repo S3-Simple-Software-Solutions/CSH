@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pencil, Trash2, Plus } from 'lucide-react';
 import { api, uploadFile } from '../../utils/api.js';
+import { useEscClose } from '../../utils/useEscClose.js';
 
 const DEFAULT_CATEGORIAS = ['Noticias', 'Refuerzos', 'Comunicados', 'Crónicas', 'Cantera', 'Femenino', 'Entradas'];
 
 function NoticiaModal({ noticia, categorias, onClose, onSaved }) {
+  useEscClose(onClose);
   const isEdit = Boolean(noticia?.id);
   const [form, setForm] = useState({
     titulo: noticia?.titulo ?? '',
@@ -89,6 +91,7 @@ function NoticiaModal({ noticia, categorias, onClose, onSaved }) {
 }
 
 function ConfirmModal({ title, text, onConfirm, onClose, busy }) {
+  useEscClose(onClose);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>

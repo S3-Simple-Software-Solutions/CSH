@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Trash2, Archive, Reply, Send, Mail, Phone, Inbox } from 'lucide-react';
 import { api } from '../../utils/api.js';
+import { useEscClose } from '../../utils/useEscClose.js';
 
 const ESTADOS = ['nuevo', 'leido', 'respondido', 'archivado'];
 const ESTADO_LABELS = { nuevo: 'Nuevo', leido: 'Leído', respondido: 'Respondido', archivado: 'Archivado' };
@@ -8,6 +9,7 @@ const pillClass = (estado) => `pill${estado === 'nuevo' ? ' warn' : estado === '
 const fmtFecha = (iso) => new Date(iso).toLocaleString('es-CR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 function ConfirmModal({ title, text, onConfirm, onClose, busy }) {
+  useEscClose(onClose);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
