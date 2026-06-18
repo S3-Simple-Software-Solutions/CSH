@@ -10,7 +10,7 @@ export const authRouter = Router();
 
 authRouter.get('/api/session', async (req, res, next) => {
   try {
-    const user = await validAdminToken(parseCookies(req.headers.cookie)[ADMIN_COOKIE]);
+    const user = await validAdminToken(parseCookies(req.headers.cookie).get(ADMIN_COOKIE));
     res.json({
       ok: true,
       user: user

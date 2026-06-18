@@ -15,7 +15,7 @@ declare global {
 
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const user = await validAdminToken(parseCookies(req.headers.cookie)[ADMIN_COOKIE]);
+    const user = await validAdminToken(parseCookies(req.headers.cookie).get(ADMIN_COOKIE));
     if (!user) {
       res.status(401).json({ ok: false, error: 'No autenticado' });
       return;

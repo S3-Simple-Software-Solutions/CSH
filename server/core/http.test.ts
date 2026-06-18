@@ -8,11 +8,21 @@ describe('http helpers', () => {
   });
 
   it('parses cookie headers and decodes values', () => {
-    expect(parseCookies('hsid=abc123; theme=dark%20mode; empty=')).toEqual({
-      hsid: 'abc123',
-      theme: 'dark mode',
-      empty: '',
-    });
+    expect(parseCookies('hsid=abc123; theme=dark%20mode; empty=')).toEqual(
+      new Map([
+        ['hsid', 'abc123'],
+        ['theme', 'dark mode'],
+        ['empty', ''],
+      ]),
+    );
+  });
+
+  it('parses unsafe cookie names without writing object properties', () => {
+    const cookies = parseCookies('__proto__=polluted; constructor=changed; hsid=abc123');
+    expect(cookies.get('__proto__')).toBe('polluted');
+    expect(cookies.get('constructor')).toBe('changed');
+    expect(cookies.get('hsid')).toBe('abc123');
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 
   it('compares equal strings safely without accepting different lengths', () => {
