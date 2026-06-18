@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, ArrowLeftRight, BadgePercent, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, Route, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import { Accessibility, ArrowLeftRight, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, Route, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
@@ -2056,8 +2056,8 @@ function AdminSpaceModal({ modal, user, onClose, afterAction }) {
   );
 }
 
-function Modal({ title, children, onClose }) {
-  return <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}><section className="modal"><div className="modal-head"><h3>{title}</h3><button onClick={onClose}>×</button></div>{children}</section></div>;
+function Modal({ title, children, onClose, wide = false }) {
+  return <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}><section className={`modal${wide ? ' wide' : ''}`}><div className="modal-head"><h3>{title}</h3><button onClick={onClose}>×</button></div>{children}</section></div>;
 }
 function MessageModal({ title, text, onClose }) {
   return <Modal title={title} onClose={onClose}><p>{text}</p><button className="btn" onClick={onClose}>Listo</button></Modal>;
@@ -2295,13 +2295,13 @@ function AdminEventosTab() {
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <div className="table"><table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th><th>Vendidos</th><th>Ingresos</th><th></th></tr></thead><tbody>
         {eventos.map((ev) => (
-          <tr key={ev.evento.id}>
-            <td>{ev.evento.nombre}</td>
+          <tr key={ev.evento.id} className="clickable-row" onClick={() => setModal({ type: 'detalle', evento: ev.evento })}>
+            <td><button className="link-cell" onClick={(e) => { e.stopPropagation(); setModal({ type: 'detalle', evento: ev.evento }); }}>{ev.evento.nombre}</button></td>
             <td>{fmtFullDate(ev.evento.fecha)}</td>
             <td><span className="pill">{ev.evento.estado}</span></td>
             <td>{ev.boletosVendidos}</td>
             <td>{money(ev.ingresosCrc)}</td>
-            <td className="row-actions">
+            <td className="row-actions" onClick={(e) => e.stopPropagation()}>
               <button className="btn ghost" onClick={() => setModal({ type: 'tipos', evento: ev.evento })}>Sectores</button>
               {ev.evento.estado === 'publicado'
                 ? <button className="btn ghost" onClick={() => setEstado(ev, 'finalizado')}>Cerrar</button>
@@ -2311,6 +2311,7 @@ function AdminEventosTab() {
           </tr>
         ))}
       </tbody></table></div>
+      {modal?.type === 'detalle' && <EventDetalleModal evento={modal.evento} onClose={() => setModal(null)} />}
       {modal?.type === 'evento' && <EventFormModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); }} />}
       {modal?.type === 'tipos' && <TiposModal evento={modal.evento} onClose={() => { setModal(null); refresh(); }} />}
       {modal?.type === 'cortesia' && <CortesiaModal evento={modal.evento} tipos={modal.tipos} onClose={() => setModal(null)} />}
@@ -2416,6 +2417,122 @@ function AdminVentasTab() {
         {eventos.map((e) => <tr key={e.evento.id}><td>{e.evento.nombre}</td><td><span className="pill">{e.evento.estado}</span></td><td>{e.boletosVendidos}</td><td>{e.boletosUsados}</td><td>{money(e.ingresosCrc)}</td></tr>)}
       </tbody></table></div>
     </>
+  );
+}
+
+function fmtDiaCorto(fecha) {
+  // fecha = 'YYYY-MM-DD' -> "lun 9 jun"
+  const d = new Date(`${fecha}T12:00:00`);
+  return d.toLocaleDateString('es-CR', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function BarRow({ label, value, max, display, sub }) {
+  const pct = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
+  return (
+    <div className="bar-row">
+      <div className="bar-label" title={label}>{label}</div>
+      <div className="bar-track"><div className="bar-fill" style={{ width: `${pct}%` }} /></div>
+      <div className="bar-value">{display}{sub && <small>{sub}</small>}</div>
+    </div>
+  );
+}
+
+function EventDetalleModal({ evento, onClose }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    api(`/admin/api/entradas/ventas/${evento.id}`)
+      .then((d) => { if (d.ok) setData(d); else setError(d.error || 'No se pudo cargar el detalle'); })
+      .catch(() => setError('No se pudo cargar el detalle'));
+  }, [evento.id]);
+
+  return (
+    <Modal title={evento.nombre} onClose={onClose} wide>
+      {error && <div className="error">{error}</div>}
+      {!error && !data && <p className="muted">Cargando detalle…</p>}
+      {data && <EventDetalleContenido evento={evento} data={data} />}
+    </Modal>
+  );
+}
+
+function EventDetalleContenido({ evento, data }) {
+  const { tipos = [], ventasPorDia = [], boletosVendidos = 0, boletosUsados = 0, ingresosCrc = 0 } = data;
+  const capacidad = tipos.reduce((s, t) => s + (t.stockTotal || 0), 0);
+  const ocupacionPct = capacidad > 0 ? Math.round((boletosVendidos / capacidad) * 1000) / 10 : 0;
+  const sinDatos = boletosVendidos === 0 && ingresosCrc === 0;
+  const maxIngresoDia = Math.max(1, ...ventasPorDia.map((d) => d.ingresos));
+  const sectores = tipos
+    .map((t) => ({ nombre: t.nombre, vendido: t.stockVendido || 0, stock: t.stockTotal || 0, ingresos: (t.precioCrc || 0) * (t.stockVendido || 0), pct: t.stockTotal > 0 ? Math.round((t.stockVendido / t.stockTotal) * 1000) / 10 : 0 }))
+    .sort((a, b) => b.ingresos - a.ingresos);
+  const maxSector = Math.max(1, ...sectores.map((s) => s.ingresos));
+  const mejorDia = ventasPorDia.reduce((best, d) => (!best || d.ingresos > best.ingresos ? d : best), null);
+
+  return (
+    <div className="event-detalle">
+      <div className="event-meta">
+        <span><CalendarDays size={14} /> {fmtFullDate(evento.fecha)}</span>
+        {evento.venue && <span>📍 {evento.venue}</span>}
+        <span className="pill">{evento.estado}</span>
+      </div>
+      {evento.descripcion && <p className="muted event-desc">{evento.descripcion}</p>}
+
+      <section className="coupon-stats analytics-kpis">
+        <div><span>Ingresos</span><b>{money(ingresosCrc)}</b></div>
+        <div><span>Boletos vendidos</span><b>{boletosVendidos}</b></div>
+        <div><span>Validados en puerta</span><b>{boletosUsados}</b></div>
+        <div><span>Ocupación</span><b>{ocupacionPct}%</b><small className="muted">{boletosVendidos}/{capacidad}</small></div>
+        <div><span>Capacidad</span><b>{capacidad}</b></div>
+      </section>
+
+      {sinDatos && <div className="okbox">Este evento aún no tiene ventas. Los dashboards se llenarán con cada compra.</div>}
+
+      {mejorDia && mejorDia.ingresos > 0 && (
+        <div className="analytics-highlight"><TrendingUp size={18} /><span>Mejor día de ventas: <strong>{fmtDiaCorto(mejorDia.fecha)}</strong> con <strong>{money(mejorDia.ingresos)}</strong></span></div>
+      )}
+
+      <div className="analytics-grid">
+        <section className="analytics-card">
+          <h3><CalendarDays size={16} /> Ventas por día</h3>
+          {ventasPorDia.length === 0 ? <p className="muted">Sin ventas todavía.</p> : (
+            <div className="bar-chart">
+              {ventasPorDia.map((d) => (
+                <BarRow key={d.fecha} label={fmtDiaCorto(d.fecha)} value={d.ingresos} max={maxIngresoDia} display={money(d.ingresos)} sub={` · ${d.boletos} bol.`} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="analytics-card">
+          <h3><Ticket size={16} /> Ingresos por sector</h3>
+          {sectores.length === 0 ? <p className="muted">Sin sectores configurados.</p> : (
+            <div className="bar-chart">
+              {sectores.map((s) => (
+                <BarRow key={s.nombre} label={s.nombre} value={s.ingresos} max={maxSector} display={money(s.ingresos)} sub={` · ${s.vendido} bol.`} />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <section className="analytics-card" style={{ marginTop: '1rem' }}>
+        <h3><BarChart3 size={16} /> Ocupación por sector</h3>
+        <div className="table"><table><thead><tr><th>Sector</th><th>Ocupación</th><th>Vendidos</th><th>Cupo</th><th>Ingresos</th></tr></thead><tbody>
+          {sectores.map((s) => (
+            <tr key={s.nombre}>
+              <td>{s.nombre}</td>
+              <td style={{ minWidth: 160 }}>
+                <div className="occ-bar"><div className="occ-fill" style={{ width: `${Math.min(100, s.pct)}%` }} /></div>
+                <small className="muted">{s.pct}%</small>
+              </td>
+              <td>{s.vendido}</td>
+              <td>{s.stock}</td>
+              <td>{money(s.ingresos)}</td>
+            </tr>
+          ))}
+          {sectores.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>Sin sectores</td></tr>}
+        </tbody></table></div>
+      </section>
+    </div>
   );
 }
 

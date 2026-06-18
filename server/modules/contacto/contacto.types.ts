@@ -25,3 +25,19 @@ export interface ContactMessageRow {
   ip: string | null;
   creado_at: string;
 }
+
+export interface ContactReply {
+  id: string;
+  messageId: string;
+  cuerpo: string;
+  adminName: string;
+  creadoAt: string;
+}
+
+export interface ContactReplyRow {
+  id: string;
+  message_id: string;
+  cuerpo: string;
+  admin_name: string;
+  creado_at: string;
+}

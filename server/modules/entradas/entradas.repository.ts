@@ -9,6 +9,7 @@ import {
   TicketType,
   TipoInput,
   VentasEvento,
+  VentasPorDia,
 } from './entradas.types';
 
 export interface LogEntradaInput {
@@ -36,6 +37,7 @@ export interface EntradasRepository {
   crearTipo(eventoId: string, input: TipoInput): Promise<TicketType>;
   actualizarTipo(id: string, input: Partial<TipoInput>): Promise<TicketType>;
   ventasEvento(eventoId: string): Promise<VentasEvento | null>;
+  ventasPorDiaEvento(eventoId: string): Promise<VentasPorDia[]>;
   validarBoleto(codigo: string, actor: { id: string; name: string }): Promise<Boleto>;
   emitirCortesia(eventoId: string, tipoId: string, comprador: { nombre: string; email: string }, actor: { id: string; name: string }): Promise<CompraResultado>;
   listLog(opts: ListLogOptions): Promise<{ total: number; eventos: EntradaLog[] }>;

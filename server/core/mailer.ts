@@ -38,11 +38,25 @@ export function fmtMailDate(iso: string): string {
   });
 }
 
+function sponsorCard(s: { name: string; cid: string }): string {
+  return `<div style="height:60px;line-height:60px;background:#f7f1df;border:1px solid rgba(201,169,97,.35);border-radius:6px;text-align:center"><img src="cid:${s.cid}" alt="${escapeHtml(s.name)}" style="display:inline-block;vertical-align:middle;max-width:78%;max-height:32px;width:auto;height:auto"></div>`;
+}
+
 function sponsorHtml(): string {
-  return OFFICIAL_SPONSORS.map(
-    (s) =>
-      `<span style="display:inline-block;vertical-align:middle;margin:6px 8px;padding:8px 10px;border:1px solid rgba(201,169,97,.35);border-radius:6px;background:#f7f1df"><img src="cid:${s.cid}" height="${s.height}" alt="${escapeHtml(s.name)}" style="display:block;max-width:118px;width:auto;height:${s.height}px;object-fit:contain"></span>`,
-  ).join('');
+  // Rejilla fija de 2 columnas con tarjetas de tamaño idéntico: se ve pareja
+  // en móvil (los clientes de correo renderizan tablas, no flex/inline-block).
+  let rows = '';
+  for (let i = 0; i < OFFICIAL_SPONSORS.length; i += 2) {
+    const left = OFFICIAL_SPONSORS[i];
+    const right = OFFICIAL_SPONSORS[i + 1];
+    if (right) {
+      rows += `<tr><td width="50%" valign="middle" style="padding:5px">${sponsorCard(left)}</td><td width="50%" valign="middle" style="padding:5px">${sponsorCard(right)}</td></tr>`;
+    } else {
+      // Último impar: centrado con el mismo ancho que una columna
+      rows += `<tr><td colspan="2" align="center" valign="middle" style="padding:5px"><div style="max-width:50%;margin:0 auto">${sponsorCard(left)}</div></td></tr>`;
+    }
+  }
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse">${rows}</table>`;
 }
 
 export function emailShell(_title: string, kicker: string, body: string): string {

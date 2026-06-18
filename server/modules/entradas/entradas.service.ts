@@ -221,9 +221,11 @@ export async function adminVentas(user: AdminUser) {
 
 export async function adminVentasEvento(eventoId: string, user: AdminUser) {
   if (!canViewSales(user)) throw new ApiError(403, 'Sin permiso para ver ventas');
-  const ventas = await getEntradasRepository().ventasEvento(String(eventoId));
+  const repo = getEntradasRepository();
+  const ventas = await repo.ventasEvento(String(eventoId));
   if (!ventas) throw new ApiError(404, 'Evento no encontrado');
-  return ventas;
+  const ventasPorDia = await repo.ventasPorDiaEvento(String(eventoId));
+  return { ...ventas, ventasPorDia };
 }
 
 export async function adminValidar(body: { codigo?: unknown }, user: AdminUser) {
