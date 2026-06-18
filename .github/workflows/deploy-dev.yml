@@ -1,0 +1,221 @@
+name: Deploy CSH (dev)
+
+# Espejo del pipeline de produccion (deploy.yml) pero para la rama dev.
+# Cada push a dev se despliega automaticamente al entorno dev:
+#   herediano-dev.milocalhost.work  ->  nginx  ->  127.0.0.1:1421  (csh-dev.service)
+# A diferencia de produccion, NO crea versiones de release (0.X) ni publica
+# releases en GitHub: dev es un entorno de prueba (los PR van dev -> main).
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: csh-dev-deploy
+  cancel-in-progress: false
+
+env:
+  APP_ROOT: /home/tony/Desktop/APP_CSH
+  REPO_URL: https://github.com/S3-Simple-Software-Solutions/CSH.git
+  DEV_PORT: "1421"
+  DEV_APP_URL: https://herediano-dev.milocalhost.work
+
+jobs:
+  deploy:
+    name: Auto Deploy (dev)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout deployed commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse ALL_SECRETS
+        id: vars
+        shell: bash
+        env:
+          ALL_SECRETS: ${{ secrets.ALL_SECRETS }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$ALL_SECRETS" > /tmp/secrets.env
+
+          get() {
+            local line
+            line="$(grep -m1 "^$1=" /tmp/secrets.env || true)"
+            printf '%s' "${line#*=}"
+          }
+
+          echo "ngrok_host=$(get NGROK_HOST)" >> "$GITHUB_OUTPUT"
+          echo "ngrok_port=$(get NGROK_PORT)" >> "$GITHUB_OUTPUT"
+          echo "deploy_user=$(get DEPLOY_USER)" >> "$GITHUB_OUTPUT"
+
+          DEPLOY_SSH_KEY_B64="$(get DEPLOY_SSH_KEY_B64)"
+          if [ -z "$DEPLOY_SSH_KEY_B64" ]; then
+            echo "::error::DEPLOY_SSH_KEY_B64 is missing from ALL_SECRETS"
+            exit 1
+          fi
+
+          printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+
+          # Entorno compartido del servicio dev. Igual que produccion pero con
+          # PORT=1421 y la URL publica del entorno dev.
+          {
+            echo "PORT=${DEV_PORT}"
+            echo "HEREDIANO_APP_URL=${DEV_APP_URL}"
+            echo "DATABASE_URL=$(get DATABASE_URL)"
+            echo "HEREDIANO_SECRET=$(get HEREDIANO_SECRET)"
+            echo "HEREDIANO_USER=$(get HEREDIANO_USER)"
+            echo "HEREDIANO_PASS=$(get HEREDIANO_PASS)"
+            echo "HEREDIANO_ADMIN_USER=$(get HEREDIANO_ADMIN_USER)"
+            echo "HEREDIANO_ADMIN_EMAIL=$(get HEREDIANO_ADMIN_EMAIL)"
+            echo "HEREDIANO_ADMIN_PASS=$(get HEREDIANO_ADMIN_PASS)"
+            echo "HEREDIANO_CONTACT_EMAIL=$(get HEREDIANO_CONTACT_EMAIL)"
+            echo "HEREDIANO_SESSION_HOURS=$(get HEREDIANO_SESSION_HOURS)"
+            echo "HEREDIANO_ADMIN_SESSION_HOURS=$(get HEREDIANO_ADMIN_SESSION_HOURS)"
+            echo "HEREDIANO_SMTP_HOST=$(get HEREDIANO_SMTP_HOST)"
+            echo "HEREDIANO_SMTP_PORT=$(get HEREDIANO_SMTP_PORT)"
+            echo "HEREDIANO_SMTP_SECURE=$(get HEREDIANO_SMTP_SECURE)"
+            echo "HEREDIANO_MAIL_FROM=$(get HEREDIANO_MAIL_FROM)"
+            echo "HEREDIANO_SMTP_USER=$(get HEREDIANO_SMTP_USER)"
+            echo "HEREDIANO_SMTP_PASS=$(get HEREDIANO_SMTP_PASS)"
+          } > /tmp/app.env
+
+      - name: Deploy dev via SSH
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NGROK_HOST: ${{ steps.vars.outputs.ngrok_host }}
+          NGROK_PORT: ${{ steps.vars.outputs.ngrok_port }}
+          DEPLOY_USER: ${{ steps.vars.outputs.deploy_user }}
+        run: |
+          set -euo pipefail
+
+          scp -i /tmp/deploy_key \
+              -P "$NGROK_PORT" \
+              -o StrictHostKeyChecking=no \
+              /tmp/app.env \
+              "$DEPLOY_USER@$NGROK_HOST:/tmp/csh-dev-app.env"
+
+          ssh -i /tmp/deploy_key \
+              -p "$NGROK_PORT" \
+              -o StrictHostKeyChecking=no \
+              "$DEPLOY_USER@$NGROK_HOST" \
+              "APP_ROOT='$APP_ROOT' REPO_URL='$REPO_URL' DEPLOY_SHA='$DEPLOY_SHA' RUN_URL='$RUN_URL' DEV_PORT='$DEV_PORT' bash -se" <<'ENDSSH'
+            set -euo pipefail
+
+            SHORT_SHA="${DEPLOY_SHA::7}"
+            DEV_VERSION="dev-$SHORT_SHA"
+            SHARED_ENV="$APP_ROOT/shared/.env.dev"
+            RELEASES_DIR="$APP_ROOT/releases-dev"
+            CURRENT_LINK="$APP_ROOT/current-dev"
+            SOURCE_DIR="$APP_ROOT/source"
+            RELEASE_DIR="$RELEASES_DIR/$DEV_VERSION"
+            TMP_RELEASE="$RELEASES_DIR/.tmp-$DEV_VERSION-$$"
+
+            echo "== Preparing dev deploy: $DEV_VERSION =="
+            mkdir -p "$APP_ROOT/shared" "$RELEASES_DIR"
+            install -m 600 /tmp/csh-dev-app.env "$SHARED_ENV"
+            rm -f /tmp/csh-dev-app.env
+
+            # Checkout solo para fetch de commits; los releases son inmutables.
+            if [ ! -d "$SOURCE_DIR/.git" ]; then
+              if [ -d "$APP_ROOT/.git" ]; then
+                SOURCE_DIR="$APP_ROOT"
+              else
+                git clone "$REPO_URL" "$SOURCE_DIR"
+              fi
+            fi
+
+            cd "$SOURCE_DIR"
+            git remote set-url origin "$REPO_URL" || true
+            git fetch --prune origin dev
+            git rev-parse --verify "$DEPLOY_SHA^{commit}" >/dev/null
+
+            # dev se redepliega seguido: si ya existe ese SHA, lo reconstruimos.
+            rm -rf "$RELEASE_DIR" "$TMP_RELEASE"
+            mkdir -p "$TMP_RELEASE"
+            git archive "$DEPLOY_SHA" | tar -x -C "$TMP_RELEASE"
+
+            cd "$TMP_RELEASE"
+            echo "== Installing dependencies ($DEV_VERSION) =="
+            npm ci
+            echo "== Building ($DEV_VERSION) =="
+            npm run build
+
+            cat > RELEASE_MANIFEST.json <<EOF
+          {
+            "version": "$DEV_VERSION",
+            "sha": "$DEPLOY_SHA",
+            "source": "push-to-dev",
+            "runUrl": "$RUN_URL",
+            "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+            mv "$TMP_RELEASE" "$RELEASE_DIR"
+            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+
+            # El entorno dev pasa a ser servido por systemd (no por el contenedor
+            # podman standalone). Liberamos el puerto 1421 si lo tenia podman.
+            podman rm -f csh-dev-1421 >/dev/null 2>&1 || true
+
+            echo "== Ensuring csh-dev.service points at current-dev =="
+            mkdir -p ~/.config/systemd/user
+            cat > ~/.config/systemd/user/csh-dev.service <<UNIT
+          [Unit]
+          Description=CSH Herediano app (dev / 1421)
+          After=network.target
+
+          [Service]
+          Type=simple
+          WorkingDirectory=$CURRENT_LINK
+          EnvironmentFile=$SHARED_ENV
+          ExecStart=/bin/bash -lc 'npm start'
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=default.target
+          UNIT
+
+            systemctl --user daemon-reload
+            systemctl --user enable csh-dev.service
+            systemctl --user restart csh-dev.service
+
+            echo "== Health check (dev :$DEV_PORT) =="
+            for attempt in {1..30}; do
+              if curl --fail --silent --show-error "http://127.0.0.1:$DEV_PORT/healthz"; then
+                echo "Health check passed for $DEV_VERSION"
+                exit 0
+              fi
+              echo "Waiting for dev app health... ($attempt/30)"
+              sleep 2
+            done
+
+            echo "Health check failed for $DEV_VERSION"
+            systemctl --user status csh-dev.service --no-pager || true
+            journalctl --user -u csh-dev.service -n 100 --no-pager || true
+            exit 1
+          ENDSSH
+
+      - name: Dev deploy summary
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "### CSH dev deploy"
+            echo ""
+            echo "- Entorno: https://herediano-dev.milocalhost.work"
+            echo "- Commit: \`$DEPLOY_SHA\`"
+            echo "- Puerto: \`${DEV_PORT}\` (csh-dev.service)"
+            echo "- Run: $RUN_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
