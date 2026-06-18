@@ -9,10 +9,14 @@ import {
   EventoInput,
   EntradaLog,
   ListLogOptions,
+  MapaBatchInput,
+  MapaEventoInput,
+  MapaTipoInput,
   TicketType,
   TipoInput,
   VentasEvento,
   VentasPorDia,
+  ZonaMapa,
 } from './entradas.types';
 import { EntradasRepository, LogEntradaInput } from './entradas.repository';
 import { boletoCodigo, genId, qrData, slugify } from './entradas.helpers';
@@ -28,6 +32,19 @@ function toEvento(row: any): Evento {
     estado: row.estado,
     imagenUrl: row.imagen_url,
     creadoAt: row.creado_at.toISOString(),
+    mapImageUrl: row.map_image_url ?? '/brand/estadio.jpg',
+    mapVersion: Number(row.map_version ?? 0),
+  };
+}
+
+function toZona(row: any): ZonaMapa | null {
+  if (!row.map_shape || !row.map_points) return null;
+  return {
+    shape: row.map_shape,
+    points: row.map_points,
+    color: row.map_color ?? '#c9a961',
+    labelX: row.map_label_x ?? null,
+    labelY: row.map_label_y ?? null,
   };
 }
 
@@ -44,6 +61,7 @@ function toTipo(row: any): TicketType {
     estado: row.estado,
     orden: Number(row.orden),
     disponibles: Math.max(0, total - vendido),
+    mapa: toZona(row),
   };
 }
 
@@ -462,5 +480,70 @@ export class PgEntradasRepository implements EntradasRepository {
 
   async logEvento(tipo: string, input: LogEntradaInput): Promise<void> {
     await logEvento(pool, tipo, input);
+  }
+
+  // ── Mapa de zonas ────────────────────────────────────────────────
+
+  async getMapaEvento(eventoId: string): Promise<{ evento: Evento; tipos: TicketType[] } | null> {
+    const rows = await query<any>('select * from entrada_eventos where id = $1', [eventoId]);
+    if (!rows[0]) return null;
+    const tipos = await query<any>('select * from entrada_tipos where evento_id = $1 order by orden, nombre', [eventoId]);
+    return { evento: toEvento(rows[0]), tipos: tipos.map(toTipo) };
+  }
+
+  async actualizarMapaEvento(eventoId: string, input: MapaEventoInput): Promise<Evento> {
+    const rows = await query<any>(
+      'update entrada_eventos set map_image_url = coalesce($1, map_image_url), map_version = map_version + 1 where id = $2 returning *',
+      [input.mapImageUrl ?? null, eventoId],
+    );
+    if (!rows[0]) throw new Error('Evento no encontrado');
+    return toEvento(rows[0]);
+  }
+
+  async actualizarMapaTipo(tipoId: string, input: MapaTipoInput | null): Promise<TicketType> {
+    let rows: any[];
+    if (input === null) {
+      rows = await query<any>(
+        'update entrada_tipos set map_shape = null, map_points = null, map_color = null, map_label_x = null, map_label_y = null where id = $1 returning *',
+        [tipoId],
+      );
+    } else {
+      rows = await query<any>(
+        'update entrada_tipos set map_shape = $1, map_points = $2, map_color = $3, map_label_x = $4, map_label_y = $5 where id = $6 returning *',
+        [input.shape, JSON.stringify(input.points), input.color ?? '#c9a961', input.labelX ?? null, input.labelY ?? null, tipoId],
+      );
+    }
+    if (!rows[0]) throw new Error('Sector no encontrado');
+    return toTipo(rows[0]);
+  }
+
+  async guardarMapaBatch(eventoId: string, input: MapaBatchInput): Promise<TicketType[]> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const result: TicketType[] = [];
+      for (const item of input.tipos) {
+        let rows: any[];
+        if (item.mapa === null) {
+          rows = (await client.query(
+            'update entrada_tipos set map_shape = null, map_points = null, map_color = null, map_label_x = null, map_label_y = null where id = $1 and evento_id = $2 returning *',
+            [item.tipoId, eventoId],
+          )).rows;
+        } else {
+          rows = (await client.query(
+            'update entrada_tipos set map_shape = $1, map_points = $2, map_color = $3, map_label_x = $4, map_label_y = $5 where id = $6 and evento_id = $7 returning *',
+            [item.mapa.shape, JSON.stringify(item.mapa.points), item.mapa.color ?? '#c9a961', item.mapa.labelX ?? null, item.mapa.labelY ?? null, item.tipoId, eventoId],
+          )).rows;
+        }
+        if (rows[0]) result.push(toTipo(rows[0]));
+      }
+      await client.query('commit');
+      return result;
+    } catch (err) {
+      await client.query('rollback');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }

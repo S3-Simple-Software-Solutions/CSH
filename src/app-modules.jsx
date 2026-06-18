@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
+import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, Map, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
+import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
+import { StadiumMap } from './pages/entradas/StadiumMap.jsx';
+import { isErcVectorLayout } from './pages/entradas/stadiumErc.js';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
@@ -2267,35 +2270,66 @@ function PublicEventDetail({ slug }) {
   const [qty, setQty] = useState({});
   const [checkout, setCheckout] = useState(false);
   const [done, setDone] = useState(null);
-  useEffect(() => { api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}`).then((d) => (d.ok ? setData(d) : setError(d.error))); }, [slug]);
+  const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'mapa'
+  useEffect(() => {
+    api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}`).then((d) => {
+      if (d.ok) {
+        setData(d);
+        // Si hay zonas con mapa, mostrar mapa por defecto
+        if (d.tipos?.some((t) => t.mapa) || isErcVectorLayout(d.evento)) setViewMode('mapa');
+      } else {
+        setError(d.error);
+      }
+    });
+  }, [slug]);
   if (error) return (<><main className="page"><p className="eyebrow">Entradas</p><h1>Evento no disponible</h1><p className="sub">{error}</p><a className="btn ghost" href="/entradas">Volver a eventos</a></main></>);
   if (!data) return (<><main className="page"><p>Cargando...</p></main></>);
   const { evento, tipos } = data;
   const setCantidad = (id, n, max) => setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(max, n)) }));
+  const handleMapUpdate = (tipoId, delta) => {
+    const t = tipos.find((t) => t.id === tipoId);
+    if (!t) return;
+    const cur = qty[tipoId] ?? 0;
+    setCantidad(tipoId, cur + delta, Math.min(10, t.disponibles));
+  };
   const lineas = tipos.filter((t) => qty[t.id] > 0).map((t) => ({ tipoId: t.id, cantidad: qty[t.id] }));
   const total = tipos.reduce((s, t) => s + t.precioCrc * (qty[t.id] || 0), 0);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
+  const hasMapa = isErcVectorLayout(evento) || tipos.some((t) => t.mapa);
   return (
     <>
-      
       <main className="page">
         <a className="back-link" href="/entradas">‹ Eventos</a>
         <p className="eyebrow">{fmtFullDate(evento.fecha)} · {evento.venue}</p>
         <h1>{evento.nombre}</h1>
         <p className="sub">{evento.descripcion}</p>
-        <section className="sector-list">
-          {tipos.map((t) => (
-            <div key={t.id} className={`sector ${t.disponibles === 0 ? 'agotado' : ''}`}>
-              <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioCrc)}</span></div>
-              <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
-              <div className="stepper">
-                <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
-                <span>{qty[t.id] || 0}</span>
-                <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
-              </div>
-            </div>
-          ))}
-        </section>
+
+        {hasMapa && (
+          <div className="view-toggle">
+            <button className={`btn ghost${viewMode === 'mapa' ? ' active' : ''}`} onClick={() => setViewMode('mapa')}>Ver mapa</button>
+            <button className={`btn ghost${viewMode === 'lista' ? ' active' : ''}`} onClick={() => setViewMode('lista')}>Ver lista</button>
+          </div>
+        )}
+
+        {viewMode === 'mapa' && hasMapa
+          ? <StadiumMap evento={evento} tipos={tipos} qty={qty} onUpdate={handleMapUpdate} />
+          : (
+            <section className="sector-list">
+              {tipos.map((t) => (
+                <div key={t.id} className={`sector ${t.disponibles === 0 ? 'agotado' : ''}`}>
+                  <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioCrc)}</span></div>
+                  <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
+                  <div className="stepper">
+                    <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
+                    <span>{qty[t.id] || 0}</span>
+                    <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
+                  </div>
+                </div>
+              ))}
+            </section>
+          )
+        }
+
         <div className="checkout-bar">
           <div><span>{count} boleto(s)</span><b>{money(total)}</b></div>
           <button className="btn" disabled={count === 0} onClick={() => setCheckout(true)}>Continuar</button>
@@ -2405,6 +2439,7 @@ function AdminEventosTab() {
             <td>{money(ev.ingresosCrc)}</td>
             <td className="row-actions" onClick={(e) => e.stopPropagation()}>
               <button className="btn ghost" onClick={() => setModal({ type: 'tipos', evento: ev.evento })}><LayoutGrid size={16} />Sectores</button>
+              <button className="btn ghost" onClick={() => setModal({ type: 'mapa', evento: ev.evento, tipos: ev.tipos })}><Map size={16} />Mapa</button>
               {ev.evento.estado === 'publicado'
                 ? <button className="btn ghost" onClick={() => setEstado(ev, 'finalizado')}><Lock size={16} />Cerrar</button>
                 : <button className="btn ghost" onClick={() => setEstado(ev, 'publicado')}><Send size={16} />Publicar</button>}
@@ -2417,6 +2452,7 @@ function AdminEventosTab() {
       {modal?.type === 'detalle' && <EventDetalleModal evento={modal.evento} onClose={() => setModal(null)} />}
       {modal?.type === 'evento' && <EventFormModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); refreshLog(); }} />}
       {modal?.type === 'tipos' && <TiposModal evento={modal.evento} onClose={() => { setModal(null); refresh(); refreshLog(); }} />}
+      {modal?.type === 'mapa' && <StadiumMapEditor evento={modal.evento} tipos={modal.tipos} onClose={() => setModal(null)} onSaved={() => { refresh(); refreshLog(); }} />}
       {modal?.type === 'cortesia' && <CortesiaModal evento={modal.evento} tipos={modal.tipos} onClose={() => { setModal(null); refresh(); refreshLog(); }} />}
     </>
   );

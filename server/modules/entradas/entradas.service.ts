@@ -4,7 +4,8 @@ import { canManageEvents, canOperateGate, canViewSales } from '../usuarios/usuar
 import { getEntradasRepository } from './entradas.repository';
 import { sendEntradasEmail } from './entradas.mail';
 import { extractCodigo } from './entradas.helpers';
-import { CompraLinea, EventoInput, PagoEntrada, TipoInput } from './entradas.types';
+import { CompraLinea, EventoInput, MapaBatchInput, MapaEventoInput, MapaTipoInput, MapPoint, MapRect, MapZoneKey, PagoEntrada, TipoInput } from './entradas.types';
+import { ERC_ZONE_KEYS } from './entradas.erc.zones';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_POR_LINEA = 10;
@@ -270,4 +271,59 @@ export async function adminCortesia(body: { eventoId?: unknown; tipoId?: unknown
 export async function adminLog(opts: { limit: number; offset: number; eventoId?: string }, user: AdminUser) {
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para ver el log');
   return getEntradasRepository().listLog(opts);
+}
+
+// ── Mapa de zonas ────────────────────────────────────────────────
+
+function inUnit(n: number): boolean {
+  return typeof n === 'number' && isFinite(n) && n >= 0 && n <= 1;
+}
+
+function validateMapaTipo(input: MapaTipoInput): void {
+  if (input.shape === 'rect') {
+    const r = input.points as MapRect;
+    if (!inUnit(r.x) || !inUnit(r.y) || typeof r.w !== 'number' || r.w <= 0 || typeof r.h !== 'number' || r.h <= 0)
+      throw new ApiError(400, 'Rect inválido: x,y en [0,1] y w,h > 0');
+    if (r.x + r.w > 1.001 || r.y + r.h > 1.001)
+      throw new ApiError(400, 'Rect sale del mapa (x+w o y+h > 1)');
+  } else if (input.shape === 'polygon') {
+    const pts = input.points as MapPoint[];
+    if (!Array.isArray(pts) || pts.length < 3)
+      throw new ApiError(400, 'Polygon requiere al menos 3 puntos');
+    for (const p of pts) {
+      if (!inUnit(p.x) || !inUnit(p.y)) throw new ApiError(400, 'Punto de polígono fuera de [0,1]');
+    }
+  } else if (input.shape === 'zone') {
+    const z = input.points as MapZoneKey;
+    if (!z?.key || !ERC_ZONE_KEYS.includes(z.key as typeof ERC_ZONE_KEYS[number]))
+      throw new ApiError(400, `Zona ERC inválida: ${z?.key ?? 'sin key'}`);
+  } else {
+    throw new ApiError(400, `Shape inválido: ${input.shape}`);
+  }
+}
+
+export async function adminGetMapaEvento(eventoId: string, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const result = await getEntradasRepository().getMapaEvento(eventoId);
+  if (!result) throw new ApiError(404, 'Evento no encontrado');
+  return result;
+}
+
+export async function adminActualizarMapaEvento(eventoId: string, input: MapaEventoInput, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  return getEntradasRepository().actualizarMapaEvento(eventoId, input);
+}
+
+export async function adminActualizarMapaTipo(tipoId: string, input: MapaTipoInput | null, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  if (input !== null) validateMapaTipo(input);
+  return getEntradasRepository().actualizarMapaTipo(tipoId, input);
+}
+
+export async function adminGuardarMapaBatch(eventoId: string, input: MapaBatchInput, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  for (const item of input.tipos) {
+    if (item.mapa !== null) validateMapaTipo(item.mapa);
+  }
+  return getEntradasRepository().guardarMapaBatch(eventoId, input);
 }

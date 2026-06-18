@@ -6,6 +6,9 @@ import {
   EventoInput,
   ListLogOptions,
   EntradaLog,
+  MapaBatchInput,
+  MapaEventoInput,
+  MapaTipoInput,
   TicketType,
   TipoInput,
   VentasEvento,
@@ -42,6 +45,12 @@ export interface EntradasRepository {
   emitirCortesia(eventoId: string, tipoId: string, comprador: { nombre: string; email: string }, actor: { id: string; name: string }): Promise<CompraResultado>;
   listLog(opts: ListLogOptions): Promise<{ total: number; eventos: EntradaLog[] }>;
   logEvento(tipo: string, input: LogEntradaInput): Promise<void>;
+
+  // Mapa
+  getMapaEvento(eventoId: string): Promise<{ evento: Evento; tipos: TicketType[] } | null>;
+  actualizarMapaEvento(eventoId: string, input: MapaEventoInput): Promise<Evento>;
+  actualizarMapaTipo(tipoId: string, input: MapaTipoInput | null): Promise<TicketType>;
+  guardarMapaBatch(eventoId: string, input: MapaBatchInput): Promise<TicketType[]>;
 }
 
 import { PgEntradasRepository } from './entradas.repository.pg';
