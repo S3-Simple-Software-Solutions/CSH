@@ -1,14 +1,12 @@
 import { TARIFA_HORA } from '../../config/constants';
-import { findUserById } from '../usuarios/usuarios.data';
 import { Reservation } from './parqueo.types';
 
-export function reservaEmail(reserva: Reservation): string {
-  const owner = findUserById(reserva.userId);
-  return String(reserva.emailQr || (owner && owner.email) || '').trim().toLowerCase();
+export function reservaEmail(reserva: Reservation, ownerEmail = ''): string {
+  return String(reserva.emailQr || ownerEmail || '').trim().toLowerCase();
 }
 
-export function maskedReservaEmail(reserva: Reservation): string {
-  const email = reservaEmail(reserva);
+export function maskedReservaEmail(reserva: Reservation, ownerEmail = ''): string {
+  const email = reservaEmail(reserva, ownerEmail);
   const at = email.indexOf('@');
   if (at <= 0 || at === email.length - 1) return 'Sin correo asociado';
   return `${email.slice(0, Math.min(3, at))}***@${email.slice(at + 1)}`;

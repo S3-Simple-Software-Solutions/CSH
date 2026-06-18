@@ -7,6 +7,7 @@ import { maskedReservaEmail, montoDe, reservaEmail } from './parqueo.helpers';
 import { floorPlanMeta } from './parqueo.layout';
 import { PaymentRecord, Recibo } from './parqueo.types';
 import { FLOW_ARROW_KINDS, FlowArrowKind } from './parqueo.flow';
+import { findUserEmailById } from '../usuarios/usuarios.service';
 
 type Actor = { id: string; name: string; parkingRole: string };
 
@@ -26,6 +27,19 @@ function validateDuration(duracion: number): void {
 
 function validateEmail(email: string): void {
   if (!email || email.length > 120 || !EMAIL_RE.test(email)) throw new ApiError(400, 'Correo invalido');
+}
+
+async function ownerEmailFor(reserva: { emailQr?: string | null; userId?: string | null }): Promise<string> {
+  if (reserva.emailQr) return '';
+  return findUserEmailById(reserva.userId);
+}
+
+async function reservaEmailFor(reserva: Parameters<typeof reservaEmail>[0]): Promise<string> {
+  return reservaEmail(reserva, await ownerEmailFor(reserva));
+}
+
+async function maskedReservaEmailFor(reserva: Parameters<typeof maskedReservaEmail>[0]): Promise<string> {
+  return maskedReservaEmail(reserva, await ownerEmailFor(reserva));
 }
 
 export async function getPublicEstado() {
@@ -271,13 +285,14 @@ export async function consultaPublica(rawPlate: unknown) {
   const reserva = await repo.getActiveReservationByPlate(plate);
   if (!reserva) throw new ApiError(404, 'No hay parqueo activo para esa placa');
   const { horas, monto } = montoDe(reserva);
+  const correo = await maskedReservaEmailFor(reserva);
   return {
     espacioId: reserva.espacioId,
     placa: reserva.placa,
     estado: reserva.estado,
     inicio: reserva.inicio,
     fin: reserva.fin,
-    correo: maskedReservaEmail(reserva),
+    correo,
     horas,
     monto,
     tarifa: TARIFA_HORA,
@@ -321,11 +336,12 @@ export async function reenviarPublico(rawPlate: unknown) {
   const repo = getParqueoRepository();
   const reserva = await repo.getActiveReservationByPlate(plate);
   if (!reserva) throw new ApiError(404, 'No hay parqueo activo para esa placa');
-  const email = reservaEmail(reserva);
+  const email = await reservaEmailFor(reserva);
   if (!email) throw new ApiError(409, 'La reserva no tiene correo asociado');
   await sendParkingQrEmail({ to: email, reserva });
-  await repo.logEvento('envio', { espacioId: reserva.espacioId, user: { id: null, name: 'Consulta publica' }, placa: reserva.placa, notas: `Reenvio solicitado a ${maskedReservaEmail(reserva)}` });
-  return { correo: maskedReservaEmail(reserva) };
+  const correo = await maskedReservaEmailFor(reserva);
+  await repo.logEvento('envio', { espacioId: reserva.espacioId, user: { id: null, name: 'Consulta publica' }, placa: reserva.placa, notas: `Reenvio solicitado a ${correo}` });
+  return { correo };
 }
 
 export async function pagarPublico(body: { placa: unknown; pago?: any }): Promise<Recibo> {
@@ -333,7 +349,7 @@ export async function pagarPublico(body: { placa: unknown; pago?: any }): Promis
   const repo = getParqueoRepository();
   const reserva = await repo.getActiveReservationByPlate(plate);
   if (!reserva) throw new ApiError(404, 'No hay parqueo activo para esa placa');
-  const email = reservaEmail(reserva);
+  const email = await reservaEmailFor(reserva);
   if (!email) throw new ApiError(409, 'La reserva no tiene correo asociado para enviar el recibo');
   const pago = body.pago || {};
   const cardNumber = String(pago.cardNumber || '').replace(/\D/g, '');
@@ -343,7 +359,7 @@ export async function pagarPublico(body: { placa: unknown; pago?: any }): Promis
   if (String(pago.cvv || '').replace(/\D/g, '').length < 3) throw new ApiError(400, 'CVV invalido');
   if (cardNumber.endsWith('0000')) throw new ApiError(402, 'La transaccion fue rechazada por el emisor');
   const { horas, monto } = montoDe(reserva);
-  const recibo: Recibo = { espacioId: reserva.espacioId, placa: reserva.placa, horas, monto, transaccion: `CSH-PAY-${Date.now().toString(36).toUpperCase()}`, correo: maskedReservaEmail(reserva) };
+  const recibo: Recibo = { espacioId: reserva.espacioId, placa: reserva.placa, horas, monto, transaccion: `CSH-PAY-${Date.now().toString(36).toUpperCase()}`, correo: await maskedReservaEmailFor(reserva) };
   await sendPaymentReceiptEmail({ to: email, reserva, recibo });
   const payment: PaymentRecord = { transaccion: recibo.transaccion, monto, horas, timestamp: new Date().toISOString(), metodo: `****${cardNumber.slice(-4)}` };
   await repo.finalizePayment(reserva, payment, recibo);

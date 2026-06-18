@@ -1,8 +1,8 @@
 # Usuarios de prueba — App CSH (rama `demo`)
 
 Documento de referencia para probar la aplicación con el cliente. Cada usuario
-representa un nivel de acceso distinto. Las credenciales viven en
-[`server/modules/usuarios/usuarios.data.ts`](server/modules/usuarios/usuarios.data.ts).
+representa un nivel de acceso distinto. Las credenciales se siembran en la base
+de datos al iniciar la app y se autentican desde `app_users` / `app_user_roles`.
 
 > **Convención de contraseña:** `<usuario>1921` (ej. el usuario `socio` → `socio1921`).
 > Se puede iniciar sesión con el **usuario** o con el **correo** (`<usuario>@herediano.com`).
@@ -86,5 +86,5 @@ define lo que puede hacer:
 - **Gestión de usuarios** (cambiar contraseñas de otros usuarios) requiere `parkingRole = admin`,
   por eso solo `superadmin` y `parqueo` la tienen.
 - `patrocinador` además tiene asignado el sponsor `Reebok`.
-- Los ids internos de estos usuarios son `demo-*` (únicos) para que la tabla compartida
-  `admin_passwords` no sobreescriba las contraseñas documentadas aquí.
+- Los ids internos de estos usuarios son `demo-*`. Sus contraseñas iniciales se guardan
+  como hashes en `app_users.password_hash` y luego pueden cambiarse desde el panel.

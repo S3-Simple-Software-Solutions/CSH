@@ -1,44 +1,88 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AdminUser } from './usuarios.data';
+import { hashPassword } from './usuarios.passwords';
+
+const db = vi.hoisted(() => ({
+  query: vi.fn(),
+  poolQuery: vi.fn(),
+}));
+
+vi.mock('../../core/db', () => ({
+  query: db.query,
+  pool: { query: db.poolQuery },
+}));
+
 import { canManageCoupons, canManageEvents, canOperateGate, canViewSales, findAdminUser, isPasswordManagedByEnv } from './usuarios.service';
-import { ADMIN_USERS, findUserById } from './usuarios.data';
-import { applyPasswordOverrideRows } from './usuarios.schema';
+
+function user(overrides: Partial<AdminUser> = {}): AdminUser {
+  return {
+    id: 'u-test',
+    name: 'Usuario Test',
+    username: 'test',
+    email: 'test@herediano.com',
+    role: 'Socio',
+    area: 'Pruebas',
+    status: 'Activo',
+    parkingRole: 'socio',
+    couponRole: 'socio',
+    eventsRole: 'ninguno',
+    ...overrides,
+  };
+}
+
+function userRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'demo-operador',
+    username: 'operador',
+    email: 'operador@herediano.com',
+    password_hash: hashPassword('operador1921'),
+    full_name: 'Operador de Puerta',
+    display_role: 'Operador',
+    area: 'Entradas',
+    status: 'Demo',
+    sponsor: null,
+    password_managed_by: 'database',
+    role_ids: ['events:operador'],
+    ...overrides,
+  };
+}
 
 describe('usuarios service permissions', () => {
-  it('finds admin users by username or email with exact password match', () => {
-    expect(findAdminUser('operador', 'operador1921')?.id).toBe('demo-operador');
-    expect(findAdminUser('COMERCIAL@HEREDIANO.COM', 'comercial1921')?.id).toBe('demo-comercial');
-    expect(findAdminUser('operador', 'wrong-password')).toBeNull();
+  beforeEach(() => {
+    db.query.mockReset();
+    db.poolQuery.mockReset();
+  });
+
+  it('finds admin users by username or email with matching password', async () => {
+    db.query.mockResolvedValueOnce([userRow()]);
+    await expect(findAdminUser('operador', 'operador1921')).resolves.toMatchObject({ id: 'demo-operador', eventsRole: 'operador' });
+
+    db.query.mockResolvedValueOnce([userRow({ email: 'comercial@herediano.com', role_ids: ['events:comercial'] })]);
+    await expect(findAdminUser('COMERCIAL@HEREDIANO.COM', 'operador1921')).resolves.toMatchObject({ eventsRole: 'comercial' });
+
+    db.query.mockResolvedValueOnce([userRow()]);
+    await expect(findAdminUser('operador', 'wrong-password')).resolves.toBeNull();
   });
 
   it('checks coupon permissions by role', () => {
-    expect(canManageCoupons(findUserById('u-001'))).toBe(true);
-    expect(canManageCoupons(findUserById('demo-patrocinador'))).toBe(true);
-    expect(canManageCoupons(findUserById('demo-socio'))).toBe(false);
+    expect(canManageCoupons(user({ couponRole: 'admin' }))).toBe(true);
+    expect(canManageCoupons(user({ couponRole: 'patrocinador' }))).toBe(true);
+    expect(canManageCoupons(user({ couponRole: 'socio' }))).toBe(false);
     expect(canManageCoupons(null)).toBe(false);
   });
 
   it('checks event permissions by role', () => {
-    expect(canManageEvents(findUserById('demo-entradas'))).toBe(true);
-    expect(canManageEvents(findUserById('demo-operador'))).toBe(false);
-    expect(canOperateGate(findUserById('demo-operador'))).toBe(true);
-    expect(canOperateGate(findUserById('demo-comercial'))).toBe(false);
-    expect(canViewSales(findUserById('demo-comercial'))).toBe(true);
-    expect(canViewSales(findUserById('demo-socio'))).toBe(false);
+    expect(canManageEvents(user({ eventsRole: 'admin' }))).toBe(true);
+    expect(canManageEvents(user({ eventsRole: 'operador' }))).toBe(false);
+    expect(canOperateGate(user({ eventsRole: 'operador' }))).toBe(true);
+    expect(canOperateGate(user({ eventsRole: 'comercial' }))).toBe(false);
+    expect(canViewSales(user({ eventsRole: 'comercial' }))).toBe(true);
+    expect(canViewSales(user({ eventsRole: 'ninguno' }))).toBe(false);
   });
 
   it('keeps the primary admin password controlled by environment variables', () => {
-    const users = ADMIN_USERS.map((user) => ({ ...user }));
-    const admin = users.find((user) => user.id === 'u-001')!;
-    const originalAdminPassword = admin.password;
-
-    applyPasswordOverrideRows([
-      { user_id: 'u-001', password: 'stale-database-password' },
-      { user_id: 'demo-operador', password: 'operator-override' },
-    ], users);
-
-    expect(admin.password).toBe(originalAdminPassword);
-    expect(users.find((user) => user.id === 'demo-operador')?.password).toBe('operator-override');
-    expect(isPasswordManagedByEnv(admin)).toBe(true);
-    expect(isPasswordManagedByEnv(users.find((user) => user.id === 'demo-operador'))).toBe(false);
+    expect(isPasswordManagedByEnv(user({ id: 'u-001' }))).toBe(true);
+    expect(isPasswordManagedByEnv(user({ id: 'demo-operador', passwordManagedByEnv: false }))).toBe(false);
+    expect(isPasswordManagedByEnv(user({ id: 'demo-admin', passwordManagedByEnv: true }))).toBe(true);
   });
 });

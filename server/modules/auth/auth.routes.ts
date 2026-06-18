@@ -8,25 +8,29 @@ import { loginPage } from './auth.views';
 
 export const authRouter = Router();
 
-authRouter.get('/api/session', (req, res) => {
-  const user = validAdminToken(parseCookies(req.headers.cookie)[ADMIN_COOKIE]);
-  res.json({
-    ok: true,
-    user: user
-      ? {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          area: user.area,
-          status: user.status,
-          parkingRole: user.parkingRole,
-          couponRole: user.couponRole,
-          eventsRole: user.eventsRole,
-          sponsor: user.sponsor,
-        }
-      : null,
-  });
+authRouter.get('/api/session', async (req, res, next) => {
+  try {
+    const user = await validAdminToken(parseCookies(req.headers.cookie).get(ADMIN_COOKIE));
+    res.json({
+      ok: true,
+      user: user
+        ? {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            area: user.area,
+            status: user.status,
+            parkingRole: user.parkingRole,
+            couponRole: user.couponRole,
+            eventsRole: user.eventsRole,
+            sponsor: user.sponsor,
+          }
+        : null,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 authRouter.get('/__login', (req, res) => res.type('html').send(loginPage({ next: safeNext(req.query.next) })));
@@ -44,14 +48,18 @@ authRouter.get('/__logout', (req, res) => {
   res.redirect('/__login');
 });
 
-authRouter.post('/admin/sign-in', (req, res) => {
-  const user = findAdminUser(req.body.usuario, req.body.clave);
-  if (!user) return res.status(401).json({ ok: false, error: 'Usuario o contrasena incorrectos.' });
-  res.setHeader('set-cookie', [
-    cookieAttrs(req, ADMIN_COOKIE, '', 0, '/admin'),
-    cookieAttrs(req, ADMIN_COOKIE, makeAdminToken(user), ADMIN_SESSION_HOURS * 3600, '/'),
-  ]);
-  res.json({ ok: true, user: { id: user.id, name: user.name, role: user.role, parkingRole: user.parkingRole, couponRole: user.couponRole, eventsRole: user.eventsRole, sponsor: user.sponsor } });
+authRouter.post('/admin/sign-in', async (req, res, next) => {
+  try {
+    const user = await findAdminUser(req.body.usuario, req.body.clave);
+    if (!user) return res.status(401).json({ ok: false, error: 'Usuario o contrasena incorrectos.' });
+    res.setHeader('set-cookie', [
+      cookieAttrs(req, ADMIN_COOKIE, '', 0, '/admin'),
+      cookieAttrs(req, ADMIN_COOKIE, makeAdminToken(user), ADMIN_SESSION_HOURS * 3600, '/'),
+    ]);
+    res.json({ ok: true, user: { id: user.id, name: user.name, role: user.role, parkingRole: user.parkingRole, couponRole: user.couponRole, eventsRole: user.eventsRole, sponsor: user.sponsor } });
+  } catch (err) {
+    next(err);
+  }
 });
 
 authRouter.post('/admin/logout', (req, res) => {

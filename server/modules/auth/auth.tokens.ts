@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { SECRET, SESSION_HOURS, ADMIN_SESSION_HOURS } from '../../config/constants';
-import { ADMIN_USERS, AdminUser } from '../usuarios/usuarios.data';
+import { AdminUser } from '../usuarios/usuarios.data';
+import { findUserById } from '../usuarios/usuarios.service';
 
 function sign(exp: number): string {
   return crypto.createHmac('sha256', SECRET).update(String(exp)).digest('hex');
@@ -29,13 +30,12 @@ export function makeAdminToken(user: AdminUser): string {
   return `${exp}.${user.id}.${adminSign(exp, user.id)}`;
 }
 
-export function validAdminToken(tok: string | undefined): AdminUser | null {
+export async function validAdminToken(tok: string | undefined): Promise<AdminUser | null> {
   if (!tok || tok.split('.').length !== 3) return null;
   const [expStr, userId, mac] = tok.split('.');
   const exp = Number(expStr);
   if (!exp || exp < Date.now()) return null;
-  const user = ADMIN_USERS.find((u) => u.id === userId);
-  if (!user) return null;
   const good = adminSign(exp, userId);
-  return mac.length === good.length && crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good)) ? user : null;
+  if (mac.length !== good.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(good))) return null;
+  return findUserById(userId);
 }

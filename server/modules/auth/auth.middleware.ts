@@ -13,12 +13,16 @@ declare global {
   }
 }
 
-export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  const user = validAdminToken(parseCookies(req.headers.cookie)[ADMIN_COOKIE]);
-  if (!user) {
-    res.status(401).json({ ok: false, error: 'No autenticado' });
-    return;
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = await validAdminToken(parseCookies(req.headers.cookie).get(ADMIN_COOKIE));
+    if (!user) {
+      res.status(401).json({ ok: false, error: 'No autenticado' });
+      return;
+    }
+    req.adminUser = user;
+    next();
+  } catch (err) {
+    next(err);
   }
-  req.adminUser = user;
-  next();
 }

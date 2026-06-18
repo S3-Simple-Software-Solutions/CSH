@@ -19,11 +19,11 @@ export function safeEqual(a: unknown, b: unknown): boolean {
   return left.length === right.length && crypto.timingSafeEqual(Buffer.from(left), Buffer.from(right));
 }
 
-export function parseCookies(header: string | undefined): Record<string, string> {
-  const out: Record<string, string> = {};
+export function parseCookies(header: string | undefined): Map<string, string> {
+  const out = new Map<string, string>();
   for (const part of String(header || '').split(';')) {
     const idx = part.indexOf('=');
-    if (idx > 0) out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+    if (idx > 0) out.set(part.slice(0, idx).trim(), decodeURIComponent(part.slice(idx + 1).trim()));
   }
   return out;
 }
