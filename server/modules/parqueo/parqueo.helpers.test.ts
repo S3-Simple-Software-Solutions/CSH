@@ -6,7 +6,7 @@ function reservation(patch: Partial<Reservation> = {}): Reservation {
   return {
     id: 'res-1',
     espacioId: 'A-01',
-    userId: 'u-003',
+    userId: 'demo-comercial',
     userName: 'Comercial CSH',
     placa: 'ABC123',
     rol: 'socio',
@@ -31,7 +31,7 @@ describe('parqueo helpers', () => {
   });
 
   it('falls back to the admin user email when no reservation email exists', () => {
-    expect(reservaEmail(reservation({ emailQr: null, userId: 'u-003' }))).toBe('comercial@herediano.com');
+    expect(reservaEmail(reservation({ emailQr: null, userId: 'demo-comercial' }))).toBe('comercial@herediano.com');
   });
 
   it('masks usable email addresses and labels missing ones', () => {
