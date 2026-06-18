@@ -1,6 +1,7 @@
 import { pool } from '../../core/db';
+import { ApiError } from '../../core/errors';
 import { safeEqual } from '../../core/http';
-import { ADMIN_USERS, AdminUser } from './usuarios.data';
+import { ADMIN_USERS, AdminUser, ENV_ADMIN_USER_ID } from './usuarios.data';
 
 export function findAdminUser(login: unknown, password: unknown): AdminUser | null {
   const needle = String(login || '').trim().toLowerCase();
@@ -27,7 +28,15 @@ export function canViewSales(user: AdminUser | null | undefined): boolean {
   return Boolean(user && (user.eventsRole === 'admin' || user.eventsRole === 'operador' || user.eventsRole === 'comercial'));
 }
 
+export function isPasswordManagedByEnv(user: AdminUser | null | undefined): boolean {
+  return Boolean(user && user.id === ENV_ADMIN_USER_ID);
+}
+
 export async function setAdminUserPassword(userId: string, password: string): Promise<void> {
+  if (userId === ENV_ADMIN_USER_ID) {
+    throw new ApiError(400, 'La clave del administrador principal se gestiona por variables de entorno');
+  }
+
   await pool.query(
     `insert into admin_passwords (user_id, password, updated_at)
      values ($1, $2, now())
@@ -51,5 +60,6 @@ export function listUsers() {
     couponRole: u.couponRole,
     eventsRole: u.eventsRole,
     sponsor: u.sponsor,
+    passwordManagedByEnv: isPasswordManagedByEnv(u),
   }));
 }
