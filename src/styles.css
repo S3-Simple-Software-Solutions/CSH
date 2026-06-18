@@ -519,6 +519,8 @@ tr:last-child td { border-bottom: 0; }
 .detail-grid b { font-size: 15px; color: var(--paper); font-weight: 600; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(5,4,3,.72); padding: 18px; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+/* Barra de acciones arriba del modal (Eliminar, Sectores, Mapa, etc.) */
+.modal-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
 .modal h2 { margin: 0 0 16px; font-size: 22px; }
 .modal label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 12px 0 4px; }
 .modal input, .modal select, .modal textarea { width: 100%; }

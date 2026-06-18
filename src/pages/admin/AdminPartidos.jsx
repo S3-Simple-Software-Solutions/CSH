@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Pencil, Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 import { api } from '../../utils/api.js';
 import { escudoFor } from '../../data/escudos.js';
 import { useEscClose } from '../../utils/useEscClose.js';
 
 const ESTADOS = ['programado', 'jugado', 'cancelado', 'pospuesto'];
 
-function PartidoModal({ partido, onClose, onSaved }) {
+function PartidoModal({ partido, onClose, onSaved, onDelete }) {
   useEscClose(onClose);
   const isEdit = Boolean(partido?.id);
   const [tipo, setTipo] = useState(partido?.tipo ?? 'proximo');
@@ -58,6 +58,11 @@ function PartidoModal({ partido, onClose, onSaved }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head"><h2>{isEdit ? 'Editar partido' : 'Nuevo partido'}</h2><button className="icon-text ghost" onClick={onClose}>✕</button></div>
+        {isEdit && (
+          <div className="modal-toolbar">
+            <button className="btn ghost danger" onClick={onDelete}><Trash2 size={14} />Eliminar</button>
+          </div>
+        )}
         <div className="toggle-group" style={{ marginBottom: '1rem' }}>
           <button className={`btn${tipo === 'proximo' ? '' : ' ghost'}`} onClick={() => setTipo('proximo')}>Próximo</button>
           <button className={`btn${tipo === 'resultado' ? '' : ' ghost'}`} onClick={() => setTipo('resultado')}>Resultado</button>
@@ -89,7 +94,10 @@ function PartidoModal({ partido, onClose, onSaved }) {
           </>
         )}
         {error && <div className="error">{error}</div>}
-        <button className="btn" onClick={save} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button>
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose} disabled={busy}>Cancelar</button>
+          <button className="btn" onClick={save} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button>
+        </div>
       </div>
     </div>
   );
@@ -135,10 +143,10 @@ export default function AdminPartidos() {
       </div>
       <div className="table">
         <table>
-          <thead><tr><th>Tipo</th><th>Competición</th><th>Partido</th><th>Fecha</th><th>Marcador</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Tipo</th><th>Competición</th><th>Partido</th><th>Fecha</th><th>Marcador</th><th>Estado</th></tr></thead>
           <tbody>
             {partidos.map((p) => (
-              <tr key={p.id}>
+              <tr key={p.id} className="clickable-row" onClick={() => setModal(p)}>
                 <td><span className={`pill${p.tipo === 'proximo' ? '' : ' ok'}`}>{p.tipo === 'proximo' ? 'Próximo' : 'Resultado'}</span></td>
                 <td className="muted">{p.competicion}</td>
                 <td>
@@ -157,16 +165,12 @@ export default function AdminPartidos() {
                 <td className="muted">{new Date(p.fecha).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                 <td className="muted">{p.golesLocal != null ? `${p.golesLocal} - ${p.golesVisita}` : '—'}</td>
                 <td><span className="pill">{p.estado}</span></td>
-                <td className="row-actions">
-                  <button className="btn ghost" onClick={() => setModal(p)}><Pencil size={14} />Editar</button>
-                  <button className="btn ghost danger" onClick={() => setDelTarget(p)}><Trash2 size={14} /></button>
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {modal !== null && <PartidoModal partido={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+      {modal !== null && <PartidoModal partido={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
       {delTarget && <ConfirmModal title="Eliminar partido" text={`¿Eliminar ${delTarget.equipoLocal} vs ${delTarget.equipoVisita}? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>
   );

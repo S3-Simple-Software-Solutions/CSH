@@ -1,34 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { GripVertical, Pencil, Trash2, Plus } from 'lucide-react';
+import { GripVertical, Trash2, Plus } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { api, uploadFile } from '../../utils/api.js';
 import { useEscClose } from '../../utils/useEscClose.js';
 
-function SortableRow({ sponsor, onEdit, onDelete, onToggleActivo }) {
+function SortableRow({ sponsor, onEdit }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sponsor.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   return (
-    <tr ref={setNodeRef} style={style}>
-      <td><button className="icon-text ghost drag-handle" {...attributes} {...listeners} title="Arrastrar"><GripVertical size={15} /></button></td>
+    <tr ref={setNodeRef} style={style} className="clickable-row" onClick={() => onEdit(sponsor)}>
+      <td onClick={(e) => e.stopPropagation()}><button className="icon-text ghost drag-handle" {...attributes} {...listeners} title="Arrastrar"><GripVertical size={15} /></button></td>
       <td>{sponsor.logoPath ? <img src={sponsor.logoPath} alt={sponsor.nombre} className="thumb-logo" /> : <div className="thumb-placeholder" />}</td>
       <td><strong>{sponsor.nombre}</strong></td>
       <td>{sponsor.esApparel ? <span className="pill ok">Apparel</span> : <span className="pill">Patrocinador</span>}</td>
-      <td>
-        <button className={`btn ghost tight${!sponsor.activo ? ' danger' : ''}`} onClick={() => onToggleActivo(sponsor)} title={sponsor.activo ? 'Desactivar' : 'Activar'}>
-          {sponsor.activo ? '✓' : '✕'}
-        </button>
-      </td>
-      <td className="row-actions">
-        <button className="btn ghost" onClick={() => onEdit(sponsor)}><Pencil size={14} />Editar</button>
-        <button className="btn ghost danger" onClick={() => onDelete(sponsor)}><Trash2 size={14} /></button>
-      </td>
+      <td><span className={`pill${sponsor.activo ? ' ok' : ''}`}>{sponsor.activo ? 'Activo' : 'Inactivo'}</span></td>
     </tr>
   );
 }
 
-function SponsorModal({ sponsor, onClose, onSaved }) {
+function SponsorModal({ sponsor, onClose, onSaved, onDelete }) {
   useEscClose(onClose);
   const isEdit = Boolean(sponsor?.id);
   const [form, setForm] = useState({
@@ -74,6 +66,11 @@ function SponsorModal({ sponsor, onClose, onSaved }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head"><h2>{isEdit ? 'Editar sponsor' : 'Nuevo sponsor'}</h2><button className="icon-text ghost" onClick={onClose}>✕</button></div>
+        {isEdit && (
+          <div className="modal-toolbar">
+            <button className="btn ghost danger" onClick={onDelete}><Trash2 size={14} />Eliminar</button>
+          </div>
+        )}
         <label>Nombre *</label>
         <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Reebok" />
         <label>Orden</label>
@@ -87,7 +84,10 @@ function SponsorModal({ sponsor, onClose, onSaved }) {
         <input ref={fileRef} type="file" accept="image/*,.svg" style={{ display: 'none' }} onChange={handleFile} />
         <button className="btn ghost" onClick={() => fileRef.current.click()}>Seleccionar logo</button>
         {error && <div className="error">{error}</div>}
-        <button className="btn" onClick={save} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button>
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose} disabled={busy}>Cancelar</button>
+          <button className="btn" onClick={save} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button>
+        </div>
       </div>
     </div>
   );
@@ -119,11 +119,6 @@ export default function AdminSponsors() {
   const load = () => api('/admin/api/sponsors').then((d) => d.ok && setSponsors(d.sponsors));
   useEffect(() => { load(); }, []);
 
-  async function toggleActivo(s) {
-    await api(`/admin/api/sponsors/${s.id}`, { method: 'PATCH', body: JSON.stringify({ activo: !s.activo }) });
-    load();
-  }
-
   async function confirmDelete() {
     setDelBusy(true);
     await api(`/admin/api/sponsors/${delTarget.id}`, { method: 'DELETE' });
@@ -150,21 +145,19 @@ export default function AdminSponsors() {
       </div>
       <div className="table">
         <table>
-          <thead><tr><th></th><th>Logo</th><th>Nombre</th><th>Tipo</th><th>Activo</th><th></th></tr></thead>
+          <thead><tr><th></th><th>Logo</th><th>Nombre</th><th>Tipo</th><th>Activo</th></tr></thead>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={sponsors.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <tbody>
                 {sponsors.map((s) => (
-                  <SortableRow key={s.id} sponsor={s}
-                    onEdit={(sp) => setModal(sp)} onDelete={(sp) => setDelTarget(sp)}
-                    onToggleActivo={toggleActivo} />
+                  <SortableRow key={s.id} sponsor={s} onEdit={(sp) => setModal(sp)} />
                 ))}
               </tbody>
             </SortableContext>
           </DndContext>
         </table>
       </div>
-      {modal !== null && <SponsorModal sponsor={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+      {modal !== null && <SponsorModal sponsor={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
       {delTarget && <ConfirmModal title="Eliminar sponsor" text={`¿Eliminar a ${delTarget.nombre}? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>
   );
