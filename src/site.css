@@ -303,6 +303,9 @@
 }
 @media (max-width: 900px) {
   .site-burger { display: inline-flex; }
+  /* Quitar backdrop-filter en mobile: si no, .site-top crea un bloque contenedor
+     para position:fixed y atrapa el drawer dentro de los 68px del header. */
+  .site-top { backdrop-filter: none; }
   /* Navbar mobile = drawer deslizante desde la izquierda (igual que el admin). */
   .site-nav {
     position: fixed; top: 0; left: 0; bottom: 0;
