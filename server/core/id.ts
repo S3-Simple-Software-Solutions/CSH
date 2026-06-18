@@ -10,7 +10,8 @@ export function slugify(value: string): string {
     .replace(/[áéíóúüñ]/g, (ch) => ACCENTS[ch] || ch)
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
+    .slice(0, 80)
+    .replace(/-+$/g, '');
 }
 
 export const IMG_EXT: Record<string, string> = {

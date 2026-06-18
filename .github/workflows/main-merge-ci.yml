@@ -1,0 +1,154 @@
+name: Main Merge CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: main-merge-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+  security-events: write
+
+jobs:
+  code-review:
+    name: Code Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  unit-testing:
+    name: Unit Testing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+  app-health:
+    name: Build and Health Check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: csh_ci
+          POSTGRES_USER: csh_ci
+          POSTGRES_PASSWORD: csh_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U csh_ci -d csh_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      CI: true
+      PORT: 8088
+      DATABASE_URL: postgres://csh_ci:csh_ci@localhost:5432/csh_ci
+      HEREDIANO_SECRET: ci-health-secret
+      HEREDIANO_ADMIN_PASS: ci-admin-pass
+      HEREDIANO_APP_URL: http://127.0.0.1:8088
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck server and build client
+        run: npm run check
+
+      - name: Build production server
+        run: npm run build:server
+
+      - name: Start compiled app
+        run: |
+          npm start > /tmp/csh-app.log 2>&1 &
+          echo $! > /tmp/csh-app.pid
+
+      - name: Wait for health endpoint
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:${PORT}/healthz; then
+              echo "App health check passed"
+              exit 0
+            fi
+            echo "Waiting for app health... ($attempt/30)"
+            sleep 2
+          done
+          echo "App failed health check"
+          cat /tmp/csh-app.log
+          exit 1
+
+      - name: Check SPA response
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:${PORT}/ > /tmp/csh-home.html
+          grep -q '<div id="root"></div>' /tmp/csh-home.html
+
+      - name: Upload app logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csh-app-health-logs
+          path: /tmp/csh-app.log
+
+      - name: Stop compiled app
+        if: always()
+        run: |
+          if [ -f /tmp/csh-app.pid ]; then
+            kill "$(cat /tmp/csh-app.pid)" || true
+          fi

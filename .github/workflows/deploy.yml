@@ -89,4 +89,17 @@ jobs:
             systemctl --user enable csh.service
             systemctl --user restart csh.service
             systemctl --user status csh.service --no-pager
+            echo "── health check ──"
+            for attempt in {1..30}; do
+              if curl --fail --silent --show-error http://127.0.0.1:8088/healthz; then
+                echo "Health check passed"
+                exit 0
+              fi
+              echo "Waiting for deployed app health... ($attempt/30)"
+              sleep 2
+            done
+            echo "Health check failed"
+            systemctl --user status csh.service --no-pager || true
+            journalctl --user -u csh.service -n 100 --no-pager || true
+            exit 1
           ENDSSH
