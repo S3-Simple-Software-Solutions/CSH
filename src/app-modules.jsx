@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, ArrowLeftRight, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Globe, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, Route, ScanLine, Search, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
+import { Accessibility, ArrowLeftRight, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCcw, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
@@ -2304,11 +2304,11 @@ function AdminEventosTab() {
             <td>{ev.boletosVendidos}</td>
             <td>{money(ev.ingresosCrc)}</td>
             <td className="row-actions" onClick={(e) => e.stopPropagation()}>
-              <button className="btn ghost" onClick={() => setModal({ type: 'tipos', evento: ev.evento })}>Sectores</button>
+              <button className="btn ghost" onClick={() => setModal({ type: 'tipos', evento: ev.evento })}><LayoutGrid size={16} />Sectores</button>
               {ev.evento.estado === 'publicado'
-                ? <button className="btn ghost" onClick={() => setEstado(ev, 'finalizado')}>Cerrar</button>
-                : <button className="btn ghost" onClick={() => setEstado(ev, 'publicado')}>Publicar</button>}
-              <button className="btn ghost" onClick={() => setModal({ type: 'cortesia', evento: ev.evento, tipos: ev.tipos })}>Cortesia</button>
+                ? <button className="btn ghost" onClick={() => setEstado(ev, 'finalizado')}><Lock size={16} />Cerrar</button>
+                : <button className="btn ghost" onClick={() => setEstado(ev, 'publicado')}><Send size={16} />Publicar</button>}
+              <button className="btn ghost" onClick={() => setModal({ type: 'cortesia', evento: ev.evento, tipos: ev.tipos })}><Gift size={16} />Cortesia</button>
             </td>
           </tr>
         ))}
