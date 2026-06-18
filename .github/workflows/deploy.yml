@@ -3,33 +3,92 @@ name: Deploy CSH
 on:
   push:
     branches: [main]
-  workflow_dispatch:
+
+# The deploy workflow is the only place that creates release versions. A rollback
+# must point at one of these release versions instead of inventing a new one.
+permissions:
+  contents: write
+
+concurrency:
+  group: csh-production-deploy
+  cancel-in-progress: false
+
+env:
+  APP_ROOT: /home/tony/Desktop/APP_CSH
+  REPO_URL: https://github.com/S3-Simple-Software-Solutions/CSH.git
 
 jobs:
   deploy:
+    name: Versioned Production Deploy
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout deployed commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          RELEASE_VERSION="csh-main-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+          COMMIT_SUBJECT="$(git log -1 --pretty=%s "$GITHUB_SHA")"
+
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "commit_subject<<EOF"
+            echo "$COMMIT_SUBJECT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Parse ALL_SECRETS
         id: vars
+        shell: bash
         env:
           ALL_SECRETS: ${{ secrets.ALL_SECRETS }}
         run: |
+          set -euo pipefail
+
           printf '%s' "$ALL_SECRETS" > /tmp/secrets.env
 
-          get() { grep "^$1=" /tmp/secrets.env | cut -d= -f2-; }
+          get() {
+            local line
+            line="$(grep -m1 "^$1=" /tmp/secrets.env || true)"
+            printf '%s' "${line#*=}"
+          }
 
-          echo "ngrok_host=$(get NGROK_HOST)"   >> $GITHUB_OUTPUT
-          echo "ngrok_port=$(get NGROK_PORT)"   >> $GITHUB_OUTPUT
-          echo "deploy_user=$(get DEPLOY_USER)" >> $GITHUB_OUTPUT
+          echo "ngrok_host=$(get NGROK_HOST)" >> "$GITHUB_OUTPUT"
+          echo "ngrok_port=$(get NGROK_PORT)" >> "$GITHUB_OUTPUT"
+          echo "deploy_user=$(get DEPLOY_USER)" >> "$GITHUB_OUTPUT"
 
-          # Decode SSH key from base64 (avoids multiline parsing)
-          get DEPLOY_SSH_KEY_B64 | base64 -d > /tmp/deploy_key
+          DEPLOY_SSH_KEY_B64="$(get DEPLOY_SSH_KEY_B64)"
+          if [ -z "$DEPLOY_SSH_KEY_B64" ]; then
+            echo "::error::DEPLOY_SSH_KEY_B64 is missing from ALL_SECRETS"
+            exit 1
+          fi
+
+          # Decode SSH key from base64 to avoid multiline secret parsing issues.
+          printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
 
-          # Build .env content for the host
+          # Shared runtime environment. Systemd reads this file for every
+          # release, so rollbacks do not need to copy secrets into old builds.
           {
             echo "DATABASE_URL=$(get DATABASE_URL)"
+            echo "HEREDIANO_SECRET=$(get HEREDIANO_SECRET)"
+            echo "HEREDIANO_USER=$(get HEREDIANO_USER)"
+            echo "HEREDIANO_PASS=$(get HEREDIANO_PASS)"
+            echo "HEREDIANO_ADMIN_USER=$(get HEREDIANO_ADMIN_USER)"
+            echo "HEREDIANO_ADMIN_EMAIL=$(get HEREDIANO_ADMIN_EMAIL)"
+            echo "HEREDIANO_ADMIN_PASS=$(get HEREDIANO_ADMIN_PASS)"
+            echo "HEREDIANO_CONTACT_EMAIL=$(get HEREDIANO_CONTACT_EMAIL)"
+            echo "HEREDIANO_SESSION_HOURS=$(get HEREDIANO_SESSION_HOURS)"
+            echo "HEREDIANO_ADMIN_SESSION_HOURS=$(get HEREDIANO_ADMIN_SESSION_HOURS)"
             echo "HEREDIANO_SMTP_HOST=$(get HEREDIANO_SMTP_HOST)"
             echo "HEREDIANO_SMTP_PORT=$(get HEREDIANO_SMTP_PORT)"
             echo "HEREDIANO_SMTP_SECURE=$(get HEREDIANO_SMTP_SECURE)"
@@ -39,44 +98,100 @@ jobs:
             echo "HEREDIANO_SMTP_PASS=$(get HEREDIANO_SMTP_PASS)"
           } > /tmp/app.env
 
-      - name: Deploy via SSH (ngrok tunnel)
+      - name: Deploy version via SSH
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          DEPLOY_SHA: ${{ github.sha }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NGROK_HOST: ${{ steps.vars.outputs.ngrok_host }}
+          NGROK_PORT: ${{ steps.vars.outputs.ngrok_port }}
+          DEPLOY_USER: ${{ steps.vars.outputs.deploy_user }}
         run: |
-          HOST=${{ steps.vars.outputs.ngrok_host }}
-          PORT=${{ steps.vars.outputs.ngrok_port }}
-          USER=${{ steps.vars.outputs.deploy_user }}
+          set -euo pipefail
 
-          # Copy .env to host
+          # Copy the shared environment first; the remote script installs it
+          # under APP_ROOT/shared/.env with restrictive permissions.
           scp -i /tmp/deploy_key \
-              -P "$PORT" \
+              -P "$NGROK_PORT" \
               -o StrictHostKeyChecking=no \
               /tmp/app.env \
-              "$USER@$HOST:/home/tony/Desktop/APP_CSH/.env"
+              "$DEPLOY_USER@$NGROK_HOST:/tmp/csh-app.env"
 
-          # Pull, build, restart
           ssh -i /tmp/deploy_key \
-              -p "$PORT" \
+              -p "$NGROK_PORT" \
               -o StrictHostKeyChecking=no \
-              "$USER@$HOST" bash <<'ENDSSH'
-            set -e
-            cd /home/tony/Desktop/APP_CSH
-            echo "── pulling ──"
-            git fetch origin main
-            git reset --hard origin/main
-            echo "── installing ──"
+              "$DEPLOY_USER@$NGROK_HOST" \
+              "APP_ROOT='$APP_ROOT' REPO_URL='$REPO_URL' RELEASE_VERSION='$RELEASE_VERSION' DEPLOY_SHA='$DEPLOY_SHA' RUN_URL='$RUN_URL' bash -se" <<'ENDSSH'
+            set -euo pipefail
+
+            SHARED_DIR="$APP_ROOT/shared"
+            RELEASES_DIR="$APP_ROOT/releases"
+            CURRENT_LINK="$APP_ROOT/current"
+            SOURCE_DIR="$APP_ROOT/source"
+            RELEASE_DIR="$RELEASES_DIR/$RELEASE_VERSION"
+            TMP_RELEASE="$RELEASES_DIR/.tmp-$RELEASE_VERSION-$$"
+
+            echo "== Preparing versioned deploy: $RELEASE_VERSION =="
+            mkdir -p "$SHARED_DIR" "$RELEASES_DIR"
+            install -m 600 /tmp/csh-app.env "$SHARED_DIR/.env"
+            rm -f /tmp/csh-app.env
+
+            # Keep one source checkout only for fetching commits/tags. Releases
+            # are immutable directories generated from git archive below.
+            if [ ! -d "$SOURCE_DIR/.git" ]; then
+              if [ -d "$APP_ROOT/.git" ]; then
+                SOURCE_DIR="$APP_ROOT"
+              else
+                git clone "$REPO_URL" "$SOURCE_DIR"
+              fi
+            fi
+
+            cd "$SOURCE_DIR"
+            git remote set-url origin "$REPO_URL" || true
+            git fetch --prune origin main
+            git rev-parse --verify "$DEPLOY_SHA^{commit}" >/dev/null
+
+            if [ -e "$RELEASE_DIR" ]; then
+              echo "Release already exists: $RELEASE_DIR"
+              echo "Refusing to overwrite an existing release version."
+              exit 1
+            fi
+
+            rm -rf "$TMP_RELEASE"
+            mkdir -p "$TMP_RELEASE"
+            git archive "$DEPLOY_SHA" | tar -x -C "$TMP_RELEASE"
+
+            cd "$TMP_RELEASE"
+            echo "== Installing dependencies for $RELEASE_VERSION =="
             npm ci
-            echo "── building ──"
+            echo "== Building $RELEASE_VERSION =="
             npm run build
-            echo "── ensuring service unit (ExecStart=npm start -> node dist-server/index.js) ──"
+
+            cat > RELEASE_MANIFEST.json <<EOF
+          {
+            "version": "$RELEASE_VERSION",
+            "sha": "$DEPLOY_SHA",
+            "source": "push-to-main",
+            "runUrl": "$RUN_URL",
+            "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+            mv "$TMP_RELEASE" "$RELEASE_DIR"
+            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+
+            echo "== Ensuring systemd service points at current release =="
             mkdir -p ~/.config/systemd/user
-            cat > ~/.config/systemd/user/csh.service <<'UNIT'
+            cat > ~/.config/systemd/user/csh.service <<UNIT
           [Unit]
           Description=CSH Herediano app
           After=network.target
 
           [Service]
           Type=simple
-          WorkingDirectory=/home/tony/Desktop/APP_CSH
-          EnvironmentFile=/home/tony/Desktop/APP_CSH/.env
+          WorkingDirectory=$CURRENT_LINK
+          EnvironmentFile=$SHARED_DIR/.env
           ExecStart=/bin/bash -lc 'npm start'
           Restart=always
           RestartSec=3
@@ -84,22 +199,73 @@ jobs:
           [Install]
           WantedBy=default.target
           UNIT
+
             systemctl --user daemon-reload
-            echo "── restarting ──"
             systemctl --user enable csh.service
             systemctl --user restart csh.service
-            systemctl --user status csh.service --no-pager
-            echo "── health check ──"
+
+            echo "== Health check =="
             for attempt in {1..30}; do
               if curl --fail --silent --show-error http://127.0.0.1:8088/healthz; then
-                echo "Health check passed"
+                echo "Health check passed for $RELEASE_VERSION"
                 exit 0
               fi
               echo "Waiting for deployed app health... ($attempt/30)"
               sleep 2
             done
-            echo "Health check failed"
+
+            echo "Health check failed for $RELEASE_VERSION"
             systemctl --user status csh.service --no-pager || true
             journalctl --user -u csh.service -n 100 --no-pager || true
             exit 1
           ENDSSH
+
+      - name: Publish GitHub release marker
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          SHORT_SHA: ${{ steps.release.outputs.short_sha }}
+          COMMIT_SUBJECT: ${{ steps.release.outputs.commit_subject }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/release-notes.md <<EOF
+          Production deploy created from a push to main.
+
+          - Version: $RELEASE_VERSION
+          - Commit: $GITHUB_SHA ($SHORT_SHA)
+          - Commit message: $COMMIT_SUBJECT
+          - Deploy run: $RUN_URL
+
+          Rollback with the "Rollback CSH" workflow and release_version=$RELEASE_VERSION.
+          EOF
+
+          if gh release view "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "CSH $RELEASE_VERSION" \
+              --notes-file /tmp/release-notes.md
+          else
+            gh release create "$RELEASE_VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "CSH $RELEASE_VERSION" \
+              --notes-file /tmp/release-notes.md
+          fi
+
+      - name: Deployment summary
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "### CSH deploy"
+            echo ""
+            echo "- Version: \`$RELEASE_VERSION\`"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Run: $RUN_URL"
+            echo "- Rollback workflow input: \`$RELEASE_VERSION\`"
+          } >> "$GITHUB_STEP_SUMMARY"
