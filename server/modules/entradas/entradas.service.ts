@@ -4,7 +4,8 @@ import { canManageEvents, canOperateGate, canViewSales } from '../usuarios/usuar
 import { getEntradasRepository } from './entradas.repository';
 import { sendEntradasEmail } from './entradas.mail';
 import { extractCodigo } from './entradas.helpers';
-import { CompraLinea, EventoInput, PagoEntrada, TipoInput } from './entradas.types';
+import { CompraLinea, EventoInput, MapaBatchInput, MapaEventoInput, MapaTipoInput, MapPoint, MapRect, MapZoneKey, PagoEntrada, TipoInput } from './entradas.types';
+import { isValidZoneKey, mapaFromZoneKey } from './entradas.erc.zones';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_POR_LINEA = 10;
@@ -161,12 +162,15 @@ function buildEventoInput(body: any): EventoInput {
   if (nombre.length < 3) throw new ApiError(400, 'Nombre del evento muy corto');
   const fecha = String(body?.fecha || '').trim();
   if (!fecha || Number.isNaN(new Date(fecha).getTime())) throw new ApiError(400, 'Fecha invalida');
+  const rawFormato = String(body?.formato || '').trim();
+  const formato = rawFormato === 'espectaculo' ? 'espectaculo' : 'partido';
   return {
     nombre,
     descripcion: String(body?.descripcion || '').trim(),
     venue: String(body?.venue || '').trim(),
     fecha,
     imagenUrl: String(body?.imagenUrl || '').trim(),
+    formato,
   };
 }
 
@@ -204,7 +208,12 @@ function buildTipoInput(body: any): TipoInput {
 
 export async function adminCrearTipo(eventoId: string, body: any, user: AdminUser) {
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
-  const tipo = await getEntradasRepository().crearTipo(String(eventoId), buildTipoInput(body));
+  let tipo = await getEntradasRepository().crearTipo(String(eventoId), buildTipoInput(body));
+  const zoneKey = String(body?.zoneKey || '').trim();
+  if (zoneKey && isValidZoneKey(zoneKey)) {
+    const mapa = mapaFromZoneKey(zoneKey);
+    if (mapa) tipo = await getEntradasRepository().actualizarMapaTipo(tipo.id, mapa);
+  }
   await getEntradasRepository().logEvento('sector_creado', {
     eventoId: tipo.eventoId,
     user: actorOf(user),
@@ -270,4 +279,74 @@ export async function adminCortesia(body: { eventoId?: unknown; tipoId?: unknown
 export async function adminLog(opts: { limit: number; offset: number; eventoId?: string }, user: AdminUser) {
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para ver el log');
   return getEntradasRepository().listLog(opts);
+}
+
+// ── Mapa de zonas ────────────────────────────────────────────────
+
+function inUnit(n: number): boolean {
+  return typeof n === 'number' && isFinite(n) && n >= 0 && n <= 1;
+}
+
+function validateMapaTipo(input: MapaTipoInput): void {
+  if (input.shape === 'rect') {
+    const r = input.points as MapRect;
+    if (!inUnit(r.x) || !inUnit(r.y) || typeof r.w !== 'number' || r.w <= 0 || typeof r.h !== 'number' || r.h <= 0)
+      throw new ApiError(400, 'Rect inválido: x,y en [0,1] y w,h > 0');
+    if (r.x + r.w > 1.001 || r.y + r.h > 1.001)
+      throw new ApiError(400, 'Rect sale del mapa (x+w o y+h > 1)');
+  } else if (input.shape === 'polygon') {
+    const pts = input.points as MapPoint[];
+    if (!Array.isArray(pts) || pts.length < 3)
+      throw new ApiError(400, 'Polygon requiere al menos 3 puntos');
+    for (const p of pts) {
+      if (!inUnit(p.x) || !inUnit(p.y)) throw new ApiError(400, 'Punto de polígono fuera de [0,1]');
+    }
+  } else if (input.shape === 'zone') {
+    const z = input.points as MapZoneKey;
+    if (!z?.key || !isValidZoneKey(z.key))
+      throw new ApiError(400, `Zona inválida: ${z?.key ?? 'sin key'}`);
+  } else {
+    throw new ApiError(400, `Shape inválido: ${input.shape}`);
+  }
+}
+
+export async function adminGetMapaEvento(eventoId: string, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const result = await getEntradasRepository().getMapaEvento(eventoId);
+  if (!result) throw new ApiError(404, 'Evento no encontrado');
+  return result;
+}
+
+export async function adminActualizarMapaEvento(eventoId: string, rawInput: any, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const input: MapaEventoInput = { mapImageUrl: rawInput.mapImageUrl };
+  if ('fieldTemplate' in rawInput) {
+    const t = rawInput.fieldTemplate;
+    if (t !== null && !['2', '3', '4'].includes(String(t)))
+      throw new ApiError(400, 'fieldTemplate debe ser "2", "3" o "4"');
+    input.fieldTemplate = t === null ? null : String(t);
+  }
+  if ('fieldSplits' in rawInput) {
+    const s = rawInput.fieldSplits;
+    if (s !== null) {
+      if (!Array.isArray(s) || s.some((v: any) => typeof v !== 'number' || v <= 0 || v >= 1))
+        throw new ApiError(400, 'fieldSplits debe ser array de números en (0,1)');
+    }
+    input.fieldSplits = s;
+  }
+  return getEntradasRepository().actualizarMapaEvento(eventoId, input);
+}
+
+export async function adminActualizarMapaTipo(tipoId: string, input: MapaTipoInput | null, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  if (input !== null) validateMapaTipo(input);
+  return getEntradasRepository().actualizarMapaTipo(tipoId, input);
+}
+
+export async function adminGuardarMapaBatch(eventoId: string, input: MapaBatchInput, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  for (const item of input.tipos) {
+    if (item.mapa !== null) validateMapaTipo(item.mapa);
+  }
+  return getEntradasRepository().guardarMapaBatch(eventoId, input);
 }

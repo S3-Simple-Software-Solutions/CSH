@@ -36,4 +36,8 @@ export const env = {
   SMTP_SECURE: bool(process.env.HEREDIANO_SMTP_SECURE || process.env.SMTP_SECURE),
   SMTP_USER: process.env.HEREDIANO_SMTP_USER || process.env.SMTP_USER || '',
   SMTP_PASS: process.env.HEREDIANO_SMTP_PASS || process.env.SMTP_PASS || '',
+  // Analytics: agente Claude vía el proxy api_agents del workspace.
+  AGENTS_BASE_URL: process.env.AGENTS_BASE_URL || 'http://127.0.0.1:3400',
+  AGENTS_API_KEY: process.env.AGENTS_API_KEY || '',
+  ANALYTICS_MODEL: process.env.ANALYTICS_MODEL || 'claude-sonnet-4-6',
 };

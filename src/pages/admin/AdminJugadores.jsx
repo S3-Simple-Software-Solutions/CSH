@@ -1,27 +1,29 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { GripVertical, Pencil, Trash2, Plus, Star, UserX } from 'lucide-react';
+import { GripVertical, Trash2, Plus, Star, UserX } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { api, uploadFile } from '../../utils/api.js';
+import { useEscClose } from '../../utils/useEscClose.js';
 
 const CATEGORIAS = ['Porteros', 'Defensas', 'Mediocampistas', 'Mediocampistas Ofensivos', 'Delanteros', 'Staff'];
 const MAX_DESTACADOS = 5;
 
-function SortableRow({ jugador, onEdit, onDelete, onToggleDestacado, onToggleActivo, destacadosCount }) {
+function SortableRow({ jugador, onEdit, onToggleDestacado, onToggleActivo, destacadosCount }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: jugador.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const canDestacado = jugador.destacado || destacadosCount < MAX_DESTACADOS;
+  const stop = (e) => e.stopPropagation();
   return (
-    <tr ref={setNodeRef} style={style}>
-      <td><button className="icon-text ghost drag-handle" {...attributes} {...listeners} title="Arrastrar"><GripVertical size={15} /></button></td>
+    <tr ref={setNodeRef} style={style} className="clickable-row" onClick={() => onEdit(jugador)}>
+      <td onClick={stop}><button className="icon-text ghost drag-handle" {...attributes} {...listeners} title="Arrastrar"><GripVertical size={15} /></button></td>
       <td>{jugador.fotoPath ? <img src={jugador.fotoPath} alt={jugador.nombre} className="thumb" /> : <div className="thumb-placeholder" />}</td>
       <td><strong>{jugador.nombre}</strong></td>
       <td className="muted">{jugador.dorsal ?? '—'}</td>
       <td className="muted">{jugador.posicion ?? '—'}</td>
       <td><span className="pill">{jugador.categoria}</span></td>
       <td className="muted">{jugador.nacionalidad}</td>
-      <td>
+      <td onClick={stop}>
         <button
           className={`btn ghost tight${jugador.destacado ? ' active' : ''}`}
           onClick={() => onToggleDestacado(jugador)}
@@ -31,20 +33,17 @@ function SortableRow({ jugador, onEdit, onDelete, onToggleDestacado, onToggleAct
           <Star size={14} />
         </button>
       </td>
-      <td>
+      <td onClick={stop}>
         <button className={`btn ghost tight${!jugador.activo ? ' danger' : ''}`} onClick={() => onToggleActivo(jugador)} title={jugador.activo ? 'Desactivar' : 'Activar'}>
           {jugador.activo ? '✓' : <UserX size={14} />}
         </button>
-      </td>
-      <td className="row-actions">
-        <button className="btn ghost" onClick={() => onEdit(jugador)}><Pencil size={14} />Editar</button>
-        <button className="btn ghost danger" onClick={() => onDelete(jugador)}><Trash2 size={14} /></button>
       </td>
     </tr>
   );
 }
 
-function JugadorModal({ jugador, onClose, onSaved }) {
+function JugadorModal({ jugador, onClose, onSaved, onDelete }) {
+  useEscClose(onClose);
   const isEdit = Boolean(jugador?.id);
   const [form, setForm] = useState({
     nombre: jugador?.nombre ?? '',
@@ -92,6 +91,11 @@ function JugadorModal({ jugador, onClose, onSaved }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head"><h2>{isEdit ? 'Editar jugador' : 'Nuevo jugador'}</h2><button className="icon-text ghost" onClick={onClose}>✕</button></div>
+        {isEdit && (
+          <div className="modal-toolbar">
+            <button className="btn ghost danger" onClick={onDelete}><Trash2 size={14} />Eliminar</button>
+          </div>
+        )}
         <label>Nombre *</label>
         <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Marcel Hernández" />
         <div className="two">
@@ -113,13 +117,17 @@ function JugadorModal({ jugador, onClose, onSaved }) {
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
         <button className="btn ghost" onClick={() => fileRef.current.click()}>Seleccionar imagen</button>
         {error && <div className="error">{error}</div>}
-        <button className="btn" onClick={save} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button>
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose} disabled={busy}>Cancelar</button>
+          <button className="btn" onClick={save} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button>
+        </div>
       </div>
     </div>
   );
 }
 
 function ConfirmModal({ title, text, onConfirm, onClose, busy }) {
+  useEscClose(onClose);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -181,13 +189,13 @@ export default function AdminJugadores() {
       </div>
       <div className="table">
         <table>
-          <thead><tr><th></th><th>Foto</th><th>Nombre</th><th>#</th><th>Posición</th><th>Categoría</th><th>NAC</th><th>★</th><th>Activo</th><th></th></tr></thead>
+          <thead><tr><th></th><th>Foto</th><th>Nombre</th><th>#</th><th>Posición</th><th>Categoría</th><th>NAC</th><th>★</th><th>Activo</th></tr></thead>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={jugadores.map((j) => j.id)} strategy={verticalListSortingStrategy}>
               <tbody>
                 {jugadores.map((j) => (
                   <SortableRow key={j.id} jugador={j} destacadosCount={destacadosCount}
-                    onEdit={(jug) => setModal(jug)} onDelete={(jug) => setDelTarget(jug)}
+                    onEdit={(jug) => setModal(jug)}
                     onToggleDestacado={toggleDestacado} onToggleActivo={toggleActivo} />
                 ))}
               </tbody>
@@ -195,7 +203,7 @@ export default function AdminJugadores() {
           </DndContext>
         </table>
       </div>
-      {modal !== null && <JugadorModal jugador={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+      {modal !== null && <JugadorModal jugador={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
       {delTarget && <ConfirmModal title="Eliminar jugador" text={`¿Eliminar a ${delTarget.nombre}? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>
   );

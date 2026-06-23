@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pencil, Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 import { api, uploadFile } from '../../utils/api.js';
+import { useEscClose } from '../../utils/useEscClose.js';
 
 const DEFAULT_CATEGORIAS = ['Noticias', 'Refuerzos', 'Comunicados', 'Crónicas', 'Cantera', 'Femenino', 'Entradas'];
 
-function NoticiaModal({ noticia, categorias, onClose, onSaved }) {
+function NoticiaModal({ noticia, categorias, onClose, onSaved, onDelete }) {
+  useEscClose(onClose);
   const isEdit = Boolean(noticia?.id);
   const [form, setForm] = useState({
     titulo: noticia?.titulo ?? '',
@@ -52,6 +54,11 @@ function NoticiaModal({ noticia, categorias, onClose, onSaved }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head"><h2>{isEdit ? 'Editar noticia' : 'Nueva noticia'}</h2><button className="icon-text ghost" onClick={onClose}>✕</button></div>
+        {isEdit && (
+          <div className="modal-toolbar">
+            <button className="btn ghost danger" onClick={onDelete}><Trash2 size={14} />Eliminar</button>
+          </div>
+        )}
         <label>Título *</label>
         <input value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} placeholder="Herediano anuncia refuerzo…" />
         <div className="two">
@@ -82,13 +89,17 @@ function NoticiaModal({ noticia, categorias, onClose, onSaved }) {
         <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
         <button className="btn ghost" onClick={() => fileRef.current.click()}>Seleccionar imagen</button>
         {error && <div className="error">{error}</div>}
-        <button className="btn" onClick={save} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button>
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose} disabled={busy}>Cancelar</button>
+          <button className="btn" onClick={save} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button>
+        </div>
       </div>
     </div>
   );
 }
 
 function ConfirmModal({ title, text, onConfirm, onClose, busy }) {
+  useEscClose(onClose);
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -118,12 +129,6 @@ export default function AdminNoticias() {
   });
   useEffect(() => { load(); }, []);
 
-  async function toggleEstado(n) {
-    const estado = n.estado === 'publicado' ? 'borrador' : 'publicado';
-    await api(`/admin/api/noticias/${n.id}`, { method: 'PATCH', body: JSON.stringify({ estado }) });
-    load();
-  }
-
   async function confirmDelete() {
     setDelBusy(true);
     await api(`/admin/api/noticias/${delTarget.id}`, { method: 'DELETE' });
@@ -139,29 +144,21 @@ export default function AdminNoticias() {
       </div>
       <div className="table">
         <table>
-          <thead><tr><th>Portada</th><th>Título</th><th>Categoría</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Portada</th><th>Título</th><th>Categoría</th><th>Fecha</th><th>Estado</th></tr></thead>
           <tbody>
             {noticias.map((n) => (
-              <tr key={n.id}>
+              <tr key={n.id} className="clickable-row" onClick={() => setModal(n)}>
                 <td>{n.imagenPath ? <img src={n.imagenPath} alt={n.titulo} className="thumb" /> : <div className="thumb-placeholder" />}</td>
                 <td><strong>{n.titulo}</strong><br /><small className="muted">{n.fuente}</small></td>
                 <td><span className="pill">{n.categoria}</span></td>
                 <td className="muted">{new Date(n.fecha).toLocaleDateString('es-CR')}</td>
-                <td>
-                  <button className={`pill estado${n.estado === 'publicado' ? ' ok' : ''}`} onClick={() => toggleEstado(n)}>
-                    {n.estado === 'publicado' ? 'Publicado' : 'Borrador'}
-                  </button>
-                </td>
-                <td className="row-actions">
-                  <button className="btn ghost" onClick={() => setModal(n)}><Pencil size={14} />Editar</button>
-                  <button className="btn ghost danger" onClick={() => setDelTarget(n)}><Trash2 size={14} /></button>
-                </td>
+                <td><span className={`pill ${n.estado}`}>{n.estado === 'publicado' ? 'Publicado' : 'Borrador'}</span></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {modal !== null && <NoticiaModal noticia={modal?.id ? modal : null} categorias={categorias} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+      {modal !== null && <NoticiaModal noticia={modal?.id ? modal : null} categorias={categorias} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
       {delTarget && <ConfirmModal title="Eliminar noticia" text={`¿Eliminar "${delTarget.titulo}"? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>
   );

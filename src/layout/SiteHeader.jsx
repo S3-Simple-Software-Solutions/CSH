@@ -86,6 +86,7 @@ export default function SiteHeader() {
 
   return (
     <header className="site-top">
+      {open && <button className="site-nav-backdrop" aria-label="Cerrar menú" onClick={close} />}
       <div className="site-top-inner" ref={navRef}>
 
         {/* Marca */}
@@ -107,6 +108,15 @@ export default function SiteHeader() {
 
         {/* Navegación */}
         <nav id="site-nav" className={`site-nav${open ? ' open' : ''}`}>
+
+          {/* Cabecera del drawer (solo mobile): marca + cerrar */}
+          <div className="site-nav-head">
+            <Link className="site-brand" to="/" onClick={close}>
+              <img src={club.logo} alt="" />
+              <span className="site-brand-name">Herediano</span>
+            </Link>
+            <button className="site-nav-close" onClick={close} aria-label="Cerrar menú"><X size={20} /></button>
+          </div>
 
           {/* Bloque 1: páginas del club */}
           <div className="site-nav-section site-nav-main" role="group" aria-label="Páginas del club">

@@ -1,7 +1,23 @@
 export type EventoEstado = 'borrador' | 'publicado' | 'agotado' | 'finalizado';
+export type MapShape = 'rect' | 'polygon' | 'zone';
+
+export interface MapRect { x: number; y: number; w: number; h: number }
+export interface MapPoint { x: number; y: number }
+export interface MapZoneKey { key: string }
+export type MapPoints = MapRect | MapPoint[] | MapZoneKey;
+
+export interface ZonaMapa {
+  shape: MapShape;
+  points: MapPoints;
+  color: string;
+  labelX?: number | null;
+  labelY?: number | null;
+}
 export type TipoEstado = 'activo' | 'inactivo';
 export type OrdenEstado = 'pagada' | 'cancelada';
 export type BoletoEstado = 'valido' | 'usado' | 'cancelado';
+
+export type EventoFormato = 'partido' | 'espectaculo';
 
 export interface Evento {
   id: string;
@@ -13,6 +29,11 @@ export interface Evento {
   estado: EventoEstado;
   imagenUrl: string;
   creadoAt: string;
+  mapImageUrl: string;
+  mapVersion: number;
+  formato: EventoFormato;
+  fieldTemplate: string | null;
+  fieldSplits: number[] | null;
 }
 
 export interface TicketType {
@@ -25,6 +46,25 @@ export interface TicketType {
   estado: TipoEstado;
   orden: number;
   disponibles: number;
+  mapa: ZonaMapa | null;
+}
+
+export interface MapaTipoInput {
+  shape: MapShape;
+  points: MapPoints;
+  color?: string;
+  labelX?: number | null;
+  labelY?: number | null;
+}
+
+export interface MapaEventoInput {
+  mapImageUrl?: string;
+  fieldTemplate?: string | null;
+  fieldSplits?: number[] | null;
+}
+
+export interface MapaBatchInput {
+  tipos: Array<{ tipoId: string; mapa: MapaTipoInput | null }>;
 }
 
 export interface PagoEntrada {
@@ -100,6 +140,7 @@ export interface EventoInput {
   venue?: string;
   fecha: string;
   imagenUrl?: string;
+  formato?: EventoFormato;
 }
 
 export interface TipoInput {

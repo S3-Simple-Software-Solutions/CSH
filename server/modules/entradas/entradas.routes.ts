@@ -144,3 +144,45 @@ entradasRouter.get('/admin/api/entradas/log', requireAdmin, async (req, res, nex
     next(err);
   }
 });
+
+// ── Rutas de mapa de zonas ─────────────────────────────────────────
+
+entradasRouter.get('/admin/api/entradas/eventos/:id/mapa', requireAdmin, async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    res.json({ ok: true, ...(await entradas.adminGetMapaEvento(id, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.put('/admin/api/entradas/eventos/:id/mapa', requireAdmin, async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    const evento = await entradas.adminActualizarMapaEvento(id, req.body, req.adminUser!);
+    res.json({ ok: true, evento });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.put('/admin/api/entradas/tipos/:id/mapa', requireAdmin, async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    const mapa = req.body.mapa ?? null;
+    const tipo = await entradas.adminActualizarMapaTipo(id, mapa, req.adminUser!);
+    res.json({ ok: true, tipo });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/eventos/:id/mapa/batch', requireAdmin, async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    const tipos = await entradas.adminGuardarMapaBatch(id, req.body, req.adminUser!);
+    res.json({ ok: true, tipos });
+  } catch (err) {
+    next(err);
+  }
+});

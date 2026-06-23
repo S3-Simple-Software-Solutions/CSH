@@ -1,12 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
+import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, Map as MapIcon, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
+import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
+import { StadiumMap } from './pages/entradas/StadiumMap.jsx';
+import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
+import { gramillaKeysForTemplate } from './pages/entradas/stadiumFieldGeometry.js';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
 import AdminSponsors from './pages/admin/AdminSponsors.jsx';
 import AdminMensajes from './pages/admin/AdminMensajes.jsx';
 import QRCode from 'qrcode';
+import { useEscClose } from './utils/useEscClose.js';
 import sotano1Img from './croquis/sotano-1.png';
 import sotano2Img from './croquis/sotano-2.png';
 import './styles.css';
@@ -1636,6 +1641,7 @@ function AdminApp() {
               const Icon = mod.icon;
               return <button key={path} className={route === path ? 'active' : ''} onClick={() => navigate(path)}><Icon size={17} />{mod.title}</button>;
             })}
+            {user.isSuperAdmin && <button className={route === '/admin/analytics' ? 'active' : ''} onClick={() => navigate('/admin/analytics')}><Sparkles size={17} />Analytics</button>}
             <p className="side-section-label">Contenido del sitio</p>
             <button className={route === '/admin/jugadores' ? 'active' : ''} onClick={() => navigate('/admin/jugadores')}><Users2 size={17} />Jugadores</button>
             <button className={route === '/admin/noticias' ? 'active' : ''} onClick={() => navigate('/admin/noticias')}><Newspaper size={17} />Noticias</button>
@@ -1645,7 +1651,7 @@ function AdminApp() {
       </aside>
       <section className="admin-main">
         <AdminTopBar user={user} onLogout={logout} onMenu={() => setMenuOpen(true)} />
-        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
+        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/analytics' ? <AdminAnalytics user={user} /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
   );
@@ -1923,6 +1929,87 @@ function PasswordModal({ user, onClose }) {
   return <Modal title="Cambiar clave" onClose={onClose}><p className="muted">{user.email}</p><label>Nueva contrasena</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /><label>Confirmar</label><input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />{msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}<button className="btn" onClick={save}>Guardar clave</button></Modal>;
 }
 
+const ANALYTICS_LOG_LABELS = { query_usuarios: 'Usuarios', query_entradas_log: 'Log de entradas', query_parqueo_eventos: 'Eventos de parqueo' };
+
+function AnalyticsLogBlock({ log }) {
+  const rows = Array.isArray(log.rows) ? log.rows : [];
+  const filtros = log.input && Object.keys(log.input).length ? JSON.stringify(log.input) : 'sin filtros';
+  return (
+    <div className="analytics-log">
+      <div className="analytics-log-head">
+        <span className="pill">{ANALYTICS_LOG_LABELS[log.tool] || log.tool}</span>
+        <span className="muted">{filtros} · {rows.length} registro{rows.length === 1 ? '' : 's'}</span>
+      </div>
+      {rows.length === 0
+        ? <p className="muted">Sin coincidencias.</p>
+        : <pre className="analytics-log-rows">{rows.map((r) => JSON.stringify(r)).join('\n')}</pre>}
+    </div>
+  );
+}
+
+function AdminAnalytics() {
+  const [pregunta, setPregunta] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function ask(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const q = pregunta.trim();
+    if (!q || loading) return;
+    setLoading(true); setError(null); setResult(null);
+    const d = await api('/admin/api/analytics/query', { method: 'POST', body: JSON.stringify({ pregunta: q }) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error || 'No se pudo procesar la consulta.');
+    setResult(d);
+  }
+
+  const ejemplos = [
+    '¿Qué socio tiene más puntos de fidelidad?',
+    '¿Cuántas cortesías se emitieron y a quién?',
+    '¿Qué placas entraron al parqueo recientemente?',
+  ];
+
+  return (
+    <main className="page">
+      <p className="eyebrow">Inteligencia de datos</p>
+      <h1>Analytics</h1>
+      <p className="sub">Preguntá en lenguaje natural sobre personas, entradas y parqueo. Analytics responde y muestra los registros que analizó.</p>
+
+      <form className="analytics-prompt" onSubmit={ask}>
+        <textarea
+          value={pregunta}
+          onChange={(e) => setPregunta(e.target.value)}
+          placeholder="Ej: ¿Qué socio gastó más este año?"
+          rows={2}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(e); } }}
+        />
+        <button className="btn" type="submit" disabled={loading}><Sparkles size={16} />{loading ? 'Analizando…' : 'Preguntar'}</button>
+      </form>
+      <div className="analytics-examples">
+        {ejemplos.map((ej) => <button key={ej} type="button" className="chip chip-ghost" onClick={() => setPregunta(ej)}>{ej}</button>)}
+      </div>
+
+      {error && <div className="error" style={{ marginTop: 16 }}>{error}</div>}
+
+      {result && (
+        <>
+          <section className="analytics-card" style={{ marginTop: 22 }}>
+            <h3><Sparkles size={15} />Respuesta de Analytics</h3>
+            <p className="analytics-answer">{result.answer}</p>
+          </section>
+          <section style={{ marginTop: 18 }}>
+            <h3 className="detail-section"><BarChart3 size={15} />Logs analizados</h3>
+            {(!result.logs || result.logs.length === 0)
+              ? <p className="muted">Analytics respondió sin consultar registros.</p>
+              : result.logs.map((log, i) => <AnalyticsLogBlock key={i} log={log} />)}
+          </section>
+        </>
+      )}
+    </main>
+  );
+}
+
 function AdminParking({ user }) {
   const [state, setState] = useState({ espacios: [], reservas: [] });
   const [events, setEvents] = useState([]);
@@ -2157,6 +2244,7 @@ function AdminSpaceModal({ modal, user, onClose, afterAction }) {
 }
 
 function Modal({ title, children, onClose, wide = false }) {
+  useEscClose(onClose);
   return <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}><section className={`modal${wide ? ' wide' : ''}`}><div className="modal-head"><h3>{title}</h3><button onClick={onClose}>×</button></div>{children}</section></div>;
 }
 function MessageModal({ title, text, onClose }) {
@@ -2267,35 +2355,66 @@ function PublicEventDetail({ slug }) {
   const [qty, setQty] = useState({});
   const [checkout, setCheckout] = useState(false);
   const [done, setDone] = useState(null);
-  useEffect(() => { api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}`).then((d) => (d.ok ? setData(d) : setError(d.error))); }, [slug]);
+  const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'mapa'
+  useEffect(() => {
+    api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}`).then((d) => {
+      if (d.ok) {
+        setData(d);
+        // Si hay zonas con mapa, mostrar mapa por defecto
+        if (d.tipos?.some((t) => t.mapa) || isErcVectorLayout(d.evento)) setViewMode('mapa');
+      } else {
+        setError(d.error);
+      }
+    });
+  }, [slug]);
   if (error) return (<><main className="page"><p className="eyebrow">Entradas</p><h1>Evento no disponible</h1><p className="sub">{error}</p><a className="btn ghost" href="/entradas">Volver a eventos</a></main></>);
   if (!data) return (<><main className="page"><p>Cargando...</p></main></>);
   const { evento, tipos } = data;
   const setCantidad = (id, n, max) => setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(max, n)) }));
+  const handleMapUpdate = (tipoId, delta) => {
+    const t = tipos.find((t) => t.id === tipoId);
+    if (!t) return;
+    const cur = qty[tipoId] ?? 0;
+    setCantidad(tipoId, cur + delta, Math.min(10, t.disponibles));
+  };
   const lineas = tipos.filter((t) => qty[t.id] > 0).map((t) => ({ tipoId: t.id, cantidad: qty[t.id] }));
   const total = tipos.reduce((s, t) => s + t.precioCrc * (qty[t.id] || 0), 0);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
+  const hasMapa = isErcVectorLayout(evento) || tipos.some((t) => t.mapa);
   return (
     <>
-      
       <main className="page">
         <a className="back-link" href="/entradas">‹ Eventos</a>
         <p className="eyebrow">{fmtFullDate(evento.fecha)} · {evento.venue}</p>
         <h1>{evento.nombre}</h1>
         <p className="sub">{evento.descripcion}</p>
-        <section className="sector-list">
-          {tipos.map((t) => (
-            <div key={t.id} className={`sector ${t.disponibles === 0 ? 'agotado' : ''}`}>
-              <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioCrc)}</span></div>
-              <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
-              <div className="stepper">
-                <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
-                <span>{qty[t.id] || 0}</span>
-                <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
-              </div>
-            </div>
-          ))}
-        </section>
+
+        {hasMapa && (
+          <div className="view-toggle">
+            <button className={`btn ghost${viewMode === 'mapa' ? ' active' : ''}`} onClick={() => setViewMode('mapa')}>Ver mapa</button>
+            <button className={`btn ghost${viewMode === 'lista' ? ' active' : ''}`} onClick={() => setViewMode('lista')}>Ver lista</button>
+          </div>
+        )}
+
+        {viewMode === 'mapa' && hasMapa
+          ? <StadiumMap evento={evento} tipos={tipos} qty={qty} onUpdate={handleMapUpdate} />
+          : (
+            <section className="sector-list">
+              {tipos.map((t) => (
+                <div key={t.id} className={`sector ${t.disponibles === 0 ? 'agotado' : ''}`}>
+                  <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioCrc)}</span></div>
+                  <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
+                  <div className="stepper">
+                    <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
+                    <span>{qty[t.id] || 0}</span>
+                    <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
+                  </div>
+                </div>
+              ))}
+            </section>
+          )
+        }
+
         <div className="checkout-bar">
           <div><span>{count} boleto(s)</span><b>{money(total)}</b></div>
           <button className="btn" disabled={count === 0} onClick={() => setCheckout(true)}>Continuar</button>
@@ -2395,29 +2514,28 @@ function AdminEventosTab() {
     <>
       <div className="actions left"><button className="btn" onClick={() => setModal({ type: 'evento' })}><Plus size={16} />Nuevo evento</button></div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
-      <div className="table"><table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th><th>Vendidos</th><th>Ingresos</th><th></th></tr></thead><tbody>
+      <div className="table"><table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>
         {eventos.map((ev) => (
-          <tr key={ev.evento.id} className="clickable-row" onClick={() => setModal({ type: 'detalle', evento: ev.evento })}>
-            <td><button className="link-cell" onClick={(e) => { e.stopPropagation(); setModal({ type: 'detalle', evento: ev.evento }); }}>{ev.evento.nombre}</button></td>
+          <tr key={ev.evento.id} className="clickable-row" onClick={() => setModal({ type: 'detalle', evento: ev.evento, tipos: ev.tipos })}>
+            <td><button className="link-cell" onClick={(e) => { e.stopPropagation(); setModal({ type: 'detalle', evento: ev.evento, tipos: ev.tipos }); }}>{ev.evento.nombre}</button></td>
             <td>{fmtFullDate(ev.evento.fecha)}</td>
             <td><span className={`pill ${ev.evento.estado}`}>{ev.evento.estado}</span></td>
             <td>{ev.boletosVendidos}</td>
             <td>{money(ev.ingresosCrc)}</td>
-            <td className="row-actions" onClick={(e) => e.stopPropagation()}>
-              <button className="btn ghost" onClick={() => setModal({ type: 'tipos', evento: ev.evento })}><LayoutGrid size={16} />Sectores</button>
-              {ev.evento.estado === 'publicado'
-                ? <button className="btn ghost" onClick={() => setEstado(ev, 'finalizado')}><Lock size={16} />Cerrar</button>
-                : <button className="btn ghost" onClick={() => setEstado(ev, 'publicado')}><Send size={16} />Publicar</button>}
-              <button className="btn ghost" onClick={() => setModal({ type: 'cortesia', evento: ev.evento, tipos: ev.tipos })}><Gift size={16} />Cortesia</button>
-            </td>
           </tr>
         ))}
       </tbody></table></div>
       <EntradasLogPanel eventos={eventos} refreshKey={logRefreshKey} />
-      {modal?.type === 'detalle' && <EventDetalleModal evento={modal.evento} onClose={() => setModal(null)} />}
+      {modal?.type === 'detalle' && (
+        <EventDetalleModal
+          evento={modal.evento}
+          tipos={modal.tipos}
+          onClose={() => { setModal(null); refresh(); refreshLog(); }}
+          onToggleEstado={() => { setEstado({ evento: modal.evento }, modal.evento.estado === 'publicado' ? 'finalizado' : 'publicado'); setModal(null); }}
+          onChanged={() => { refresh(); refreshLog(); }}
+        />
+      )}
       {modal?.type === 'evento' && <EventFormModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); refreshLog(); }} />}
-      {modal?.type === 'tipos' && <TiposModal evento={modal.evento} onClose={() => { setModal(null); refresh(); refreshLog(); }} />}
-      {modal?.type === 'cortesia' && <CortesiaModal evento={modal.evento} tipos={modal.tipos} onClose={() => { setModal(null); refresh(); refreshLog(); }} />}
     </>
   );
 }
@@ -2494,7 +2612,7 @@ function EntradasLogPanel({ eventos, refreshKey }) {
 }
 
 function EventFormModal({ onClose, onDone }) {
-  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '' });
+  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '', formato: 'partido' });
   const [error, setError] = useState('');
   async function submit() {
     setError('');
@@ -2504,55 +2622,308 @@ function EventFormModal({ onClose, onDone }) {
   }
   return (
     <Modal title="Nuevo evento" onClose={onClose}>
-      <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
-      <label>Lugar</label><input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} />
-      <label>Fecha y hora</label><input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
-      <label>Descripcion</label><input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+      <label>Nombre</label>
+      <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
+      <label>Lugar</label>
+      <input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} />
+      <label>Fecha y hora</label>
+      <input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+      <label>Descripcion</label>
+      <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+      <label>Formato</label>
+      <div className="evento-formato-opts">
+        {[
+          { value: 'partido', label: 'Partido', desc: '6 tribunas del estadio' },
+          { value: 'espectaculo', label: 'Espectáculo', desc: 'Tribunas + zonas en la gramilla' },
+        ].map(({ value, label, desc }) => (
+          <label key={value} className={`evento-formato-opt${form.formato === value ? ' active' : ''}`}>
+            <input
+              type="radio"
+              name="formato"
+              value={value}
+              checked={form.formato === value}
+              onChange={() => setForm({ ...form, formato: value })}
+            />
+            <span className="evento-formato-opt-label">{label}</span>
+            <span className="evento-formato-opt-desc">{desc}</span>
+          </label>
+        ))}
+      </div>
       {error && <div className="error">{error}</div>}
       <button className="btn" onClick={submit}>Crear evento</button>
     </Modal>
   );
 }
 
-function TiposModal({ evento, onClose }) {
+function TiposModal({ evento, onClose, asPanel }) {
   const [tipos, setTipos] = useState([]);
-  const [form, setForm] = useState({ nombre: '', precioCrc: '', stockTotal: '' });
+  const [form, setForm] = useState({ sectorKey: '', precioCrc: '', stockTotal: '' });
+  const [gramForm, setGramForm] = useState({ key: '', nombre: '', precioCrc: '', stockTotal: '' });
   const [error, setError] = useState('');
-  const refresh = async () => { const d = await api(`/admin/api/entradas/eventos/${evento.id}`); if (d.ok) setTipos(d.tipos); };
+  const [adding, setAdding] = useState(false);
+  const esEspectaculo = evento?.formato === 'espectaculo';
+  const fieldTemplate = evento?.fieldTemplate ?? '2';
+
+  const refresh = async () => {
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}`);
+    if (d.ok) setTipos(d.tipos);
+  };
   useEffect(() => { refresh(); }, []);
+
+  const usedKeys = useMemo(() => {
+    const keys = new Set();
+    for (const t of tipos) {
+      const k = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
+      if (k) keys.add(k);
+    }
+    return keys;
+  }, [tipos]);
+
+  const usedNombres = useMemo(
+    () => new Set(tipos.map((t) => t.nombre.toLowerCase())),
+    [tipos],
+  );
+
+  const availableSectores = useMemo(
+    () => ERC_SECTORES.filter((s) => !usedKeys.has(s.key) && !usedNombres.has(s.nombre.toLowerCase())),
+    [usedKeys, usedNombres],
+  );
+
+  // Slots gramilla disponibles según plantilla
+  const gramillaSlots = useMemo(() => {
+    if (!esEspectaculo) return [];
+    return gramillaKeysForTemplate(fieldTemplate).filter((k) => !usedKeys.has(k));
+  }, [esEspectaculo, fieldTemplate, usedKeys]);
+
+  function pickSector(key) {
+    const s = ERC_SECTORES.find((x) => x.key === key);
+    if (!s) return setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
+    setForm({ sectorKey: key, precioCrc: String(s.precio), stockTotal: String(s.stock) });
+  }
+
+  function pickGramillaSlot(key) {
+    const meta = GRAMILLA_ZONE_META[key];
+    const defaults = GRAMILLA_SECTORES.find((x) => x.key === key);
+    setGramForm({ key, nombre: meta?.label ?? key, precioCrc: String(defaults?.precio ?? 15000), stockTotal: String(defaults?.stock ?? 300) });
+  }
+
+  async function createSector(payload) {
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!d.ok) throw new Error(d.error || 'Error al crear sector');
+    return d;
+  }
+
   async function add() {
     setError('');
-    const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, { method: 'POST', body: JSON.stringify({ nombre: form.nombre, precioCrc: Number(form.precioCrc), stockTotal: Number(form.stockTotal) }) });
-    if (!d.ok) return setError(d.error);
-    setForm({ nombre: '', precioCrc: '', stockTotal: '' }); refresh();
+    const s = ERC_SECTORES.find((x) => x.key === form.sectorKey);
+    if (!s) return setError('Selecciona un sector del listado');
+    const precioCrc = Number(form.precioCrc);
+    const stockTotal = Number(form.stockTotal);
+    if (!Number.isFinite(precioCrc) || precioCrc < 0) return setError('Precio inválido');
+    if (!Number.isFinite(stockTotal) || stockTotal < 0) return setError('Cupo inválido');
+    setAdding(true);
+    try {
+      await createSector({ nombre: s.nombre, precioCrc, stockTotal, zoneKey: s.key });
+      setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdding(false);
+    }
   }
+
+  async function addAllMissing() {
+    setError('');
+    if (availableSectores.length === 0) return setError('Todos los sectores del catálogo ya están agregados');
+    setAdding(true);
+    try {
+      for (const s of availableSectores) {
+        await createSector({ nombre: s.nombre, precioCrc: s.precio, stockTotal: s.stock, zoneKey: s.key });
+      }
+      setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function addGramilla() {
+    setError('');
+    if (!gramForm.key) return setError('Selecciona un slot de gramilla');
+    const nombre = gramForm.nombre.trim() || GRAMILLA_ZONE_META[gramForm.key]?.label;
+    const precioCrc = Number(gramForm.precioCrc);
+    const stockTotal = Number(gramForm.stockTotal);
+    if (nombre.length < 2) return setError('Nombre de zona muy corto');
+    if (!Number.isFinite(precioCrc) || precioCrc < 0) return setError('Precio inválido');
+    if (!Number.isFinite(stockTotal) || stockTotal < 0) return setError('Cupo inválido');
+    setAdding(true);
+    try {
+      await createSector({ nombre, precioCrc, stockTotal, zoneKey: gramForm.key });
+      setGramForm({ key: '', nombre: '', precioCrc: '', stockTotal: '' });
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdding(false);
+    }
+  }
+
   async function toggle(t) {
-    const d = await api(`/admin/api/entradas/tipos/${t.id}`, { method: 'PUT', body: JSON.stringify({ nombre: t.nombre, precioCrc: t.precioCrc, stockTotal: t.stockTotal, estado: t.estado === 'activo' ? 'inactivo' : 'activo' }) });
+    const d = await api(`/admin/api/entradas/tipos/${t.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        nombre: t.nombre,
+        precioCrc: t.precioCrc,
+        stockTotal: t.stockTotal,
+        estado: t.estado === 'activo' ? 'inactivo' : 'activo',
+      }),
+    });
     if (d.ok) refresh(); else setError(d.error);
   }
-  return (
-    <Modal title={`Sectores · ${evento.nombre}`} onClose={onClose}>
-      <div className="tipos-list">
-        {tipos.map((t) => (
-          <div key={t.id} className="tipo-row">
-            <div><b>{t.nombre}</b><span>{money(t.precioCrc)} · {t.stockVendido}/{t.stockTotal} · {t.estado}</span></div>
-            <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
+
+  const selectedMeta = form.sectorKey ? ERC_ZONE_META[form.sectorKey] : null;
+
+  // Separar tipos por categoría para mostrarlos agrupados
+  const tiposTribuna = tipos.filter((t) => {
+    const k = t.mapa?.points?.key;
+    return !k || !k.startsWith('gramilla-');
+  });
+  const tiposGramilla = tipos.filter((t) => {
+    const k = t.mapa?.points?.key;
+    return k && k.startsWith('gramilla-');
+  });
+
+  const inner = (
+    <>
+
+      {/* Lista de sectores existentes */}
+      {tipos.length > 0 && (
+        <div className="tipos-list">
+          {(esEspectaculo ? [...tiposTribuna, ...tiposGramilla] : tipos).map((t) => {
+            const key = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
+            const meta = (key ? (ERC_ZONE_META[key] ?? GRAMILLA_ZONE_META[key]) : null);
+            const tier = meta?.tier;
+            const isGram = key?.startsWith('gramilla-');
+            return (
+              <div key={t.id} className={`tipo-row${isGram ? ' tipo-row--gramilla' : ''}`}>
+                <div>
+                  {meta && <span className="tipo-swatch" style={{ background: meta.color }} />}
+                  <b>{t.nombre}</b>
+                  {tier && <span className="tipo-tier">{tier}</span>}
+                  <span>{money(t.precioCrc)} · {t.stockVendido}/{t.stockTotal} · {t.estado}</span>
+                </div>
+                <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* === Bloque Tribunas === */}
+      <div className="tipos-section">
+        <h4 className="tipos-section-title">Tribunas</h4>
+        <p className="toolbar-hint">Elige un sector del catálogo ERC; el nombre y la zona del mapa se asignan automáticamente.</p>
+        {availableSectores.length > 0 && (
+          <button type="button" className="btn ghost sector-add-all" onClick={addAllMissing} disabled={adding}>
+            <Plus size={16} />Agregar todos los faltantes ({availableSectores.length})
+          </button>
+        )}
+        <label>Sector tribuna</label>
+        <select
+          value={form.sectorKey}
+          onChange={(e) => pickSector(e.target.value)}
+          disabled={adding || availableSectores.length === 0}
+        >
+          <option value="">
+            {availableSectores.length === 0 ? 'Todas las tribunas ya están' : 'Seleccionar tribuna…'}
+          </option>
+          {availableSectores.map((s) => {
+            const meta = ERC_ZONE_META[s.key];
+            return (
+              <option key={s.key} value={s.key}>
+                {s.nombre} · {meta?.tier ?? '—'} · ₡{s.precio.toLocaleString('es-CR')} · cupo {s.stock}
+              </option>
+            );
+          })}
+        </select>
+        {selectedMeta && (
+          <p className="sector-pick-hint">Zona en mapa: <strong>{selectedMeta.label}</strong> ({selectedMeta.tier})</p>
+        )}
+        <div className="two">
+          <div>
+            <label>Precio CRC</label>
+            <input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} disabled={!form.sectorKey || adding} />
           </div>
-        ))}
+          <div>
+            <label>Cupo</label>
+            <input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} disabled={!form.sectorKey || adding} />
+          </div>
+        </div>
+        {error && <div className="error">{error}</div>}
+        <button className="btn" onClick={add} disabled={adding || !form.sectorKey}>
+          <Plus size={16} />{adding ? 'Agregando…' : 'Agregar tribuna'}
+        </button>
       </div>
-      <label>Nuevo sector</label>
-      <input placeholder="Nombre (ej. Sol Sur)" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-      <div className="two">
-        <div><label>Precio CRC</label><input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} /></div>
-        <div><label>Cupo</label><input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} /></div>
-      </div>
-      {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={add}><Plus size={16} />Agregar sector</button>
-    </Modal>
+
+      {/* === Bloque Gramilla (solo espectáculo) === */}
+      {esEspectaculo && (
+        <div className="tipos-section tipos-section--gramilla">
+          <h4 className="tipos-section-title">Zonas de gramilla</h4>
+          <p className="toolbar-hint">
+            Plantilla activa: <strong>{fieldTemplate} partes</strong>. Agrega un sector por cada zona de la gramilla.
+            Puedes cambiar la plantilla y los límites en el editor de mapa.
+          </p>
+          {gramillaSlots.length === 0 ? (
+            <p className="muted">Todas las zonas de gramilla ya tienen sector.</p>
+          ) : (
+            <>
+              <label>Zona de gramilla</label>
+              <select
+                value={gramForm.key}
+                onChange={(e) => pickGramillaSlot(e.target.value)}
+                disabled={adding}
+              >
+                <option value="">Seleccionar zona…</option>
+                {gramillaSlots.map((k) => {
+                  const meta = GRAMILLA_ZONE_META[k];
+                  return <option key={k} value={k}>{meta?.label ?? k}</option>;
+                })}
+              </select>
+              {gramForm.key && (
+                <>
+                  <label>Nombre visible</label>
+                  <input value={gramForm.nombre} onChange={(e) => setGramForm({ ...gramForm, nombre: e.target.value })} disabled={adding} placeholder={GRAMILLA_ZONE_META[gramForm.key]?.label} />
+                  <div className="two">
+                    <div>
+                      <label>Precio CRC</label>
+                      <input inputMode="numeric" value={gramForm.precioCrc} onChange={(e) => setGramForm({ ...gramForm, precioCrc: e.target.value.replace(/\D/g, '') })} disabled={adding} />
+                    </div>
+                    <div>
+                      <label>Cupo</label>
+                      <input inputMode="numeric" value={gramForm.stockTotal} onChange={(e) => setGramForm({ ...gramForm, stockTotal: e.target.value.replace(/\D/g, '') })} disabled={adding} />
+                    </div>
+                  </div>
+                  <button className="btn btn--green" onClick={addGramilla} disabled={adding}>
+                    <Plus size={16} />{adding ? 'Agregando…' : 'Agregar zona gramilla'}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </>
   );
+  return asPanel ? inner : <Modal title={`Sectores · ${evento.nombre}`} onClose={onClose}>{inner}</Modal>;
 }
 
-function CortesiaModal({ evento, tipos, onClose }) {
+function CortesiaModal({ evento, tipos, onClose, asPanel }) {
   const [form, setForm] = useState({ tipoId: tipos?.[0]?.id || '', nombre: '', email: '' });
   const [msg, setMsg] = useState(null);
   async function submit() {
@@ -2561,8 +2932,8 @@ function CortesiaModal({ evento, tipos, onClose }) {
     if (!d.ok) return setMsg({ type: 'error', text: d.error });
     setMsg({ type: 'ok', text: `Cortesia ${d.boleto.codigo} emitida${d.emailSent ? ' y enviada' : ''}.` });
   }
-  return (
-    <Modal title="Emitir cortesia" onClose={onClose}>
+  const inner = (
+    <>
       <p className="muted">{evento.nombre}</p>
       <label>Sector</label>
       <select value={form.tipoId} onChange={(e) => setForm({ ...form, tipoId: e.target.value })}>{(tipos || []).map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}</select>
@@ -2570,8 +2941,9 @@ function CortesiaModal({ evento, tipos, onClose }) {
       <label>Correo</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <button className="btn" onClick={submit}>Emitir cortesia gratis</button>
-    </Modal>
+    </>
   );
+  return asPanel ? inner : <Modal title="Emitir cortesia" onClose={onClose}>{inner}</Modal>;
 }
 
 function AdminVentasTab() {
@@ -2611,20 +2983,44 @@ function BarRow({ label, value, max, display, sub }) {
   );
 }
 
-function EventDetalleModal({ evento, onClose }) {
+function EventDetalleModal({ evento, tipos, onClose, onToggleEstado, onChanged }) {
+  const [tab, setTab] = useState('detalles');
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   useEffect(() => {
+    if (tab !== 'detalles') return undefined;
+    let alive = true;
+    setData(null); setError(null);
     api(`/admin/api/entradas/ventas/${evento.id}`)
-      .then((d) => { if (d.ok) setData(d); else setError(d.error || 'No se pudo cargar el detalle'); })
-      .catch(() => setError('No se pudo cargar el detalle'));
-  }, [evento.id]);
+      .then((d) => { if (!alive) return; if (d.ok) setData(d); else setError(d.error || 'No se pudo cargar el detalle'); })
+      .catch(() => { if (alive) setError('No se pudo cargar el detalle'); });
+    return () => { alive = false; };
+  }, [evento.id, tab]);
 
   return (
     <Modal title={evento.nombre} onClose={onClose} wide>
-      {error && <div className="error">{error}</div>}
-      {!error && !data && <p className="muted">Cargando detalle…</p>}
-      {data && <EventDetalleContenido evento={evento} data={data} />}
+      <div className="modal-toolbar">
+        <button className={`btn ghost${tab === 'detalles' ? ' active' : ''}`} onClick={() => setTab('detalles')}><BarChart3 size={16} />Detalles</button>
+        <button className={`btn ghost${tab === 'sectores' ? ' active' : ''}`} onClick={() => setTab('sectores')}><LayoutGrid size={16} />Sectores</button>
+        <button className={`btn ghost${tab === 'mapa' ? ' active' : ''}`} onClick={() => setTab('mapa')}><MapIcon size={16} />Mapa</button>
+        <button className={`btn ghost${tab === 'cortesia' ? ' active' : ''}`} onClick={() => setTab('cortesia')}><Gift size={16} />Cortesia</button>
+        {onToggleEstado && (evento.estado === 'publicado'
+          ? <button className="btn ghost" onClick={onToggleEstado}><Lock size={16} />Finalizar</button>
+          : <button className="btn ghost" onClick={onToggleEstado}><Send size={16} />Publicar</button>)}
+      </div>
+
+      {tab === 'detalles' && <>
+        {error && <div className="error">{error}</div>}
+        {!error && !data && <p className="muted">Cargando detalle…</p>}
+        {data && <EventDetalleContenido evento={evento} data={data} />}
+      </>}
+      {tab === 'sectores' && <TiposModal evento={evento} asPanel onClose={() => setTab('detalles')} />}
+      {tab === 'mapa' && <StadiumMapEditor evento={evento} tipos={tipos} embedded onClose={() => setTab('detalles')} onSaved={onChanged} />}
+      {tab === 'cortesia' && <CortesiaModal evento={evento} tipos={tipos} asPanel onClose={() => setTab('detalles')} />}
+
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={onClose}>Cerrar</button>
+      </div>
     </Modal>
   );
 }
