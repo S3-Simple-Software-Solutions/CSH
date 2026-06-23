@@ -1974,7 +1974,7 @@ function AdminAnalytics() {
     <main className="page">
       <p className="eyebrow">Inteligencia de datos</p>
       <h1>Analytics</h1>
-      <p className="sub">Preguntá en lenguaje natural sobre personas, entradas y parqueo. El agente responde y muestra los registros que analizó.</p>
+      <p className="sub">Preguntá en lenguaje natural sobre personas, entradas y parqueo. Analytics responde y muestra los registros que analizó.</p>
 
       <form className="analytics-prompt" onSubmit={ask}>
         <textarea
@@ -1995,13 +1995,13 @@ function AdminAnalytics() {
       {result && (
         <>
           <section className="analytics-card" style={{ marginTop: 22 }}>
-            <h3><Sparkles size={15} />Respuesta del agente</h3>
+            <h3><Sparkles size={15} />Respuesta de Analytics</h3>
             <p className="analytics-answer">{result.answer}</p>
           </section>
           <section style={{ marginTop: 18 }}>
             <h3 className="detail-section"><BarChart3 size={15} />Logs analizados</h3>
             {(!result.logs || result.logs.length === 0)
-              ? <p className="muted">El agente respondió sin consultar registros.</p>
+              ? <p className="muted">Analytics respondió sin consultar registros.</p>
               : result.logs.map((log, i) => <AnalyticsLogBlock key={i} log={log} />)}
           </section>
         </>
