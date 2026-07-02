@@ -1,14 +1,17 @@
 import {
   Boleto,
-  CompraInput,
   CompraResultado,
   Evento,
   EventoInput,
+  IniciarOrdenInput,
+  IniciarOrdenResult,
   ListLogOptions,
   EntradaLog,
   MapaBatchInput,
   MapaEventoInput,
   MapaTipoInput,
+  OrdenPublica,
+  PagoEntrada,
   TicketType,
   TipoInput,
   VentasEvento,
@@ -26,7 +29,12 @@ export interface EntradasRepository {
   // Público
   publicEventos(): Promise<Evento[]>;
   publicEventoBySlug(slug: string): Promise<{ evento: Evento; tipos: TicketType[] } | null>;
-  comprar(input: CompraInput): Promise<CompraResultado>;
+  // Flujo de pago con pasarela: reserva cupo + orden pendiente → webhook confirma.
+  iniciarOrdenPendiente(input: IniciarOrdenInput): Promise<IniciarOrdenResult>;
+  setProviderRef(ordenId: string, providerRef: string): Promise<void>;
+  confirmarOrden(ordenId: string, pago: PagoEntrada): Promise<CompraResultado | null>;
+  expirarOrden(ordenId: string): Promise<void>;
+  getOrdenPublica(ref: string): Promise<OrdenPublica | null>;
   getBoletoByCodigo(codigo: string): Promise<Boleto | null>;
   getOrdenBoletos(ordenId: string): Promise<Boleto[]>;
   getOrden(ordenId: string): Promise<{ id: string; eventoId: string; compradorEmail: string; compradorNombre: string } | null>;

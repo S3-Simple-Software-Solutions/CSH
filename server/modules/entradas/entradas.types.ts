@@ -14,7 +14,7 @@ export interface ZonaMapa {
   labelY?: number | null;
 }
 export type TipoEstado = 'activo' | 'inactivo';
-export type OrdenEstado = 'pagada' | 'cancelada';
+export type OrdenEstado = 'pendiente' | 'pagada' | 'cancelada';
 export type BoletoEstado = 'valido' | 'usado' | 'cancelado';
 
 export type EventoFormato = 'partido' | 'espectaculo';
@@ -132,6 +132,34 @@ export interface CompraResultado {
   orden: Orden;
   boletos: Boleto[];
   evento: Evento;
+}
+
+// Snapshot de una línea comprada, guardado en la orden pendiente para poder
+// materializar los boletos cuando el webhook confirma el pago.
+export interface OrdenLineaSnapshot {
+  tipoId: string;
+  cantidad: number;
+  nombre: string;
+  precioCrc: number;
+}
+
+export interface IniciarOrdenInput {
+  slug: string;
+  lineas: CompraLinea[];
+  comprador: { nombre: string; email: string };
+  provider: string;
+}
+
+export interface IniciarOrdenResult {
+  ordenId: string;
+  total: number;
+  evento: Evento;
+  lineItems: { nombre: string; montoUnitarioCrc: number; cantidad: number }[];
+}
+
+export interface OrdenPublica {
+  estado: OrdenEstado;
+  boletos: { codigo: string; qrData: string; tipoNombre?: string }[];
 }
 
 export interface EventoInput {

@@ -1,11 +1,13 @@
 import { ApiError } from '../../core/errors';
+import { env } from '../../config/env';
 import type { AdminUser } from '../usuarios/usuarios.data';
 import { canManageEvents, canOperateGate, canViewSales } from '../usuarios/usuarios.service';
 import { getEntradasRepository } from './entradas.repository';
 import { sendEntradasEmail } from './entradas.mail';
 import { extractCodigo } from './entradas.helpers';
-import { CompraLinea, EventoInput, MapaBatchInput, MapaEventoInput, MapaTipoInput, MapPoint, MapRect, MapZoneKey, PagoEntrada, TipoInput } from './entradas.types';
+import { CompraLinea, EventoInput, MapaBatchInput, MapaEventoInput, MapaTipoInput, MapPoint, MapRect, MapZoneKey, TipoInput } from './entradas.types';
 import { isValidZoneKey, mapaFromZoneKey } from './entradas.erc.zones';
+import { getPaymentGateway } from './payments/payments.factory';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_POR_LINEA = 10;
@@ -43,18 +45,6 @@ function normalizeLineas(raw: unknown): CompraLinea[] {
   return lineas;
 }
 
-// Pago simulado, idéntico al de parqueo: tarjeta terminada en 0000 = rechazo.
-function validatePago(pago: any, total: number): PagoEntrada | null {
-  if (total <= 0) return null;
-  const cardNumber = String(pago?.cardNumber || '').replace(/\D/g, '');
-  if (String(pago?.name || '').trim().length < 3) throw new ApiError(400, 'Ingresa el nombre del tarjetahabiente');
-  if (cardNumber.length < 13 || cardNumber.length > 19) throw new ApiError(400, 'Numero de tarjeta invalido');
-  if (!/^\d{2}\/\d{2}$/.test(String(pago?.exp || '').trim())) throw new ApiError(400, 'Fecha de expiracion invalida');
-  if (String(pago?.cvv || '').replace(/\D/g, '').length < 3) throw new ApiError(400, 'CVV invalido');
-  if (cardNumber.endsWith('0000')) throw new ApiError(402, 'La transaccion fue rechazada por el emisor');
-  return { transaccion: `CSH-ENT-${Date.now().toString(36).toUpperCase()}`, monto: total, timestamp: new Date().toISOString(), metodo: `****${cardNumber.slice(-4)}` };
-}
-
 // ---- Público ----
 
 export async function getPublicEventos() {
@@ -67,7 +57,10 @@ export async function getPublicEvento(slug: string) {
   return data;
 }
 
-export async function comprarPublico(body: { slug: string; lineas: unknown; comprador?: { nombre?: unknown; email?: unknown }; pago?: any }) {
+// Inicia el checkout: reserva cupo (orden pendiente) y crea la sesión de pago
+// hospedada en la pasarela. Devuelve la URL a la que el frontend redirige.
+// El boleto NO se emite aquí: se materializa en el webhook al confirmar el pago.
+export async function iniciarCheckoutPublico(body: { slug: string; lineas: unknown; comprador?: { nombre?: unknown; email?: unknown } }) {
   const slug = String(body.slug || '').trim();
   const nombre = String(body.comprador?.nombre || '').trim();
   const email = normalizeEmail(body.comprador?.email);
@@ -75,39 +68,64 @@ export async function comprarPublico(body: { slug: string; lineas: unknown; comp
   const lineas = normalizeLineas(body.lineas);
 
   const repo = getEntradasRepository();
-  // Validación de precio antes de cobrar: recalcula el total con los tipos reales.
-  const evento = await repo.publicEventoBySlug(slug);
-  if (!evento) throw new ApiError(404, 'Evento no disponible');
-  const tipoMap = new Map(evento.tipos.map((t) => [t.id, t]));
-  let total = 0;
-  for (const linea of lineas) {
-    const tipo = tipoMap.get(linea.tipoId);
-    if (!tipo) throw new ApiError(404, 'Tipo de entrada no encontrado');
-    total += tipo.precioCrc * linea.cantidad;
+  const gateway = getPaymentGateway();
+  const { ordenId, total, lineItems } = await repo.iniciarOrdenPendiente({ slug, lineas, comprador: { nombre, email }, provider: gateway.id });
+
+  if (total <= 0) {
+    // Eventos gratuitos: no hay pago que cobrar, se confirma de una vez.
+    const resultado = await repo.confirmarOrden(ordenId, { transaccion: `CSH-FREE-${Date.now().toString(36).toUpperCase()}`, monto: 0, timestamp: new Date().toISOString(), metodo: 'gratis' });
+    if (resultado) await trySendEntradas(email, resultado);
+    return { url: `${appBaseUrl()}/entradas/${encodeURIComponent(slug)}?ref=${encodeURIComponent(ordenId)}`, ordenId };
   }
-  const pago = validatePago(body.pago, total);
 
-  const resultado = await repo.comprar({ slug, lineas, comprador: { nombre, email }, pago: pago || undefined });
+  try {
+    const successUrl = `${appBaseUrl()}/entradas/${encodeURIComponent(slug)}?ref=${encodeURIComponent(ordenId)}`;
+    const cancelUrl = `${appBaseUrl()}/entradas/${encodeURIComponent(slug)}?pago=cancelado`;
+    const { url, providerRef } = await gateway.createCheckout({ ordenId, lineas: lineItems, comprador: { nombre, email }, successUrl, cancelUrl });
+    await repo.setProviderRef(ordenId, providerRef);
+    return { url, ordenId };
+  } catch (err) {
+    // Si la pasarela falla, liberamos el cupo reservado para no dejarlo colgado.
+    await repo.expirarOrden(ordenId).catch(() => { /* noop */ });
+    console.error(`[pagos] Error creando checkout para orden ${ordenId}: ${(err as Error).message}`);
+    throw new ApiError(502, 'No se pudo iniciar el pago. Intenta de nuevo.');
+  }
+}
 
-  let emailSent = false;
-  let emailError = '';
+function appBaseUrl(): string {
+  return String(env.MAIL_APP_URL || 'http://localhost:8088').replace(/\/$/, '');
+}
+
+async function trySendEntradas(email: string, resultado: { evento: any; boletos: any[] }): Promise<void> {
   try {
     await sendEntradasEmail({ to: email, evento: resultado.evento, boletos: resultado.boletos });
-    emailSent = true;
   } catch (err) {
-    emailError = (err as Error).message;
-    console.error(`[mail] Error enviando entradas a ${email}: ${emailError}`);
+    console.error(`[mail] Error enviando entradas a ${email}: ${(err as Error).message}`);
   }
+}
 
-  return {
-    ordenId: resultado.orden.id,
-    evento: { nombre: resultado.evento.nombre, venue: resultado.evento.venue, fecha: resultado.evento.fecha },
-    total,
-    correo: email,
-    emailSent,
-    emailError,
-    boletos: resultado.boletos.map((b) => ({ codigo: b.codigo, qrData: b.qrData, tipoNombre: b.tipoNombre })),
-  };
+// Procesa el webhook de la pasarela. Verifica la firma (dentro de parseWebhook),
+// y al confirmar el pago materializa los boletos y envía el correo. Idempotente.
+export async function procesarWebhook(rawBody: Buffer, signature: string | undefined): Promise<void> {
+  const gateway = getPaymentGateway();
+  const evento = gateway.parseWebhook(rawBody, signature); // lanza si la firma es inválida
+  const repo = getEntradasRepository();
+
+  if (evento.type === 'paid' && evento.ordenId && evento.pago) {
+    const resultado = await repo.confirmarOrden(evento.ordenId, evento.pago);
+    if (resultado) await trySendEntradas(resultado.orden.compradorEmail, resultado);
+    return;
+  }
+  if (evento.type === 'expired' && evento.ordenId) {
+    await repo.expirarOrden(evento.ordenId);
+  }
+}
+
+// Estado de la orden para el polling de la página de retorno tras el pago.
+export async function consultarOrdenPublica(ref: string) {
+  const orden = await getEntradasRepository().getOrdenPublica(String(ref || '').trim());
+  if (!orden) throw new ApiError(404, 'Orden no encontrada');
+  return orden;
 }
 
 export async function consultaPublica(body: { email?: unknown; codigo?: unknown }) {
