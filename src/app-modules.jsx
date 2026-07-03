@@ -1637,7 +1637,7 @@ function AdminApp() {
             </div>
             <button className={route === '/admin' ? 'active' : ''} onClick={() => navigate('/admin')}><Shield size={17} />Resumen</button>
             <button className={route === '/admin/parqueo' ? 'active' : ''} onClick={() => navigate('/admin/parqueo')}><Car size={17} />Gestion de parqueo</button>
-            {user.eventsRole && user.eventsRole !== 'ninguno' && <button className={route === '/admin/entradas' ? 'active' : ''} onClick={() => navigate('/admin/entradas')}><CalendarDays size={17} />Gestion de entradas</button>}
+            {user.eventsRole && user.eventsRole !== 'ninguno' && <button className={route.startsWith('/admin/entradas') ? 'active' : ''} onClick={() => navigate('/admin/entradas')}><CalendarDays size={17} />Gestion de entradas</button>}
             <button className={route === '/admin/cuponera' ? 'active' : ''} onClick={() => navigate('/admin/cuponera')}><Ticket size={17} />Cuponera</button>
             <button className={route === '/admin/usuarios' ? 'active' : ''} onClick={() => navigate('/admin/usuarios')}><Users size={17} />Gestion de usuarios</button>
             <button className={route === '/admin/web' ? 'active' : ''} onClick={() => navigate('/admin/web')}><Globe size={17} />Gestion de la pagina web</button>
@@ -1655,7 +1655,7 @@ function AdminApp() {
       </aside>
       <section className="admin-main">
         <AdminTopBar user={user} onLogout={logout} onMenu={() => setMenuOpen(true)} />
-        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route === '/admin/entradas' ? <AdminEntradas user={user} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/analytics' ? <AdminAnalytics user={user} /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
+        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route.startsWith('/admin/entradas') ? <AdminEntradas user={user} route={route} navigate={navigate} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/analytics' ? <AdminAnalytics user={user} /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
   );
@@ -2744,11 +2744,21 @@ function TicketsModal({ result, onClose }) {
   );
 }
 
-function AdminEntradas({ user }) {
+function AdminEntradas({ user, route = '/admin/entradas', navigate }) {
   const canManage = user.eventsRole === 'admin';
   const canGate = user.eventsRole === 'admin' || user.eventsRole === 'operador';
   const canSales = canManage || user.eventsRole === 'operador' || user.eventsRole === 'comercial';
   const [tab, setTab] = useState(canManage ? 'eventos' : canGate ? 'puerta' : 'ventas');
+
+  if (canManage && route === '/admin/entradas/nuevo') {
+    return <EventCreateWorkspace navigate={navigate} />;
+  }
+
+  if (canManage && route.startsWith('/admin/entradas/')) {
+    const eventId = decodeURIComponent(route.slice('/admin/entradas/'.length).replace(/\/$/, ''));
+    return <EventWorkspace eventId={eventId} navigate={navigate} />;
+  }
+
   return (
     <main className="page">
       <p className="eyebrow">Venta de boletos</p><h1>Gestion de entradas</h1>
@@ -2759,7 +2769,12 @@ function AdminEntradas({ user }) {
         {canSales && <button className={tab === 'promotores' ? 'active' : ''} onClick={() => setTab('promotores')}>Promotores</button>}
         {canGate && <button className={tab === 'puerta' ? 'active' : ''} onClick={() => setTab('puerta')}><ScanLine size={15} />Puerta</button>}
       </div>
-      {tab === 'eventos' && canManage && <AdminEventosTab />}
+      {tab === 'eventos' && canManage && (
+        <AdminEventosTab
+          onNew={() => navigate('/admin/entradas/nuevo')}
+          onOpen={(eventId) => navigate(`/admin/entradas/${encodeURIComponent(eventId)}`)}
+        />
+      )}
       {tab === 'ventas' && canSales && <AdminVentasTab />}
       {tab === 'descuentos' && canManage && <AdminDescuentosTab />}
       {tab === 'promotores' && canSales && <AdminPromotoresTab canManage={canManage} />}
@@ -2973,31 +2988,25 @@ function DescuentoModal({ descuento, eventos, onClose, onSaved }) {
   );
 }
 
-function AdminEventosTab() {
+function AdminEventosTab({ onNew, onOpen }) {
   const [eventos, setEventos] = useState([]);
-  const [modal, setModal] = useState(null);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [msg, setMsg] = useState(null);
   const [logRefreshKey, setLogRefreshKey] = useState(0);
   const refresh = async () => { const d = await api('/admin/api/entradas/eventos'); if (d.ok) setEventos(d.eventos); };
-  const refreshLog = () => setLogRefreshKey((key) => key + 1);
   useEffect(() => { refresh(); }, []);
-  async function setEstado(ev, estado) {
-    setMsg(null);
-    const d = await api(`/admin/api/entradas/eventos/${ev.evento.id}/estado`, { method: 'POST', body: JSON.stringify({ estado }) });
-    if (!d.ok) return setMsg({ type: 'error', text: d.error });
-    setMsg({ type: 'ok', text: `${ev.evento.nombre}: ${estado}.` }); refresh(); refreshLog();
-  }
   return (
     <>
       <div className="actions left">
-        <button className="btn" onClick={() => setModal({ type: 'evento' })}><Plus size={16} />Nuevo evento</button>
-        <button className="btn ghost" onClick={() => setModal({ type: 'templates' })}><Sparkles size={16} />Templates</button>
+        <button className="btn" onClick={onNew}><Plus size={16} />Nuevo evento</button>
+        <button className={`btn ghost${showTemplates ? ' active' : ''}`} onClick={() => setShowTemplates((visible) => !visible)}><Sparkles size={16} />Templates</button>
       </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      {showTemplates && <TemplatesPanel onClose={() => setShowTemplates(false)} />}
       <div className="table"><table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>
         {eventos.map((ev) => (
-          <tr key={ev.evento.id} className="clickable-row" onClick={() => setModal({ type: 'detalle', evento: ev.evento, tipos: ev.tipos })}>
-            <td><button className="link-cell" onClick={(e) => { e.stopPropagation(); setModal({ type: 'detalle', evento: ev.evento, tipos: ev.tipos }); }}>{ev.evento.nombre}</button></td>
+          <tr key={ev.evento.id} className="clickable-row" onClick={() => onOpen(ev.evento.id)}>
+            <td><button className="link-cell" onClick={(e) => { e.stopPropagation(); onOpen(ev.evento.id); }}>{ev.evento.nombre}</button></td>
             <td>{fmtFullDate(ev.evento.fecha)}</td>
             <td><span className={`pill ${ev.evento.estado}`}>{ev.evento.estado}</span></td>
             <td>{ev.boletosVendidos}</td>
@@ -3006,17 +3015,6 @@ function AdminEventosTab() {
         ))}
       </tbody></table></div>
       <EntradasLogPanel eventos={eventos} refreshKey={logRefreshKey} />
-      {modal?.type === 'detalle' && (
-        <EventDetalleModal
-          evento={modal.evento}
-          tipos={modal.tipos}
-          onClose={() => { setModal(null); refresh(); refreshLog(); }}
-          onToggleEstado={() => { setEstado({ evento: modal.evento }, modal.evento.estado === 'publicado' ? 'finalizado' : 'publicado'); setModal(null); }}
-          onChanged={() => { refresh(); refreshLog(); }}
-        />
-      )}
-      {modal?.type === 'evento' && <EventWizardModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); refreshLog(); }} />}
-      {modal?.type === 'templates' && <TemplatesModal onClose={() => setModal(null)} />}
     </>
   );
 }
@@ -3092,50 +3090,504 @@ function EntradasLogPanel({ eventos, refreshKey }) {
   );
 }
 
-// Gestión de templates de evento: listar, renombrar, eliminar.
-function TemplatesModal({ onClose }) {
+// Gestión de templates dentro de la página, sin diálogos nativos ni modales.
+function TemplatesPanel({ onClose }) {
   const [templates, setTemplates] = useState([]);
   const [msg, setMsg] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
   const load = async () => {
     const d = await api('/admin/api/entradas/templates');
     if (d.ok) setTemplates(d.templates);
   };
   useEffect(() => { load(); }, []);
+
+  function startRename(t) {
+    setDeletingId(null);
+    setEditingId(t.id);
+    setEditingName(t.nombre);
+    setMsg(null);
+  }
+
   async function renombrar(t) {
-    const nombre = window.prompt('Nuevo nombre del template:', t.nombre);
-    if (!nombre || nombre === t.nombre) return;
+    const nombre = editingName.trim();
+    if (!nombre) return setMsg({ type: 'error', text: 'Escribí un nombre para el template.' });
+    if (nombre === t.nombre) {
+      setEditingId(null);
+      return;
+    }
     const d = await api(`/admin/api/entradas/templates/${t.id}`, { method: 'PUT', body: JSON.stringify({ nombre, descripcion: t.descripcion }) });
-    setMsg(d.ok ? null : { type: 'error', text: d.error });
-    if (d.ok) load();
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setEditingId(null);
+    setMsg({ type: 'ok', text: `Template renombrado como "${nombre}".` });
+    load();
   }
+
   async function eliminar(t) {
-    if (!window.confirm(`¿Eliminar el template "${t.nombre}"? Los eventos ya creados no se ven afectados.`)) return;
     const d = await api(`/admin/api/entradas/templates/${t.id}`, { method: 'DELETE' });
-    if (d.ok) load();
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setDeletingId(null);
+    setMsg({ type: 'ok', text: `Template "${t.nombre}" eliminado. Los eventos existentes no cambiaron.` });
+    load();
   }
+
   return (
-    <Modal title="Templates de evento" onClose={onClose}>
-      <p className="muted" style={{ fontSize: '.85rem' }}>
-        Un template guarda sectores, precios, butacas (con bloqueos) y tandas de preventa. Se crean desde el detalle
-        de un evento ("Guardar como template") o al final del wizard.
-      </p>
+    <section className="templates-inline-panel" aria-label="Templates de evento">
+      <header className="templates-inline-head">
+        <div>
+          <p className="eyebrow">Configuraciones reutilizables</p>
+          <h2>Templates de evento</h2>
+          <p className="muted">Guardan sectores, precios, butacas y tandas de preventa.</p>
+        </div>
+        <button className="btn ghost" onClick={onClose}>Cerrar</button>
+      </header>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <div className="table"><table><thead><tr><th>Template</th><th>Formato</th><th>Sectores</th><th></th></tr></thead><tbody>
         {templates.map((t) => (
           <tr key={t.id}>
-            <td><b>{t.nombre}</b>{t.descripcion && <><br /><small className="muted">{t.descripcion}</small></>}</td>
+            <td>
+              {editingId === t.id ? (
+                <div className="template-inline-edit">
+                  <input value={editingName} onChange={(e) => setEditingName(e.target.value)} autoFocus aria-label={`Nuevo nombre de ${t.nombre}`} />
+                  <button className="btn xs" onClick={() => renombrar(t)}>Guardar</button>
+                  <button className="btn ghost xs" onClick={() => setEditingId(null)}>Cancelar</button>
+                </div>
+              ) : (
+                <><b>{t.nombre}</b>{t.descripcion && <><br /><small className="muted">{t.descripcion}</small></>}</>
+              )}
+            </td>
             <td>{t.formato}</td>
             <td>{t.sectores}{t.numerados > 0 ? ` (${t.numerados} num.)` : ''}</td>
             <td className="row-actions">
-              <button className="link-cell" onClick={() => renombrar(t)}>Renombrar</button>
-              <button className="link-cell danger" onClick={() => eliminar(t)}>Eliminar</button>
+              {editingId !== t.id && <button className="link-cell" onClick={() => startRename(t)}>Renombrar</button>}
+              {deletingId === t.id ? (
+                <>
+                  <span className="muted">¿Eliminar?</span>
+                  <button className="link-cell danger" onClick={() => eliminar(t)}>Sí, eliminar</button>
+                  <button className="link-cell" onClick={() => setDeletingId(null)}>Cancelar</button>
+                </>
+              ) : (
+                <button className="link-cell danger" onClick={() => { setEditingId(null); setDeletingId(t.id); setMsg(null); }}>Eliminar</button>
+              )}
             </td>
           </tr>
         ))}
         {templates.length === 0 && <tr><td colSpan={4} className="muted">Sin templates guardados.</td></tr>}
       </tbody></table></div>
-      <div className="modal-actions"><button className="btn ghost" onClick={onClose}>Cerrar</button></div>
-    </Modal>
+    </section>
+  );
+}
+
+function toDateTimeLocal(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function EventCreateWorkspace({ navigate }) {
+  const [templates, setTemplates] = useState([]);
+  const [templateId, setTemplateId] = useState('');
+  const [form, setForm] = useState({
+    nombre: '',
+    venue: 'Estadio Eladio Rosabal Cordero',
+    fecha: '',
+    descripcion: '',
+    formato: 'partido',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [createdId, setCreatedId] = useState('');
+
+  useEffect(() => {
+    api('/admin/api/entradas/templates').then((d) => {
+      if (d.ok) setTemplates(d.templates);
+    });
+  }, []);
+
+  const selectedTemplate = templates.find((template) => template.id === templateId);
+  const previewTipos = useMemo(() => {
+    const sectores = form.formato === 'espectaculo' ? [...ERC_SECTORES, ...GRAMILLA_SECTORES.slice(0, 3)] : ERC_SECTORES;
+    return Object.fromEntries(sectores.map((sector) => [sector.key, {
+      nombre: sector.nombre,
+      estado: 'activo',
+      disponibles: sector.stock,
+      precioCrc: sector.precio,
+    }]));
+  }, [form.formato]);
+
+  function chooseTemplate(id) {
+    const template = templates.find((item) => item.id === id);
+    setTemplateId(id);
+    if (template?.formato) setForm((current) => ({ ...current, formato: template.formato }));
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setError('');
+    setCreatedId('');
+    setLoading(true);
+    const d = await api('/admin/api/entradas/eventos', { method: 'POST', body: JSON.stringify(form) });
+    if (!d.ok) {
+      setLoading(false);
+      return setError(d.error);
+    }
+
+    if (templateId) {
+      const applied = await api(`/admin/api/entradas/eventos/${d.evento.id}/aplicar-template`, {
+        method: 'POST',
+        body: JSON.stringify({ templateId }),
+      });
+      if (!applied.ok) {
+        setLoading(false);
+        setCreatedId(d.evento.id);
+        return setError(`El borrador fue creado, pero no se pudo aplicar el template: ${applied.error}`);
+      }
+    }
+
+    setLoading(false);
+    if (!templateId) sessionStorage.setItem('entradas_auto_seed_event', d.evento.id);
+    navigate(`/admin/entradas/${encodeURIComponent(d.evento.id)}`);
+  }
+
+  return (
+    <main className="page event-workspace-page event-create-page">
+      <header className="event-workspace-header">
+        <div>
+          <button className="workspace-back" onClick={() => navigate('/admin/entradas')}>‹ Volver a eventos</button>
+          <p className="eyebrow">Nuevo evento</p>
+          <h1>Preparar evento</h1>
+          <p className="sub">Creá el borrador y continuá configurando precios, aforo y butacas directamente sobre el mapa.</p>
+        </div>
+        <div className="event-workspace-actions">
+          <button className="btn ghost" onClick={() => navigate('/admin/entradas')}>Cancelar</button>
+          <button className="btn" type="submit" form="new-event-form" disabled={loading || form.nombre.trim().length < 3 || !form.fecha}>
+            {loading ? 'Creando…' : 'Crear y abrir mapa'}
+          </button>
+        </div>
+      </header>
+
+      {error && (
+        <div className="error workspace-message">
+          {error}
+          {createdId && <button className="link-cell" onClick={() => navigate(`/admin/entradas/${encodeURIComponent(createdId)}`)}>Abrir el borrador</button>}
+        </div>
+      )}
+
+      <div className="event-create-grid">
+        <form id="new-event-form" className="event-create-form" onSubmit={submit}>
+          <div className="workspace-section-heading">
+            <span>01</span>
+            <div><h2>Datos del evento</h2><p>La información pública que verá la afición.</p></div>
+          </div>
+          <label>Nombre</label>
+          <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
+          <div className="event-form-row">
+            <div><label>Lugar</label><input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} /></div>
+            <div><label>Fecha y hora</label><input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></div>
+          </div>
+          <label>Descripción</label>
+          <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Información útil para quienes compran" />
+
+          <div className="workspace-section-heading workspace-section-heading--spaced">
+            <span>02</span>
+            <div><h2>Formato y punto de partida</h2><p>Podés comenzar limpio o reutilizar una configuración existente.</p></div>
+          </div>
+          <div className="evento-formato-opts">
+            {[
+              { value: 'partido', label: 'Partido', desc: 'Seis tribunas del estadio' },
+              { value: 'espectaculo', label: 'Espectáculo', desc: 'Tribunas y zonas en gramilla' },
+            ].map(({ value, label, desc }) => (
+              <label key={value} className={`evento-formato-opt${form.formato === value ? ' active' : ''}`}>
+                <input type="radio" name="formato" checked={form.formato === value} onChange={() => setForm({ ...form, formato: value })} />
+                <span className="evento-formato-opt-label">{label}</span>
+                <span className="evento-formato-opt-desc">{desc}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="template-start-options">
+            <button type="button" className={`template-start-option${!templateId ? ' active' : ''}`} onClick={() => setTemplateId('')}>
+              <b>Desde cero</b><span>El mapa crea el aforo base y vos ajustás cada zona.</span>
+            </button>
+            {templates.map((template) => (
+              <button type="button" key={template.id} className={`template-start-option${templateId === template.id ? ' active' : ''}`} onClick={() => chooseTemplate(template.id)}>
+                <b>{template.nombre}</b><span>{template.sectores} sectores{template.numerados ? ` · ${template.numerados} numerados` : ''}</span>
+              </button>
+            ))}
+          </div>
+          {selectedTemplate?.descripcion && <p className="muted template-description">{selectedTemplate.descripcion}</p>}
+
+          <button className="btn event-create-submit" disabled={loading || form.nombre.trim().length < 3 || !form.fecha}>
+            {loading ? 'Creando evento…' : 'Crear y configurar en el mapa'}
+          </button>
+        </form>
+
+        <aside className="event-create-preview">
+          <div className="event-create-preview-copy">
+            <span className="pill borrador">Vista previa</span>
+            <h2>{form.nombre.trim() || 'Tu evento'}</h2>
+            <p>{form.fecha ? fmtFullDate(form.fecha) : 'Definí la fecha para completar el encabezado'}</p>
+          </div>
+          <StadiumSvgERC
+            tiposByKey={previewTipos}
+            venue={form.venue}
+            fieldTemplate={form.formato === 'espectaculo' ? '3' : null}
+            fieldSplits={form.formato === 'espectaculo' ? SPLITS_POR_TEMPLATE[3] : null}
+            interactive={false}
+          />
+          <p className="event-create-preview-note">Después de crear el borrador, este mapa se convierte en el configurador del evento.</p>
+        </aside>
+      </div>
+    </main>
+  );
+}
+
+function EventBasicsPanel({ evento, onCancel, onSaved }) {
+  const [form, setForm] = useState({
+    nombre: evento.nombre,
+    venue: evento.venue || '',
+    fecha: toDateTimeLocal(evento.fecha),
+    descripcion: evento.descripcion || '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(event) {
+    event.preventDefault();
+    setError('');
+    setLoading(true);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...form,
+        formato: evento.formato,
+        imagenUrl: evento.imagenUrl || '',
+        feeTipo: evento.feeTipo || '',
+        feeValor: evento.feeValor || 0,
+      }),
+    });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    onSaved(d.evento);
+  }
+
+  return (
+    <form className="workspace-inline-form" onSubmit={submit}>
+      <div className="workspace-inline-copy">
+        <p className="eyebrow">Datos del evento</p>
+        <h2>Editar información</h2>
+        <p>Los cambios se reflejan en la venta pública.</p>
+      </div>
+      <div className="workspace-inline-fields">
+        <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+        <div className="event-form-row">
+          <div><label>Lugar</label><input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} /></div>
+          <div><label>Fecha y hora</label><input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></div>
+        </div>
+        <label>Descripción</label><input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+        {error && <div className="error">{error}</div>}
+        <div className="workspace-inline-buttons">
+          <button className="btn" disabled={loading || form.nombre.trim().length < 3 || !form.fecha}>{loading ? 'Guardando…' : 'Guardar cambios'}</button>
+          <button type="button" className="btn ghost" onClick={onCancel}>Cancelar</button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function TemplateSavePanel({ evento, tipos, onCancel, onSaved }) {
+  const [nombre, setNombre] = useState(evento.nombre);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const numerados = tipos.filter((tipo) => tipo.numerado).length;
+
+  async function submit(event) {
+    event.preventDefault();
+    const cleanName = nombre.trim();
+    if (!cleanName) return setError('Escribí un nombre para identificar el template.');
+    setError('');
+    setLoading(true);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/guardar-template`, {
+      method: 'POST',
+      body: JSON.stringify({ nombre: cleanName }),
+    });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    onSaved(d.template);
+  }
+
+  return (
+    <form className="workspace-confirm-panel" onSubmit={submit}>
+      <div className="workspace-confirm-icon"><Sparkles size={22} /></div>
+      <div className="workspace-confirm-copy">
+        <p className="eyebrow">Confirmar template</p>
+        <h2>Guardar esta configuración</h2>
+        <p>Se copiarán {tipos.length} sectores, sus precios, {numerados} sectores numerados y las tandas de preventa. Las ventas del evento no se incluyen.</p>
+      </div>
+      <div className="workspace-confirm-controls">
+        <label>Nombre del template</label>
+        <input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Partido ERC estándar" />
+        {error && <div className="error">{error}</div>}
+        <div className="workspace-inline-buttons">
+          <button className="btn" disabled={loading}>{loading ? 'Guardando…' : 'Sí, guardar template'}</button>
+          <button type="button" className="btn ghost" onClick={onCancel}>Cancelar</button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function EventWorkspace({ eventId, navigate }) {
+  const [autoSeed] = useState(() => sessionStorage.getItem('entradas_auto_seed_event') === eventId);
+  const [evento, setEvento] = useState(null);
+  const [tipos, setTipos] = useState([]);
+  const [sales, setSales] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [action, setAction] = useState(null);
+  const [msg, setMsg] = useState(null);
+
+  const load = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    const [detail, salesData] = await Promise.all([
+      api(`/admin/api/entradas/eventos/${eventId}`),
+      api(`/admin/api/entradas/ventas/${eventId}`),
+    ]);
+    if (!detail.ok) {
+      setError(detail.error || 'No se pudo cargar el evento.');
+      setLoading(false);
+      return;
+    }
+    setEvento(detail.evento);
+    setTipos(detail.tipos || []);
+    if (salesData.ok) setSales(salesData);
+    setError('');
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load(true);
+    if (autoSeed) sessionStorage.removeItem('entradas_auto_seed_event');
+  }, [eventId]);
+
+  async function toggleEstado() {
+    const estado = evento.estado === 'publicado' ? 'finalizado' : 'publicado';
+    setMsg(null);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/estado`, {
+      method: 'POST',
+      body: JSON.stringify({ estado }),
+    });
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setEvento(d.evento);
+    setMsg({ type: 'ok', text: `${d.evento.nombre} quedó ${estado}.` });
+  }
+
+  if (loading) return <main className="page event-workspace-page"><p className="muted">Cargando espacio de trabajo…</p></main>;
+  if (error || !evento) {
+    return (
+      <main className="page event-workspace-page">
+        <button className="workspace-back" onClick={() => navigate('/admin/entradas')}>‹ Volver a eventos</button>
+        <div className="error">{error || 'Evento no encontrado.'}</div>
+      </main>
+    );
+  }
+
+  const capacidad = tipos.filter((tipo) => tipo.estado === 'activo').reduce((sum, tipo) => sum + (tipo.stockTotal || 0), 0);
+  const vendidos = sales?.boletosVendidos || 0;
+  const usados = sales?.boletosUsados || 0;
+  const ocupacion = capacidad > 0 ? Math.round((vendidos / capacidad) * 1000) / 10 : 0;
+
+  return (
+    <main className="page event-workspace-page">
+      <header className="event-workspace-header">
+        <div className="event-workspace-title">
+          <button className="workspace-back" onClick={() => navigate('/admin/entradas')}>‹ Todos los eventos</button>
+          <div className="event-workspace-kicker">
+            <span className={`pill ${evento.estado}`}>{evento.estado}</span>
+            <span>{evento.formato === 'espectaculo' ? 'Espectáculo' : 'Partido'}</span>
+          </div>
+          <h1>{evento.nombre}</h1>
+          <div className="event-workspace-meta">
+            <span><CalendarDays size={14} />{fmtFullDate(evento.fecha)}</span>
+            {evento.venue && <span>📍 {evento.venue}</span>}
+          </div>
+        </div>
+        <div className="event-workspace-actions" aria-label="Controles del evento">
+          <button className={`btn ghost${action === 'datos' ? ' active' : ''}`} onClick={() => setAction(action === 'datos' ? null : 'datos')}><Pencil size={16} />Editar datos</button>
+          <button className={`btn ghost${action === 'cortesia' ? ' active' : ''}`} onClick={() => setAction(action === 'cortesia' ? null : 'cortesia')}><Gift size={16} />Cortesía</button>
+          <button className={`btn ghost${action === 'template' ? ' active' : ''}`} onClick={() => setAction(action === 'template' ? null : 'template')}><Sparkles size={16} />Guardar template</button>
+          <button className="btn" onClick={toggleEstado}>
+            {evento.estado === 'publicado' ? <><Lock size={16} />Finalizar</> : <><Send size={16} />Publicar</>}
+          </button>
+        </div>
+      </header>
+
+      {msg && <div className={`${msg.type === 'ok' ? 'okbox' : 'error'} workspace-message`} role="status">{msg.type === 'ok' && <Check size={17} />}{msg.text}</div>}
+
+      {action && (
+        <section className="workspace-action-region">
+          {action === 'datos' && (
+            <EventBasicsPanel
+              evento={evento}
+              onCancel={() => setAction(null)}
+              onSaved={(updated) => {
+                setEvento(updated);
+                setAction(null);
+                setMsg({ type: 'ok', text: 'Los datos del evento se guardaron correctamente.' });
+                load(false);
+              }}
+            />
+          )}
+          {action === 'cortesia' && (
+            <div className="workspace-inline-form">
+              <div className="workspace-inline-copy">
+                <p className="eyebrow">Invitación</p>
+                <h2>Emitir cortesía</h2>
+                <p>La entrada se genera y se envía sin salir de esta página.</p>
+                <button className="btn ghost" onClick={() => setAction(null)}>Cerrar</button>
+              </div>
+              <div className="workspace-inline-fields"><CortesiaModal evento={evento} tipos={tipos} asPanel /></div>
+            </div>
+          )}
+          {action === 'template' && (
+            <TemplateSavePanel
+              evento={evento}
+              tipos={tipos}
+              onCancel={() => setAction(null)}
+              onSaved={(template) => {
+                setAction(null);
+                setMsg({ type: 'ok', text: `Template "${template.nombre}" guardado correctamente. Ya podés usarlo al crear otro evento.` });
+              }}
+            />
+          )}
+        </section>
+      )}
+
+      <section className="event-sales-strip" aria-label="Resumen de ventas">
+        <div className="event-sales-strip-title">
+          <p className="eyebrow">Venta en tiempo real</p>
+          <h2>Estado del evento</h2>
+        </div>
+        <div><span>Ingresos</span><b>{money(sales?.ingresosCrc || 0)}</b></div>
+        <div><span>Vendidos</span><b>{vendidos}</b><small>de {capacidad}</small></div>
+        <div><span>Validados</span><b>{usados}</b><small>en puerta</small></div>
+        <div><span>Ocupación</span><b>{ocupacion}%</b><small>aforo activo</small></div>
+      </section>
+
+      <section className="event-map-workspace">
+        <div className="event-map-workspace-head">
+          <div>
+            <p className="eyebrow">Configuración directa</p>
+            <h2>Mapa y zonas de venta</h2>
+          </div>
+          <p>Tocá una zona para editar precio, cupo, butacas o preventa.</p>
+        </div>
+        <VenueMapConfig evento={evento} autoSeed={autoSeed} onChanged={() => load(false)} />
+      </section>
+    </main>
   );
 }
 
@@ -3227,7 +3679,7 @@ function EventWizardModal({ onClose, onDone }) {
   }
 
   async function guardarComoTemplate() {
-    const nombre = window.prompt('Nombre del template (ej. "Partido ERC estándar"):', form.nombre);
+    const nombre = form.nombre.trim();
     if (!nombre) return;
     setError(''); setMsg('');
     const d = await api(`/admin/api/entradas/eventos/${evento.id}/guardar-template`, { method: 'POST', body: JSON.stringify({ nombre }) });
@@ -3520,6 +3972,8 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
   function selectZone(key) {
     setSelectedKey(key);
     setMsg(null);
+    setTandasFor(null);
+    setAsientosFor(null);
     const t = allByKey[key];
     setForm(t ? { nombre: t.nombre, precioCrc: String(t.precioCrc), stockTotal: String(t.stockTotal) } : null);
   }
@@ -3673,21 +4127,33 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
           </div>
         </div>
 
-        <div style={{ flex: '0 1 300px', minWidth: 260 }}>
-          {!selectedKey && (
+        <div className="venue-map-inspector">
+          {tandasFor && (
+            <div className="stadium-panel stadium-panel--sidebar stadium-panel--tool">
+              <button className="workspace-back" onClick={() => { setTandasFor(null); refresh(); }}>‹ Volver a {tandasFor.nombre}</button>
+              <TandasModal tipo={tandasFor} asPanel />
+            </div>
+          )}
+          {asientosFor && (
+            <div className="stadium-panel stadium-panel--sidebar stadium-panel--tool">
+              <button className="workspace-back" onClick={() => { setAsientosFor(null); refresh(); }}>‹ Volver a {asientosFor.nombre}</button>
+              <AsientosModal tipo={asientosFor} asPanel />
+            </div>
+          )}
+          {!tandasFor && !asientosFor && !selectedKey && (
             <div className="stadium-panel stadium-panel--sidebar">
               <h3 className="stadium-panel-name">Tocá una zona del mapa</h3>
               <p className="stadium-panel-hint">Todo el venue ya está a la venta. Seleccioná una zona para ajustar precio, cupo, butacas o quitarla del mapa.</p>
             </div>
           )}
-          {selectedKey && !seleccionado && (
+          {!tandasFor && !asientosFor && selectedKey && !seleccionado && (
             <div className="stadium-panel stadium-panel--sidebar">
               <h3 className="stadium-panel-name">{metaSel?.label ?? selectedKey}</h3>
               <p className="stadium-panel-hint">Esta zona no está en el venue.</p>
               <button className="btn" onClick={() => agregarZona(selectedKey)} disabled={busy}><Plus size={15} />Agregar al mapa</button>
             </div>
           )}
-          {seleccionado && form && (
+          {!tandasFor && !asientosFor && seleccionado && form && (
             <div className="stadium-panel stadium-panel--sidebar" style={{ textAlign: 'left' }}>
               <h3 className="stadium-panel-name">{metaSel?.label ?? seleccionado.nombre}</h3>
               {seleccionado.estado === 'inactivo' && <p className="stadium-panel-hint">Zona quitada del mapa: no se vende.</p>}
@@ -3718,19 +4184,17 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
           )}
         </div>
       </div>
-
-      {tandasFor && <TandasModal tipo={tandasFor} onClose={() => { setTandasFor(null); refresh(); }} />}
-      {asientosFor && <AsientosModal tipo={asientosFor} onClose={() => { setAsientosFor(null); refresh(); }} />}
     </>
   );
 }
 
-function TandasModal({ tipo, onClose }) {
+function TandasModal({ tipo, onClose, asPanel = false }) {
   const toLocal = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : '');
   const emptyForm = { nombre: '', precioCrc: '', ventaDesde: '', ventaHasta: '', cupo: '' };
   const [tandas, setTandas] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editing, setEditing] = useState(null); // tanda en edición o null (creando)
+  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const load = async () => {
@@ -3759,17 +4223,19 @@ function TandasModal({ tipo, onClose }) {
     cancelEdit(); load();
   }
   async function del(t) {
-    if (!window.confirm(`¿Eliminar la tanda "${t.nombre}"?`)) return;
     const d = await api(`/admin/api/entradas/tandas/${t.id}`, { method: 'DELETE' });
-    if (d.ok) load();
+    if (!d.ok) return setError(d.error);
+    setDeletingId(null);
+    load();
   }
   const fmtVentana = (t) => {
     const desde = t.ventaDesde ? fmtFullDate(t.ventaDesde) : 'ya';
     const hasta = t.ventaHasta ? fmtFullDate(t.ventaHasta) : 'sin límite';
     return `${desde} → ${hasta}`;
   };
-  return (
-    <Modal title={`Tandas · ${tipo.nombre}`} onClose={onClose}>
+  const inner = (
+    <>
+      {asPanel && <h3 className="stadium-panel-name">Preventa · {tipo.nombre}</h3>}
       <p className="muted" style={{ fontSize: '.85rem' }}>
         La tanda vigente (por fechas, cupo y orden) define el precio de venta. Sin tanda activa se usa el precio base ({money(tipo.precioCrc)}).
       </p>
@@ -3783,7 +4249,14 @@ function TandasModal({ tipo, onClose }) {
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="btn ghost" onClick={() => startEdit(t)}>Editar</button>
-                <button className="btn ghost" onClick={() => del(t)}>Eliminar</button>
+                {deletingId === t.id ? (
+                  <>
+                    <button className="btn ghost danger" onClick={() => del(t)}>Confirmar</button>
+                    <button className="btn ghost" onClick={() => setDeletingId(null)}>No</button>
+                  </>
+                ) : (
+                  <button className="btn ghost" onClick={() => setDeletingId(t.id)}>Eliminar</button>
+                )}
               </div>
             </div>
           ))}
@@ -3805,16 +4278,19 @@ function TandasModal({ tipo, onClose }) {
         <button className="btn" onClick={submit} disabled={loading || !form.nombre || form.precioCrc === ''}>{loading ? 'Guardando…' : editing ? 'Guardar cambios' : 'Agregar tanda'}</button>
         {editing && <button className="btn ghost" onClick={cancelEdit}>Cancelar</button>}
       </div>
-    </Modal>
+    </>
   );
+  return asPanel ? inner : <Modal title={`Tandas · ${tipo.nombre}`} onClose={onClose}>{inner}</Modal>;
 }
 
-function AsientosModal({ tipo, onClose }) {
-  return (
-    <Modal title={`Butacas · ${tipo.nombre}`} onClose={onClose}>
+function AsientosModal({ tipo, onClose, asPanel = false }) {
+  const inner = (
+    <>
+      {asPanel && <h3 className="stadium-panel-name">Butacas · {tipo.nombre}</h3>}
       <SeatAdminGrid tipo={tipo} />
-    </Modal>
+    </>
   );
+  return asPanel ? inner : <Modal title={`Butacas · ${tipo.nombre}`} onClose={onClose}>{inner}</Modal>;
 }
 
 
@@ -3911,7 +4387,7 @@ function EventDetalleModal({ evento, tipos, onClose, onToggleEstado, onChanged }
   const [error, setError] = useState(null);
   const [tplMsg, setTplMsg] = useState(null);
   async function guardarComoTemplate() {
-    const nombre = window.prompt('Nombre del template (ej. "Partido ERC estándar"):', evento.nombre);
+    const nombre = evento.nombre.trim();
     if (!nombre) return;
     setTplMsg(null);
     const d = await api(`/admin/api/entradas/eventos/${evento.id}/guardar-template`, { method: 'POST', body: JSON.stringify({ nombre }) });
