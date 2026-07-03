@@ -9,7 +9,12 @@ import {
 } from './stadiumErc.js';
 import { gramillaKeysForTemplate } from './stadiumFieldGeometry.js';
 
-function tiposByZoneKey(tipos) {
+// Precio a mostrar: tanda de preventa vigente si existe, si no el base.
+function precioDe(tipo) {
+  return tipo.precioVigente ?? tipo.precioCrc;
+}
+
+export function tiposByZoneKey(tipos) {
   const map = {};
   for (const t of tipos) {
     if (t.estado === 'inactivo') continue;
@@ -42,11 +47,17 @@ function ZonePanel({ tipo, zoneKey, qty, onUpdate, onClose, compact }) {
         </span>
       )}
       <h3 className="stadium-panel-name">{tipo.nombre}</h3>
-      <p className="stadium-panel-price">₡{tipo.precioCrc.toLocaleString('es-CR')}</p>
+      <p className="stadium-panel-price">
+        ₡{precioDe(tipo).toLocaleString('es-CR')}
+        {tipo.tandaNombre && <span className="stadium-panel-tanda" style={{ display: 'block', fontSize: '.72rem', opacity: 0.8 }}>{tipo.tandaNombre}</span>}
+      </p>
       <p className="stadium-panel-avail">
         {agotado ? 'Agotado' : `${tipo.disponibles.toLocaleString('es-CR')} disponibles`}
       </p>
-      {!agotado && (
+      {!agotado && tipo.numerado && (
+        <p className="stadium-panel-hint">Sector numerado: elegí tus butacas en la grilla bajo el mapa.</p>
+      )}
+      {!agotado && !tipo.numerado && (
         <div className="stepper">
           <button disabled={qty <= 0} onClick={() => onUpdate(tipo.id, -1)} aria-label="Quitar uno">−</button>
           <span>{qty}</span>
@@ -55,7 +66,7 @@ function ZonePanel({ tipo, zoneKey, qty, onUpdate, onClose, compact }) {
       )}
       {qty > 0 && (
         <p className="stadium-panel-subtotal">
-          Subtotal: ₡{(qty * tipo.precioCrc).toLocaleString('es-CR')}
+          Subtotal: ₡{(qty * precioDe(tipo)).toLocaleString('es-CR')}
         </p>
       )}
     </div>
@@ -80,7 +91,7 @@ function MapTooltip({ tipo, zoneKey, meta }) {
     <div className="stadium-tooltip" role="status">
       <strong>{m?.label ?? tipo.nombre}</strong>
       {m?.tier && <span className="stadium-tooltip-tier">{m.tier}</span>}
-      <span>₡{tipo.precioCrc.toLocaleString('es-CR')}</span>
+      <span>₡{precioDe(tipo).toLocaleString('es-CR')}</span>
       <span>{tipo.disponibles > 0 ? `${tipo.disponibles} disponibles` : 'Agotado'}</span>
     </div>
   );
@@ -110,7 +121,7 @@ function MapLegendChips({ tiposByKey, selectedKey, hoveredKey, onSelect, gramill
           >
             <span className="stadium-chip-swatch" style={{ background: agotado ? '#555' : meta.color }} />
             <span className="stadium-chip-name">{meta.short}</span>
-            <span className="stadium-chip-price">₡{t.precioCrc.toLocaleString('es-CR')}</span>
+            <span className="stadium-chip-price">₡{precioDe(t).toLocaleString('es-CR')}</span>
             <span className="stadium-chip-tier">{meta.tier}</span>
           </button>
         );

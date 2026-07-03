@@ -924,8 +924,44 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
 /* Editor de mapa embebido como tab dentro del modal de detalle */
 .stadium-editor-embed { width: 100%; }
 .stadium-editor--embedded { background: transparent; border: 0; border-radius: 0; max-width: none; max-height: none; overflow: visible; }
-.stadium-editor--embedded .stadium-editor-body { max-height: 58vh; }
+.stadium-editor--embedded.stadium-editor--vector .stadium-editor-body {
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    "tabs    tabs"
+    "toolbar map"
+    "side    map";
+  max-height: 62vh;
+  min-height: 360px;
+  gap: 0 .9rem;
+}
+.stadium-editor--embedded .stadium-editor-toolbar { border-right: 0; padding-left: 0; }
+.stadium-editor--embedded .stadium-editor-map {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, .18);
+  align-items: center;
+}
+.stadium-editor--embedded .stadium-editor-side {
+  border-left: 0;
+  border-top: 1px solid var(--border);
+  padding: .85rem 0 0;
+}
 .stadium-editor--embedded .stadium-editor-footer { padding: .85rem 0 0; }
+
+@media (max-width: 720px) {
+  .stadium-editor--embedded.stadium-editor--vector .stadium-editor-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas:
+      "tabs"
+      "map"
+      "toolbar"
+      "side";
+    max-height: none;
+  }
+  .stadium-editor--embedded .stadium-editor-map { min-height: 240px; }
+}
 
 .stadium-editor-toolbar {
   width: 220px; min-width: 180px;
@@ -952,8 +988,9 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
 .toolbar-sector input[type="color"] { width: 22px; height: 22px; border: none; padding: 0; cursor: pointer; border-radius: 3px; }
 .btn.xs { padding: .15rem .4rem; font-size: .78rem; }
 
-.stadium-editor-map { flex: 1; overflow: auto; padding: .75rem; display: flex; align-items: flex-start; position: relative; }
+.stadium-editor-map { flex: 1; overflow: auto; padding: .75rem; display: flex; align-items: flex-start; justify-content: center; position: relative; }
 .stadium-editor-map .plano { width: 100%; }
+.stadium-editor-map .stadium-svg-erc { width: 100%; height: auto; max-height: 100%; display: block; align-self: stretch; }
 .stadium-editor-map > svg.editor-split-overlay { position: absolute; top: 0.75rem; left: 0.75rem; right: 0.75rem; bottom: 0; width: calc(100% - 1.5rem); height: calc(100% - 0.75rem); }
 
 /* ── Mapa vectorial ERC 2D ─────────────────────────────────────── */
@@ -1386,9 +1423,17 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
 .stadium-editor--vector { max-width: 1100px; }
 .stadium-editor--vector .stadium-editor-body {
   display: grid;
-  grid-template-columns: 200px 1fr 200px;
+  grid-template-columns: 200px minmax(0, 1fr) 220px;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "tabs    tabs tabs"
+    "toolbar map  side";
   min-height: 420px;
 }
+.stadium-editor--vector .editor-tabs { grid-area: tabs; }
+.stadium-editor--vector .stadium-editor-toolbar { grid-area: toolbar; }
+.stadium-editor--vector .stadium-editor-map { grid-area: map; }
+.stadium-editor--vector .stadium-editor-side { grid-area: side; }
 .stadium-editor-side {
   border-left: 1px solid var(--border);
   padding: .85rem;

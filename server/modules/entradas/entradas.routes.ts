@@ -21,9 +21,17 @@ entradasRouter.get('/api/entradas/publico/eventos/:slug', async (req, res, next)
   }
 });
 
-entradasRouter.post('/api/entradas/publico/comprar', async (req, res, next) => {
+entradasRouter.post('/api/entradas/publico/checkout', async (req, res, next) => {
   try {
-    res.json({ ok: true, ...(await entradas.comprarPublico(req.body)) });
+    res.json({ ok: true, ...(await entradas.iniciarCheckoutPublico(req.body)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.get('/api/entradas/publico/orden/:ref', async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.consultarOrdenPublica(String(req.params.ref))) });
   } catch (err) {
     next(err);
   }
@@ -40,6 +48,30 @@ entradasRouter.post('/api/entradas/publico/consulta', async (req, res, next) => 
 entradasRouter.post('/api/entradas/publico/reenviar', async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await entradas.reenviarPublico(req.body)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/api/entradas/publico/validar-descuento', async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.validarDescuentoPublico(req.body)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.get('/api/entradas/publico/eventos/:slug/asientos', async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.getAsientosPublico(String(req.params.slug))) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/api/entradas/publico/reservar-asientos', async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.reservarAsientosPublico(req.body)) });
   } catch (err) {
     next(err);
   }
@@ -140,6 +172,205 @@ entradasRouter.get('/admin/api/entradas/log', requireAdmin, async (req, res, nex
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     const eventoId = String(req.query.eventoId || '').trim();
     res.json({ ok: true, ...(await entradas.adminLog({ limit, offset, eventoId: eventoId || undefined }, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Asientos numerados ──────────────────────────────────────────────
+entradasRouter.get('/admin/api/entradas/tipos/:id/asientos', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminListAsientos(String(req.params.id), req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/tipos/:id/asientos/generar', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminGenerarAsientos(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.patch('/admin/api/entradas/asientos/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminSetEstadoAsiento(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Tandas / preventa ───────────────────────────────────────────────
+entradasRouter.get('/admin/api/entradas/tipos/:id/tandas', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminListTandas(String(req.params.id), req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/tipos/:id/tandas', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminCrearTanda(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.put('/admin/api/entradas/tandas/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminActualizarTanda(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.delete('/admin/api/entradas/tandas/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await entradas.adminEliminarTanda(String(req.params.id), req.adminUser!));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Templates de evento ─────────────────────────────────────────────
+entradasRouter.get('/admin/api/entradas/templates', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminListTemplates(req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/templates', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminCrearTemplate(req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.put('/admin/api/entradas/templates/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminActualizarTemplate(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.delete('/admin/api/entradas/templates/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await entradas.adminEliminarTemplate(String(req.params.id), req.adminUser!));
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/eventos/:id/guardar-template', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminGuardarComoTemplate(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/eventos/:id/aplicar-template', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminAplicarTemplate(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Promotores / RRPP ───────────────────────────────────────────────
+entradasRouter.get('/admin/api/entradas/promotores', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminListPromotores(req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.get('/admin/api/entradas/promotores/ranking', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminRankingPromotores(req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/promotores', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminCrearPromotor(req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.put('/admin/api/entradas/promotores/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminActualizarPromotor(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.delete('/admin/api/entradas/promotores/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await entradas.adminEliminarPromotor(String(req.params.id), req.adminUser!));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Config global (fee) ────────────────────────────────────────────
+entradasRouter.get('/admin/api/entradas/config', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminGetConfig(req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.put('/admin/api/entradas/config', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminSetConfig(req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Códigos de descuento ────────────────────────────────────────────
+entradasRouter.get('/admin/api/entradas/descuentos', requireAdmin, async (req, res, next) => {
+  try {
+    const eventoId = String(req.query.eventoId || '').trim();
+    res.json({ ok: true, ...(await entradas.adminListDescuentos(eventoId || undefined, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/descuentos', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminCrearDescuento(req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.put('/admin/api/entradas/descuentos/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminActualizarDescuento(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.delete('/admin/api/entradas/descuentos/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await entradas.adminEliminarDescuento(String(req.params.id), req.adminUser!));
   } catch (err) {
     next(err);
   }

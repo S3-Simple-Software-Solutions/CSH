@@ -160,7 +160,7 @@ function GramillaZones({
         style={{ cursor: canInteract ? 'pointer' : 'default' }}
         tabIndex={canInteract ? 0 : -1}
         role={canInteract ? 'button' : undefined}
-        aria-label={canInteract ? `${meta?.label ?? key} · ₡${t.precioCrc.toLocaleString('es-CR')} · ${t.disponibles} disponibles` : undefined}
+        aria-label={canInteract ? `${meta?.label ?? key} · ₡${(t.precioVigente ?? t.precioCrc).toLocaleString('es-CR')} · ${t.disponibles} disponibles` : undefined}
         {...handlers}
       >
         {pathArr.map((d, i) => (
@@ -341,7 +341,7 @@ export function StadiumSvgERC({
             style={{ cursor: canInteract ? 'pointer' : 'default' }}
             tabIndex={canInteract ? 0 : -1}
             role={canInteract ? 'button' : undefined}
-            aria-label={canInteract ? `${ERC_ZONE_META[key]?.label ?? key} · ₡${t.precioCrc.toLocaleString('es-CR')} · ${t.disponibles} disponibles` : undefined}
+            aria-label={canInteract ? `${ERC_ZONE_META[key]?.label ?? key} · ₡${(t.precioVigente ?? t.precioCrc).toLocaleString('es-CR')} · ${t.disponibles} disponibles` : undefined}
             {...handlers}
           >
             {paths.map((d, i) => (

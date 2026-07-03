@@ -8,6 +8,7 @@ import { authRouter } from './modules/auth/auth.routes';
 import { parqueoRouter } from './modules/parqueo/parqueo.routes';
 import { cuponeraRouter } from './modules/cuponera/cuponera.routes';
 import { entradasRouter } from './modules/entradas/entradas.routes';
+import { entradasWebhookRouter } from './modules/entradas/entradas.webhook';
 import { usuariosRouter } from './modules/usuarios/usuarios.routes';
 import { webRouter } from './modules/web/web.routes';
 import { contactoRouter } from './modules/contacto/contacto.routes';
@@ -23,6 +24,11 @@ const API_PREFIXES = ['/api', '/admin/api', '/admin/sign-in', '/admin/logout', '
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
+
+  // El webhook de pagos necesita el body crudo para verificar la firma, así que
+  // se monta ANTES del parser JSON global (usa su propio express.raw).
+  app.use(entradasWebhookRouter);
+
   app.use(express.json({ limit: '64kb' }));
   app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 

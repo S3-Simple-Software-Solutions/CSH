@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, Map as MapIcon, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
-import { StadiumMap } from './pages/entradas/StadiumMap.jsx';
+import { StadiumMap, tiposByZoneKey } from './pages/entradas/StadiumMap.jsx';
+import { StadiumSvgERC } from './pages/entradas/StadiumSvgERC.jsx';
+import { SeatAdminGrid } from './pages/entradas/SeatAdminGrid.jsx';
 import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
 import { gramillaKeysForTemplate } from './pages/entradas/stadiumFieldGeometry.js';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
@@ -10,6 +12,8 @@ import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
 import AdminSponsors from './pages/admin/AdminSponsors.jsx';
 import AdminMensajes from './pages/admin/AdminMensajes.jsx';
+import { entradasFaq } from './data/entradasInfo.js';
+import { contacto as clubContacto } from './data/club.js';
 import QRCode from 'qrcode';
 import { useEscClose } from './utils/useEscClose.js';
 import sotano1Img from './croquis/sotano-1.png';
@@ -2264,7 +2268,18 @@ function QRImage({ data, size = 140 }) {
   return <img className="qr-img" src={src} width={size} height={size} alt="Codigo QR del boleto" />;
 }
 
+// RRPP: persiste el código de promotor (?ref=CODIGO) para atribuir la compra.
+function capturarRef() {
+  const ref = new URLSearchParams(location.search).get('ref');
+  if (ref) sessionStorage.setItem('entradas_ref', ref.trim().toUpperCase());
+}
+
+function refActual() {
+  return sessionStorage.getItem('entradas_ref') || undefined;
+}
+
 function PublicEntradas() {
+  useEffect(() => { capturarRef(); }, []);
   const path = location.pathname;
   const slug = path.startsWith('/entradas/') ? decodeURIComponent(path.slice(10).replace(/\/$/, '')) : '';
   return slug ? <PublicEventDetail slug={slug} /> : <PublicEntradasList />;
@@ -2296,8 +2311,68 @@ function PublicEntradasList() {
           ))}
         </section>
         <BoletoLookup />
+        <EntradasInfo />
+        <EntradasContacto />
       </main>
     </>
+  );
+}
+
+// ── Más información (FAQ estático) ─────────────────────────────────
+function EntradasInfo() {
+  return (
+    <section className="card" style={{ marginTop: 24 }}>
+      <p className="eyebrow">Más información</p>
+      <h2 style={{ marginTop: 4 }}>Preguntas frecuentes</h2>
+      {entradasFaq.map((item) => (
+        <details key={item.q} style={{ borderBottom: '1px solid rgba(255,255,255,.08)', padding: '10px 0' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>{item.q}</summary>
+          <p className="muted" style={{ margin: '8px 0 2px', lineHeight: 1.55 }}>{item.a}</p>
+        </details>
+      ))}
+    </section>
+  );
+}
+
+// ── Contáctenos (reutiliza el módulo contacto: llega al inbox admin) ──
+function EntradasContacto() {
+  const [form, setForm] = useState({ nombre: '', email: '', mensaje: '' });
+  const [status, setStatus] = useState(null); // { type, text }
+  const [loading, setLoading] = useState(false);
+  const waNumber = String(clubContacto.general.whatsapp || '').replace(/\D/g, '');
+  async function submit(e) {
+    e.preventDefault();
+    setStatus(null); setLoading(true);
+    const d = await api('/api/contacto', { method: 'POST', body: JSON.stringify({ ...form, asunto: 'Entradas' }) });
+    setLoading(false);
+    if (!d.ok) return setStatus({ type: 'error', text: d.error });
+    setStatus({ type: 'ok', text: 'Mensaje enviado. Te respondemos por correo.' });
+    setForm({ nombre: '', email: '', mensaje: '' });
+  }
+  return (
+    <section className="card" style={{ marginTop: 18 }}>
+      <p className="eyebrow">Contáctenos</p>
+      <h2 style={{ marginTop: 4 }}>¿Necesitás ayuda con tus entradas?</h2>
+      <p className="muted">
+        Escribinos por WhatsApp al{' '}
+        <a href={`https://api.whatsapp.com/send/?phone=${encodeURIComponent(waNumber)}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700 }}>
+          {clubContacto.general.whatsapp}
+        </a>{' '}
+        ({clubContacto.general.horario}) o dejanos tu consulta:
+      </p>
+      <form onSubmit={submit}>
+        <div className="two">
+          <div><label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required /></div>
+          <div><label>Correo</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></div>
+        </div>
+        <label>Mensaje</label>
+        <textarea rows={4} value={form.mensaje} onChange={(e) => setForm({ ...form, mensaje: e.target.value })} required style={{ width: '100%', resize: 'vertical' }} />
+        {status && <div className={status.type === 'ok' ? 'okbox' : 'error'}>{status.text}</div>}
+        <button className="btn" type="submit" disabled={loading || !form.nombre || !form.email || !form.mensaje}>
+          <Send size={15} />{loading ? 'Enviando…' : 'Enviar consulta'}
+        </button>
+      </form>
+    </section>
   );
 }
 
@@ -2349,23 +2424,115 @@ function BoletoLookup() {
   );
 }
 
+function SeatGrid({ tipo, asientos, selected, onToggle }) {
+  const porFila = new Map();
+  for (const a of asientos) {
+    if (!porFila.has(a.fila)) porFila.set(a.fila, []);
+    porFila.get(a.fila).push(a);
+  }
+  const filas = [...porFila.keys()].sort();
+  const seatStyle = (a) => {
+    const isSel = selected.includes(a.id);
+    const libre = a.estado === 'disponible';
+    return {
+      width: 26, height: 26, borderRadius: 6, fontSize: '.62rem', fontWeight: 700,
+      border: '1px solid ' + (isSel ? '#c9a961' : libre ? '#3a5a3a' : '#444'),
+      background: isSel ? '#c9a961' : libre ? '#1d2e1d' : '#333',
+      color: isSel ? '#1a1a1a' : libre ? '#9fd49f' : '#666',
+      cursor: libre || isSel ? 'pointer' : 'not-allowed',
+      padding: 0,
+    };
+  };
+  return (
+    <div className="seat-grid" style={{ margin: '10px 0 4px', overflowX: 'auto' }}>
+      <p className="muted" style={{ fontSize: '.78rem', margin: '0 0 6px' }}>
+        {tipo.nombre}: elegí tus butacas ({selected.length} seleccionada{selected.length === 1 ? '' : 's'})
+      </p>
+      {filas.map((fila) => (
+        <div key={fila} style={{ display: 'flex', gap: 3, alignItems: 'center', marginBottom: 3 }}>
+          <span className="muted" style={{ width: 26, fontSize: '.68rem', textAlign: 'center', flexShrink: 0 }}>{fila}</span>
+          {porFila.get(fila).sort((a, b) => a.numero - b.numero).map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              style={seatStyle(a)}
+              disabled={a.estado !== 'disponible' && !selected.includes(a.id)}
+              title={`Fila ${a.fila} · Asiento ${a.numero}${a.estado !== 'disponible' ? ' · Ocupado' : ''}`}
+              onClick={() => onToggle(tipo.id, a.id)}
+            >
+              {a.numero}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PublicEventDetail({ slug }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [qty, setQty] = useState({});
+  const [seats, setSeats] = useState({}); // tipoId → [asientoId]
+  const [asientos, setAsientos] = useState([]);
   const [checkout, setCheckout] = useState(false);
+  const [hold, setHold] = useState(null);
+  const [seatError, setSeatError] = useState('');
   const [done, setDone] = useState(null);
+  const [banner, setBanner] = useState(null); // { type, text }
   const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'mapa'
+  const loadAsientos = () => api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}/asientos`).then((d) => { if (d.ok) setAsientos(d.asientos); });
   useEffect(() => {
     api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}`).then((d) => {
       if (d.ok) {
         setData(d);
         // Si hay zonas con mapa, mostrar mapa por defecto
         if (d.tipos?.some((t) => t.mapa) || isErcVectorLayout(d.evento)) setViewMode('mapa');
+        if (d.tipos?.some((t) => t.numerado)) loadAsientos();
       } else {
         setError(d.error);
       }
     });
+  }, [slug]);
+
+  // Retorno desde la pasarela: ?orden=<ordenId> (pago hecho) o ?pago=cancelado.
+  // (?ref= queda reservado para el código de promotor RRPP.) El boleto lo emite
+  // el webhook, así que hacemos polling hasta que la orden quede 'pagada'.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const ref = params.get('orden');
+    if (params.get('pago') === 'cancelado') {
+      setBanner({ type: 'info', text: 'Pago cancelado. No se realizó ningún cobro.' });
+      window.history.replaceState({}, '', `/entradas/${encodeURIComponent(slug)}`);
+      return;
+    }
+    if (!ref) return;
+    let stop = false;
+    let tries = 0;
+    setBanner({ type: 'info', text: 'Confirmando tu pago…' });
+    const poll = async () => {
+      tries += 1;
+      const d = await api(`/api/entradas/publico/orden/${encodeURIComponent(ref)}`);
+      if (stop) return;
+      if (d.ok && d.estado === 'pagada') {
+        setBanner(null);
+        setDone({ boletos: d.boletos });
+        window.history.replaceState({}, '', `/entradas/${encodeURIComponent(slug)}`);
+        return;
+      }
+      if (d.ok && d.estado === 'cancelada') {
+        setBanner({ type: 'error', text: 'La orden fue cancelada o expiró. No se realizó ningún cobro.' });
+        window.history.replaceState({}, '', `/entradas/${encodeURIComponent(slug)}`);
+        return;
+      }
+      if (tries >= 30) {
+        setBanner({ type: 'info', text: 'Tu pago sigue procesándose. Te enviaremos los boletos por correo apenas se confirme.' });
+        return;
+      }
+      setTimeout(poll, 2000);
+    };
+    poll();
+    return () => { stop = true; };
   }, [slug]);
   if (error) return (<><main className="page"><p className="eyebrow">Entradas</p><h1>Evento no disponible</h1><p className="sub">{error}</p><a className="btn ghost" href="/entradas">Volver a eventos</a></main></>);
   if (!data) return (<><main className="page"><p>Cargando...</p></main></>);
@@ -2373,14 +2540,41 @@ function PublicEventDetail({ slug }) {
   const setCantidad = (id, n, max) => setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(max, n)) }));
   const handleMapUpdate = (tipoId, delta) => {
     const t = tipos.find((t) => t.id === tipoId);
-    if (!t) return;
+    if (!t || t.numerado) return; // numerado se elige por butaca, no por stepper
     const cur = qty[tipoId] ?? 0;
     setCantidad(tipoId, cur + delta, Math.min(10, t.disponibles));
   };
-  const lineas = tipos.filter((t) => qty[t.id] > 0).map((t) => ({ tipoId: t.id, cantidad: qty[t.id] }));
-  const total = tipos.reduce((s, t) => s + t.precioCrc * (qty[t.id] || 0), 0);
+  const toggleSeat = (tipoId, asientoId) => {
+    setSeats((s) => {
+      const cur = s[tipoId] || [];
+      if (cur.includes(asientoId)) return { ...s, [tipoId]: cur.filter((id) => id !== asientoId) };
+      if (cur.length >= 10) return s;
+      return { ...s, [tipoId]: [...cur, asientoId] };
+    });
+  };
+  const cantidadDe = (t) => (t.numerado ? (seats[t.id] || []).length : (qty[t.id] || 0));
+  const lineas = tipos
+    .filter((t) => cantidadDe(t) > 0)
+    .map((t) => (t.numerado ? { tipoId: t.id, cantidad: seats[t.id].length, asientos: seats[t.id] } : { tipoId: t.id, cantidad: qty[t.id] }));
+  const total = tipos.reduce((s, t) => s + (t.precioVigente ?? t.precioCrc) * cantidadDe(t), 0);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
   const hasMapa = isErcVectorLayout(evento) || tipos.some((t) => t.mapa);
+  const tiposNumerados = tipos.filter((t) => t.numerado);
+  const allSelectedSeats = tiposNumerados.flatMap((t) => seats[t.id] || []);
+  async function continuar() {
+    setSeatError('');
+    if (allSelectedSeats.length === 0) return setCheckout(true);
+    // Soft-lock: reserva las butacas 7 minutos mientras se completa el pago.
+    const d = await api('/api/entradas/publico/reservar-asientos', { method: 'POST', body: JSON.stringify({ slug, asientos: allSelectedSeats }) });
+    if (!d.ok) {
+      setSeatError(d.error);
+      setSeats({});
+      loadAsientos();
+      return;
+    }
+    setHold(d.holdId);
+    setCheckout(true);
+  }
   return (
     <>
       <main className="page">
@@ -2388,6 +2582,7 @@ function PublicEventDetail({ slug }) {
         <p className="eyebrow">{fmtFullDate(evento.fecha)} · {evento.venue}</p>
         <h1>{evento.nombre}</h1>
         <p className="sub">{evento.descripcion}</p>
+        {banner && <div className={banner.type === 'error' ? 'error' : 'okbox'}>{banner.text}</div>}
 
         {hasMapa && (
           <div className="view-toggle">
@@ -2402,58 +2597,127 @@ function PublicEventDetail({ slug }) {
             <section className="sector-list">
               {tipos.map((t) => (
                 <div key={t.id} className={`sector ${t.disponibles === 0 ? 'agotado' : ''}`}>
-                  <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioCrc)}</span></div>
-                  <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
-                  <div className="stepper">
-                    <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
-                    <span>{qty[t.id] || 0}</span>
-                    <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
+                  <div className="sector-info">
+                    <b>{t.nombre}</b>
+                    <span>
+                      {t.tandaNombre && t.precioVigente !== t.precioCrc && <s className="muted" style={{ marginRight: 6 }}>{money(t.precioCrc)}</s>}
+                      {money(t.precioVigente ?? t.precioCrc)}
+                      {t.tandaNombre && <em className="pill publicado" style={{ marginLeft: 6, fontStyle: 'normal', fontSize: '.7rem' }}>{t.tandaNombre}</em>}
+                    </span>
                   </div>
+                  <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
+                  {t.numerado ? (
+                    <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} />
+                  ) : (
+                    <div className="stepper">
+                      <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
+                      <span>{qty[t.id] || 0}</span>
+                      <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </section>
           )
         }
 
+        {viewMode === 'mapa' && tiposNumerados.length > 0 && (
+          <section className="sector-list" style={{ marginTop: 12 }}>
+            {tiposNumerados.map((t) => (
+              <div key={t.id} className="sector">
+                <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioVigente ?? t.precioCrc)}</span></div>
+                <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} />
+              </div>
+            ))}
+          </section>
+        )}
+        {seatError && <div className="error">{seatError}</div>}
+
         <div className="checkout-bar">
           <div><span>{count} boleto(s)</span><b>{money(total)}</b></div>
-          <button className="btn" disabled={count === 0} onClick={() => setCheckout(true)}>Continuar</button>
+          <button className="btn" disabled={count === 0} onClick={continuar}>Continuar</button>
         </div>
       </main>
-      {checkout && <CheckoutModal slug={slug} lineas={lineas} total={total} evento={evento} onClose={() => setCheckout(false)} onDone={(res) => { setCheckout(false); setDone(res); }} />}
+      {checkout && <CheckoutModal slug={slug} lineas={lineas} total={total} evento={evento} fee={data.fee} holdId={hold} onClose={() => setCheckout(false)} />}
       {done && <TicketsModal result={done} onClose={() => { setDone(null); location.reload(); }} />}
     </>
   );
 }
 
-function CheckoutModal({ slug, lineas, total, evento, onClose, onDone }) {
-  const [buyer, setBuyer] = useState({ nombre: '', email: '' });
-  const [pago, setPago] = useState({ name: '', cardNumber: '', exp: '', cvv: '' });
+function calcFeeCrc(base, fee) {
+  if (!fee || fee.tipo === 'ninguno' || !fee.valor || base <= 0) return 0;
+  return fee.tipo === 'pct' ? Math.round((base * fee.valor) / 100) : Math.round(fee.valor);
+}
+
+function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose }) {
+  const [buyer, setBuyer] = useState({ nombre: '', email: '', telefono: '', notifWhatsapp: false });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [codigo, setCodigo] = useState('');
+  const [aplicado, setAplicado] = useState(null); // { codigo, descuento }
+  const [descMsg, setDescMsg] = useState('');
+  const [descLoading, setDescLoading] = useState(false);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
+
+  const subtotal = total;
+  const descuento = aplicado ? aplicado.descuento : 0;
+  const base = Math.max(0, subtotal - descuento);
+  const feeCrc = calcFeeCrc(base, fee);
+  const grandTotal = base + feeCrc;
+
+  async function aplicarCodigo() {
+    setDescMsg(''); setDescLoading(true);
+    const d = await api('/api/entradas/publico/validar-descuento', { method: 'POST', body: JSON.stringify({ slug, lineas, codigo }) });
+    setDescLoading(false);
+    if (!d.ok) { setAplicado(null); return setDescMsg(d.error); }
+    setAplicado({ codigo: d.codigo, descuento: d.descuento });
+    setDescMsg(d.descuento > 0 ? `Código ${d.codigo} aplicado` : `Código ${d.codigo} sin efecto en esta compra`);
+  }
+  function quitarCodigo() { setAplicado(null); setCodigo(''); setDescMsg(''); }
+
   async function submit() {
     setError(''); setLoading(true);
-    const body = { slug, lineas, comprador: buyer, pago: total > 0 ? pago : undefined };
-    const d = await api('/api/entradas/publico/comprar', { method: 'POST', body: JSON.stringify(body) });
-    setLoading(false);
-    if (!d.ok) return setError(d.error);
-    onDone(d);
+    const body = { slug, lineas, comprador: buyer, descuentoCodigo: aplicado ? aplicado.codigo : undefined, holdId: holdId || undefined, ref: refActual() };
+    const d = await api('/api/entradas/publico/checkout', { method: 'POST', body: JSON.stringify(body) });
+    if (!d.ok) { setLoading(false); return setError(d.error); }
+    // La tarjeta se cobra en la pasarela hospedada (Stripe Checkout): redirigimos.
+    window.location.href = d.url;
   }
   return (
     <Modal title="Finalizar compra" onClose={onClose}>
-      <div className="pay-summary">{evento.nombre}<br />{count} boleto(s) · Total <b>{money(total)}</b></div>
+      <div className="pay-summary">{evento.nombre}<br />{count} boleto(s)</div>
       <label>Nombre completo</label><input value={buyer.nombre} onChange={(e) => setBuyer({ ...buyer, nombre: e.target.value })} autoFocus />
       <label>Correo (recibis el QR aqui)</label><input type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} />
-      {total > 0 && (
+
+      <label className="check" style={{ margin: '8px 0 4px' }}>
+        <input type="checkbox" checked={buyer.notifWhatsapp} onChange={(e) => setBuyer({ ...buyer, notifWhatsapp: e.target.checked })} />
+        {' '}Quiero recibir mis entradas también por WhatsApp
+      </label>
+      {buyer.notifWhatsapp && (
         <>
-          <label>Nombre en la tarjeta</label><input value={pago.name} onChange={(e) => setPago({ ...pago, name: e.target.value })} />
-          <label>Numero de tarjeta</label><input inputMode="numeric" value={pago.cardNumber} onChange={(e) => setPago({ ...pago, cardNumber: e.target.value })} />
-          <div className="two"><div><label>Expira</label><input placeholder="MM/AA" value={pago.exp} onChange={(e) => setPago({ ...pago, exp: e.target.value.replace(/\D/g, '').slice(0, 4).replace(/^(\d{2})(\d)/, '$1/$2') })} /></div><div><label>CVV</label><input inputMode="numeric" value={pago.cvv} onChange={(e) => setPago({ ...pago, cvv: e.target.value })} /></div></div>
+          <label>Teléfono (WhatsApp)</label>
+          <input inputMode="tel" placeholder="8888 8888" value={buyer.telefono} onChange={(e) => setBuyer({ ...buyer, telefono: e.target.value })} />
         </>
       )}
+
+      <label>¿Tenés un código de descuento?</label>
+      {aplicado ? (
+        <div className="two"><div><input value={aplicado.codigo} disabled /></div><div><button className="btn ghost" onClick={quitarCodigo}>Quitar</button></div></div>
+      ) : (
+        <div className="two"><div><input value={codigo} placeholder="CODIGO" onChange={(e) => setCodigo(e.target.value.toUpperCase())} /></div><div><button className="btn ghost" onClick={aplicarCodigo} disabled={descLoading || codigo.trim().length < 3}>{descLoading ? '...' : 'Aplicar'}</button></div></div>
+      )}
+      {descMsg && <div className="muted" style={{ fontSize: '.85rem' }}>{descMsg}</div>}
+
+      <div className="checkout-desglose" style={{ margin: '12px 0', fontSize: '.9rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>{money(subtotal)}</span></div>
+        {descuento > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0a7d3a' }}><span>Descuento</span><span>−{money(descuento)}</span></div>}
+        {feeCrc > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Cargo por servicio</span><span>{money(feeCrc)}</span></div>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #ddd', marginTop: 6, paddingTop: 6 }}><span>Total</span><span>{money(grandTotal)}</span></div>
+      </div>
+
+      <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.75rem' }}>Te llevaremos a la pasarela segura para completar el pago. Tus datos de tarjeta nunca pasan por este sitio.</p>
       {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={submit} disabled={loading}>{loading ? 'Procesando...' : `Pagar ${money(total)}`}</button>
+      <button className="btn" onClick={submit} disabled={loading}>{loading ? 'Redirigiendo...' : `Pagar ${money(grandTotal)}`}</button>
     </Modal>
   );
 }
@@ -2461,12 +2725,16 @@ function CheckoutModal({ slug, lineas, total, evento, onClose, onDone }) {
 function TicketsModal({ result, onClose }) {
   return (
     <Modal title="Compra exitosa" onClose={onClose}>
-      <p className="muted">{result.emailSent ? `Enviamos tus boletos a ${result.correo}.` : 'Compra registrada. No se pudo enviar el correo ahora, guarda estos codigos.'}</p>
+      <p className="muted">
+        {result.emailSent === false ? 'Compra registrada. No se pudo enviar el correo ahora, guarda estos codigos.' : (result.correo ? `Enviamos tus boletos a ${result.correo}.` : 'Tus boletos estan listos. Tambien te los enviamos por correo.')}
+        {result.whatsappSent ? ' También los enviamos por WhatsApp.' : ''}
+      </p>
       <div className="tickets-grid">
         {result.boletos.map((b) => (
           <div key={b.codigo} className="ticket-qr">
             <QRImage data={b.qrData} size={130} />
             <b>{b.tipoNombre}</b>
+            {b.asientoLabel && <span style={{ fontWeight: 700 }}>{b.asientoLabel}</span>}
             <span>{b.codigo}</span>
           </div>
         ))}
@@ -2487,12 +2755,221 @@ function AdminEntradas({ user }) {
       <div className="tabs">
         {canManage && <button className={tab === 'eventos' ? 'active' : ''} onClick={() => setTab('eventos')}>Eventos</button>}
         {canSales && <button className={tab === 'ventas' ? 'active' : ''} onClick={() => setTab('ventas')}>Ventas</button>}
+        {canManage && <button className={tab === 'descuentos' ? 'active' : ''} onClick={() => setTab('descuentos')}>Descuentos</button>}
+        {canSales && <button className={tab === 'promotores' ? 'active' : ''} onClick={() => setTab('promotores')}>Promotores</button>}
         {canGate && <button className={tab === 'puerta' ? 'active' : ''} onClick={() => setTab('puerta')}><ScanLine size={15} />Puerta</button>}
       </div>
       {tab === 'eventos' && canManage && <AdminEventosTab />}
       {tab === 'ventas' && canSales && <AdminVentasTab />}
+      {tab === 'descuentos' && canManage && <AdminDescuentosTab />}
+      {tab === 'promotores' && canSales && <AdminPromotoresTab canManage={canManage} />}
       {tab === 'puerta' && canGate && <AdminPuertaTab />}
     </main>
+  );
+}
+
+function AdminPromotoresTab({ canManage }) {
+  const [ranking, setRanking] = useState([]);
+  const [modal, setModal] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const load = async () => {
+    const d = await api('/admin/api/entradas/promotores/ranking');
+    if (d.ok) setRanking(d.ranking);
+  };
+  useEffect(() => { load(); }, []);
+  async function copiarLink(p) {
+    const link = `${location.origin}/entradas?ref=${encodeURIComponent(p.codigo)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setMsg({ type: 'ok', text: `Link de ${p.nombre} copiado: ${link}` });
+    } catch {
+      setMsg({ type: 'ok', text: link });
+    }
+  }
+  async function del(p) {
+    if (!window.confirm(`¿Eliminar al promotor "${p.nombre}"? Las ventas ya atribuidas se conservan.`)) return;
+    const d = await api(`/admin/api/entradas/promotores/${p.id}`, { method: 'DELETE' });
+    if (d.ok) load();
+  }
+  const comisionLabel = (p) => (p.comisionTipo === 'pct' ? `${p.comisionValor}% del subtotal` : `${money(p.comisionValor)} por orden`);
+  return (
+    <>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      {canManage && <div className="actions left"><button className="btn" onClick={() => setModal({})}><Plus size={16} />Nuevo promotor</button></div>}
+      <div className="table"><table><thead><tr><th>Promotor</th><th>Código</th><th>Comisión</th><th>Órdenes</th><th>Boletos</th><th>Ventas</th><th>Comisión ₡</th><th></th></tr></thead><tbody>
+        {ranking.map((r) => (
+          <tr key={r.promotor.id}>
+            <td><b>{r.promotor.nombre}</b>{!r.promotor.activo && <span className="pill borrador" style={{ marginLeft: 6 }}>inactivo</span>}</td>
+            <td>{r.promotor.codigo}</td>
+            <td>{comisionLabel(r.promotor)}</td>
+            <td>{r.ordenes}</td>
+            <td>{r.boletos}</td>
+            <td>{money(r.ventasCrc)}</td>
+            <td>{money(r.comisionCrc)}</td>
+            <td className="row-actions">
+              <button className="link-cell" onClick={() => copiarLink(r.promotor)}>Copiar link</button>
+              {canManage && <button className="link-cell" onClick={() => setModal(r.promotor)}>Editar</button>}
+              {canManage && <button className="link-cell danger" onClick={() => del(r.promotor)}>Eliminar</button>}
+            </td>
+          </tr>
+        ))}
+        {ranking.length === 0 && <tr><td colSpan={8} className="muted">Sin promotores registrados.</td></tr>}
+      </tbody></table></div>
+      {modal && <PromotorModal promotor={modal.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+    </>
+  );
+}
+
+function PromotorModal({ promotor, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    nombre: promotor?.nombre || '',
+    codigo: promotor?.codigo || '',
+    comisionTipo: promotor?.comisionTipo || 'pct',
+    comisionValor: promotor?.comisionValor ?? 10,
+    activo: promotor?.activo ?? true,
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  async function submit() {
+    setError(''); setLoading(true);
+    const url = promotor ? `/admin/api/entradas/promotores/${promotor.id}` : '/admin/api/entradas/promotores';
+    const d = await api(url, { method: promotor ? 'PUT' : 'POST', body: JSON.stringify(form) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    onSaved();
+  }
+  return (
+    <Modal title={promotor ? 'Editar promotor' : 'Nuevo promotor'} onClose={onClose}>
+      <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus />
+      <label>Código (vacío = se genera automático)</label><input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value.toUpperCase() })} placeholder="JUAN10" />
+      <div className="two">
+        <div><label>Tipo de comisión</label><select value={form.comisionTipo} onChange={(e) => setForm({ ...form, comisionTipo: e.target.value })}><option value="pct">% del subtotal</option><option value="crc">Monto fijo por orden</option></select></div>
+        <div><label>Valor</label><input type="number" min="0" value={form.comisionValor} onChange={(e) => setForm({ ...form, comisionValor: Number(e.target.value) })} /></div>
+      </div>
+      <label className="check"><input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /> Activo</label>
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit} disabled={loading || form.nombre.trim().length < 3}>{loading ? 'Guardando...' : 'Guardar'}</button>
+    </Modal>
+  );
+}
+
+function AdminDescuentosTab() {
+  const [config, setConfig] = useState(null);
+  const [feeForm, setFeeForm] = useState({ feeTipoDefault: 'ninguno', feeValorDefault: 0 });
+  const [descuentos, setDescuentos] = useState([]);
+  const [eventos, setEventos] = useState([]);
+  const [msg, setMsg] = useState(null);
+  const [modal, setModal] = useState(null);
+  const load = async () => {
+    const c = await api('/admin/api/entradas/config');
+    if (c.ok) { setConfig(c.config); setFeeForm({ feeTipoDefault: c.config.feeTipoDefault, feeValorDefault: c.config.feeValorDefault }); }
+    const d = await api('/admin/api/entradas/descuentos');
+    if (d.ok) setDescuentos(d.descuentos);
+    const e = await api('/admin/api/entradas/eventos');
+    if (e.ok) setEventos(e.eventos.map((x) => x.evento));
+  };
+  useEffect(() => { load(); }, []);
+  async function saveConfig() {
+    setMsg(null);
+    const d = await api('/admin/api/entradas/config', { method: 'PUT', body: JSON.stringify(feeForm) });
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setConfig(d.config); setMsg({ type: 'ok', text: 'Cargo por servicio actualizado.' });
+  }
+  async function del(id) {
+    if (!window.confirm('¿Eliminar este código de descuento?')) return;
+    const d = await api(`/admin/api/entradas/descuentos/${id}`, { method: 'DELETE' });
+    if (d.ok) load();
+  }
+  const feeLabel = (t, v) => (t === 'ninguno' || !t ? 'Sin cargo' : t === 'pct' ? `${v}%` : money(v));
+  return (
+    <>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      <section className="card" style={{ marginBottom: 18 }}>
+        <h3>Cargo por servicio (global)</h3>
+        <p className="muted" style={{ fontSize: '.85rem' }}>Se aplica a todas las compras salvo que un evento defina su propio cargo.</p>
+        <div className="two">
+          <div>
+            <label>Tipo</label>
+            <select value={feeForm.feeTipoDefault} onChange={(e) => setFeeForm({ ...feeForm, feeTipoDefault: e.target.value })}>
+              <option value="ninguno">Sin cargo</option>
+              <option value="pct">Porcentaje (%)</option>
+              <option value="crc">Monto fijo (CRC)</option>
+            </select>
+          </div>
+          <div>
+            <label>Valor</label>
+            <input type="number" min="0" value={feeForm.feeValorDefault} disabled={feeForm.feeTipoDefault === 'ninguno'} onChange={(e) => setFeeForm({ ...feeForm, feeValorDefault: Number(e.target.value) })} />
+          </div>
+        </div>
+        <button className="btn" onClick={saveConfig}>Guardar cargo</button>
+      </section>
+
+      <div className="actions left"><button className="btn" onClick={() => setModal({})}><Plus size={16} />Nuevo código</button></div>
+      <div className="table"><table><thead><tr><th>Código</th><th>Descuento</th><th>Evento</th><th>Usos</th><th>Estado</th><th></th></tr></thead><tbody>
+        {descuentos.map((d) => (
+          <tr key={d.id}>
+            <td><b>{d.codigo}</b></td>
+            <td>{feeLabel(d.tipo === 'monto' ? 'crc' : 'pct', d.valor)}</td>
+            <td>{d.eventoId ? (eventos.find((e) => e.id === d.eventoId)?.nombre || '—') : 'Todos'}</td>
+            <td>{d.usosActuales}{d.usosMax != null ? ` / ${d.usosMax}` : ''}</td>
+            <td><span className={`pill ${d.activo ? 'publicado' : 'borrador'}`}>{d.activo ? 'activo' : 'inactivo'}</span></td>
+            <td className="row-actions">
+              <button className="link-cell" onClick={() => setModal(d)}>Editar</button>
+              <button className="link-cell danger" onClick={() => del(d.id)}>Eliminar</button>
+            </td>
+          </tr>
+        ))}
+        {descuentos.length === 0 && <tr><td colSpan={6} className="muted">Sin códigos de descuento.</td></tr>}
+      </tbody></table></div>
+      {modal && <DescuentoModal descuento={modal.id ? modal : null} eventos={eventos} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+    </>
+  );
+}
+
+function DescuentoModal({ descuento, eventos, onClose, onSaved }) {
+  const toLocal = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : '');
+  const [form, setForm] = useState({
+    codigo: descuento?.codigo || '',
+    tipo: descuento?.tipo || 'pct',
+    valor: descuento?.valor || 10,
+    eventoId: descuento?.eventoId || '',
+    usosMax: descuento?.usosMax ?? '',
+    vigenciaDesde: toLocal(descuento?.vigenciaDesde),
+    vigenciaHasta: toLocal(descuento?.vigenciaHasta),
+    activo: descuento?.activo ?? true,
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  async function submit() {
+    setError(''); setLoading(true);
+    const body = { ...form, eventoId: form.eventoId || null, usosMax: form.usosMax === '' ? null : Number(form.usosMax) };
+    const url = descuento ? `/admin/api/entradas/descuentos/${descuento.id}` : '/admin/api/entradas/descuentos';
+    const d = await api(url, { method: descuento ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    onSaved();
+  }
+  return (
+    <Modal title={descuento ? 'Editar código' : 'Nuevo código'} onClose={onClose}>
+      <label>Código</label><input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value.toUpperCase() })} autoFocus />
+      <div className="two">
+        <div><label>Tipo</label><select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}><option value="pct">Porcentaje (%)</option><option value="monto">Monto fijo (CRC)</option></select></div>
+        <div><label>Valor</label><input type="number" min="1" value={form.valor} onChange={(e) => setForm({ ...form, valor: Number(e.target.value) })} /></div>
+      </div>
+      <label>Evento</label>
+      <select value={form.eventoId} onChange={(e) => setForm({ ...form, eventoId: e.target.value })}>
+        <option value="">Todos los eventos</option>
+        {eventos.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+      </select>
+      <label>Límite de usos (opcional)</label><input type="number" min="1" value={form.usosMax} onChange={(e) => setForm({ ...form, usosMax: e.target.value })} placeholder="Sin límite" />
+      <div className="two">
+        <div><label>Vigente desde</label><input type="datetime-local" value={form.vigenciaDesde} onChange={(e) => setForm({ ...form, vigenciaDesde: e.target.value })} /></div>
+        <div><label>Vigente hasta</label><input type="datetime-local" value={form.vigenciaHasta} onChange={(e) => setForm({ ...form, vigenciaHasta: e.target.value })} /></div>
+      </div>
+      <label className="check"><input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /> Activo</label>
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit} disabled={loading || form.codigo.trim().length < 3}>{loading ? 'Guardando...' : 'Guardar'}</button>
+    </Modal>
   );
 }
 
@@ -2512,7 +2989,10 @@ function AdminEventosTab() {
   }
   return (
     <>
-      <div className="actions left"><button className="btn" onClick={() => setModal({ type: 'evento' })}><Plus size={16} />Nuevo evento</button></div>
+      <div className="actions left">
+        <button className="btn" onClick={() => setModal({ type: 'evento' })}><Plus size={16} />Nuevo evento</button>
+        <button className="btn ghost" onClick={() => setModal({ type: 'templates' })}><Sparkles size={16} />Templates</button>
+      </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <div className="table"><table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>
         {eventos.map((ev) => (
@@ -2535,7 +3015,8 @@ function AdminEventosTab() {
           onChanged={() => { refresh(); refreshLog(); }}
         />
       )}
-      {modal?.type === 'evento' && <EventFormModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); refreshLog(); }} />}
+      {modal?.type === 'evento' && <EventWizardModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); refreshLog(); }} />}
+      {modal?.type === 'templates' && <TemplatesModal onClose={() => setModal(null)} />}
     </>
   );
 }
@@ -2611,317 +3092,731 @@ function EntradasLogPanel({ eventos, refreshKey }) {
   );
 }
 
-function EventFormModal({ onClose, onDone }) {
-  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '', formato: 'partido' });
-  const [error, setError] = useState('');
-  async function submit() {
-    setError('');
-    const d = await api('/admin/api/entradas/eventos', { method: 'POST', body: JSON.stringify(form) });
-    if (!d.ok) return setError(d.error);
-    onDone();
+// Gestión de templates de evento: listar, renombrar, eliminar.
+function TemplatesModal({ onClose }) {
+  const [templates, setTemplates] = useState([]);
+  const [msg, setMsg] = useState(null);
+  const load = async () => {
+    const d = await api('/admin/api/entradas/templates');
+    if (d.ok) setTemplates(d.templates);
+  };
+  useEffect(() => { load(); }, []);
+  async function renombrar(t) {
+    const nombre = window.prompt('Nuevo nombre del template:', t.nombre);
+    if (!nombre || nombre === t.nombre) return;
+    const d = await api(`/admin/api/entradas/templates/${t.id}`, { method: 'PUT', body: JSON.stringify({ nombre, descripcion: t.descripcion }) });
+    setMsg(d.ok ? null : { type: 'error', text: d.error });
+    if (d.ok) load();
+  }
+  async function eliminar(t) {
+    if (!window.confirm(`¿Eliminar el template "${t.nombre}"? Los eventos ya creados no se ven afectados.`)) return;
+    const d = await api(`/admin/api/entradas/templates/${t.id}`, { method: 'DELETE' });
+    if (d.ok) load();
   }
   return (
-    <Modal title="Nuevo evento" onClose={onClose}>
-      <label>Nombre</label>
-      <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
-      <label>Lugar</label>
-      <input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} />
-      <label>Fecha y hora</label>
-      <input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
-      <label>Descripcion</label>
-      <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
-      <label>Formato</label>
-      <div className="evento-formato-opts">
-        {[
-          { value: 'partido', label: 'Partido', desc: '6 tribunas del estadio' },
-          { value: 'espectaculo', label: 'Espectáculo', desc: 'Tribunas + zonas en la gramilla' },
-        ].map(({ value, label, desc }) => (
-          <label key={value} className={`evento-formato-opt${form.formato === value ? ' active' : ''}`}>
-            <input
-              type="radio"
-              name="formato"
-              value={value}
-              checked={form.formato === value}
-              onChange={() => setForm({ ...form, formato: value })}
-            />
-            <span className="evento-formato-opt-label">{label}</span>
-            <span className="evento-formato-opt-desc">{desc}</span>
-          </label>
+    <Modal title="Templates de evento" onClose={onClose}>
+      <p className="muted" style={{ fontSize: '.85rem' }}>
+        Un template guarda sectores, precios, butacas (con bloqueos) y tandas de preventa. Se crean desde el detalle
+        de un evento ("Guardar como template") o al final del wizard.
+      </p>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      <div className="table"><table><thead><tr><th>Template</th><th>Formato</th><th>Sectores</th><th></th></tr></thead><tbody>
+        {templates.map((t) => (
+          <tr key={t.id}>
+            <td><b>{t.nombre}</b>{t.descripcion && <><br /><small className="muted">{t.descripcion}</small></>}</td>
+            <td>{t.formato}</td>
+            <td>{t.sectores}{t.numerados > 0 ? ` (${t.numerados} num.)` : ''}</td>
+            <td className="row-actions">
+              <button className="link-cell" onClick={() => renombrar(t)}>Renombrar</button>
+              <button className="link-cell danger" onClick={() => eliminar(t)}>Eliminar</button>
+            </td>
+          </tr>
         ))}
-      </div>
-      {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={submit}>Crear evento</button>
+        {templates.length === 0 && <tr><td colSpan={4} className="muted">Sin templates guardados.</td></tr>}
+      </tbody></table></div>
+      <div className="modal-actions"><button className="btn ghost" onClick={onClose}>Cerrar</button></div>
     </Modal>
   );
 }
 
-function TiposModal({ evento, onClose, asPanel }) {
-  const [tipos, setTipos] = useState([]);
-  const [form, setForm] = useState({ sectorKey: '', precioCrc: '', stockTotal: '' });
-  const [gramForm, setGramForm] = useState({ key: '', nombre: '', precioCrc: '', stockTotal: '' });
-  const [error, setError] = useState('');
-  const [adding, setAdding] = useState(false);
-  const esEspectaculo = evento?.formato === 'espectaculo';
-  const fieldTemplate = evento?.fieldTemplate ?? '2';
+// ── Wizard de creación de eventos ───────────────────────────────────
+// Flujo por pasos: 0) punto de partida → 1) datos (crea el borrador) →
+// 2) sectores → 3) butacas → 4) preventa/fee → 5) revisión y publicación.
+// Si se cierra a mitad, el borrador queda en la tabla y se completa después.
 
-  const refresh = async () => {
-    const d = await api(`/admin/api/entradas/eventos/${evento.id}`);
-    if (d.ok) setTipos(d.tipos);
-  };
-  useEffect(() => { refresh(); }, []);
+const WIZARD_PASOS = ['Inicio', 'Datos', 'Sectores', 'Butacas', 'Preventa', 'Revisión'];
 
-  const usedKeys = useMemo(() => {
-    const keys = new Set();
-    for (const t of tipos) {
-      const k = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
-      if (k) keys.add(k);
-    }
-    return keys;
-  }, [tipos]);
-
-  const usedNombres = useMemo(
-    () => new Set(tipos.map((t) => t.nombre.toLowerCase())),
-    [tipos],
-  );
-
-  const availableSectores = useMemo(
-    () => ERC_SECTORES.filter((s) => !usedKeys.has(s.key) && !usedNombres.has(s.nombre.toLowerCase())),
-    [usedKeys, usedNombres],
-  );
-
-  // Slots gramilla disponibles según plantilla
-  const gramillaSlots = useMemo(() => {
-    if (!esEspectaculo) return [];
-    return gramillaKeysForTemplate(fieldTemplate).filter((k) => !usedKeys.has(k));
-  }, [esEspectaculo, fieldTemplate, usedKeys]);
-
-  function pickSector(key) {
-    const s = ERC_SECTORES.find((x) => x.key === key);
-    if (!s) return setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
-    setForm({ sectorKey: key, precioCrc: String(s.precio), stockTotal: String(s.stock) });
-  }
-
-  function pickGramillaSlot(key) {
-    const meta = GRAMILLA_ZONE_META[key];
-    const defaults = GRAMILLA_SECTORES.find((x) => x.key === key);
-    setGramForm({ key, nombre: meta?.label ?? key, precioCrc: String(defaults?.precio ?? 15000), stockTotal: String(defaults?.stock ?? 300) });
-  }
-
-  async function createSector(payload) {
-    const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    if (!d.ok) throw new Error(d.error || 'Error al crear sector');
-    return d;
-  }
-
-  async function add() {
-    setError('');
-    const s = ERC_SECTORES.find((x) => x.key === form.sectorKey);
-    if (!s) return setError('Selecciona un sector del listado');
-    const precioCrc = Number(form.precioCrc);
-    const stockTotal = Number(form.stockTotal);
-    if (!Number.isFinite(precioCrc) || precioCrc < 0) return setError('Precio inválido');
-    if (!Number.isFinite(stockTotal) || stockTotal < 0) return setError('Cupo inválido');
-    setAdding(true);
-    try {
-      await createSector({ nombre: s.nombre, precioCrc, stockTotal, zoneKey: s.key });
-      setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
-      await refresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  async function addAllMissing() {
-    setError('');
-    if (availableSectores.length === 0) return setError('Todos los sectores del catálogo ya están agregados');
-    setAdding(true);
-    try {
-      for (const s of availableSectores) {
-        await createSector({ nombre: s.nombre, precioCrc: s.precio, stockTotal: s.stock, zoneKey: s.key });
-      }
-      setForm({ sectorKey: '', precioCrc: '', stockTotal: '' });
-      await refresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  async function addGramilla() {
-    setError('');
-    if (!gramForm.key) return setError('Selecciona un slot de gramilla');
-    const nombre = gramForm.nombre.trim() || GRAMILLA_ZONE_META[gramForm.key]?.label;
-    const precioCrc = Number(gramForm.precioCrc);
-    const stockTotal = Number(gramForm.stockTotal);
-    if (nombre.length < 2) return setError('Nombre de zona muy corto');
-    if (!Number.isFinite(precioCrc) || precioCrc < 0) return setError('Precio inválido');
-    if (!Number.isFinite(stockTotal) || stockTotal < 0) return setError('Cupo inválido');
-    setAdding(true);
-    try {
-      await createSector({ nombre, precioCrc, stockTotal, zoneKey: gramForm.key });
-      setGramForm({ key: '', nombre: '', precioCrc: '', stockTotal: '' });
-      await refresh();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  async function toggle(t) {
-    const d = await api(`/admin/api/entradas/tipos/${t.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        nombre: t.nombre,
-        precioCrc: t.precioCrc,
-        stockTotal: t.stockTotal,
-        estado: t.estado === 'activo' ? 'inactivo' : 'activo',
-      }),
-    });
-    if (d.ok) refresh(); else setError(d.error);
-  }
-
-  const selectedMeta = form.sectorKey ? ERC_ZONE_META[form.sectorKey] : null;
-
-  // Separar tipos por categoría para mostrarlos agrupados
-  const tiposTribuna = tipos.filter((t) => {
-    const k = t.mapa?.points?.key;
-    return !k || !k.startsWith('gramilla-');
-  });
-  const tiposGramilla = tipos.filter((t) => {
-    const k = t.mapa?.points?.key;
-    return k && k.startsWith('gramilla-');
-  });
-
-  const inner = (
-    <>
-
-      {/* Lista de sectores existentes */}
-      {tipos.length > 0 && (
-        <div className="tipos-list">
-          {(esEspectaculo ? [...tiposTribuna, ...tiposGramilla] : tipos).map((t) => {
-            const key = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
-            const meta = (key ? (ERC_ZONE_META[key] ?? GRAMILLA_ZONE_META[key]) : null);
-            const tier = meta?.tier;
-            const isGram = key?.startsWith('gramilla-');
-            return (
-              <div key={t.id} className={`tipo-row${isGram ? ' tipo-row--gramilla' : ''}`}>
-                <div>
-                  {meta && <span className="tipo-swatch" style={{ background: meta.color }} />}
-                  <b>{t.nombre}</b>
-                  {tier && <span className="tipo-tier">{tier}</span>}
-                  <span>{money(t.precioCrc)} · {t.stockVendido}/{t.stockTotal} · {t.estado}</span>
-                </div>
-                <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* === Bloque Tribunas === */}
-      <div className="tipos-section">
-        <h4 className="tipos-section-title">Tribunas</h4>
-        <p className="toolbar-hint">Elige un sector del catálogo ERC; el nombre y la zona del mapa se asignan automáticamente.</p>
-        {availableSectores.length > 0 && (
-          <button type="button" className="btn ghost sector-add-all" onClick={addAllMissing} disabled={adding}>
-            <Plus size={16} />Agregar todos los faltantes ({availableSectores.length})
-          </button>
-        )}
-        <label>Sector tribuna</label>
-        <select
-          value={form.sectorKey}
-          onChange={(e) => pickSector(e.target.value)}
-          disabled={adding || availableSectores.length === 0}
+function WizardProgress({ paso }) {
+  return (
+    <div style={{ display: 'flex', gap: 4, margin: '0 0 16px', flexWrap: 'wrap' }}>
+      {WIZARD_PASOS.map((label, i) => (
+        <span
+          key={label}
+          className={`pill ${i === paso ? 'publicado' : i < paso ? 'agotado' : 'borrador'}`}
+          style={{ fontSize: '.68rem', opacity: i <= paso ? 1 : 0.5 }}
         >
-          <option value="">
-            {availableSectores.length === 0 ? 'Todas las tribunas ya están' : 'Seleccionar tribuna…'}
-          </option>
-          {availableSectores.map((s) => {
-            const meta = ERC_ZONE_META[s.key];
-            return (
-              <option key={s.key} value={s.key}>
-                {s.nombre} · {meta?.tier ?? '—'} · ₡{s.precio.toLocaleString('es-CR')} · cupo {s.stock}
-              </option>
-            );
-          })}
-        </select>
-        {selectedMeta && (
-          <p className="sector-pick-hint">Zona en mapa: <strong>{selectedMeta.label}</strong> ({selectedMeta.tier})</p>
-        )}
-        <div className="two">
-          <div>
-            <label>Precio CRC</label>
-            <input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} disabled={!form.sectorKey || adding} />
-          </div>
-          <div>
-            <label>Cupo</label>
-            <input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} disabled={!form.sectorKey || adding} />
-          </div>
-        </div>
-        {error && <div className="error">{error}</div>}
-        <button className="btn" onClick={add} disabled={adding || !form.sectorKey}>
-          <Plus size={16} />{adding ? 'Agregando…' : 'Agregar tribuna'}
-        </button>
-      </div>
+          {i + 1}. {label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
-      {/* === Bloque Gramilla (solo espectáculo) === */}
-      {esEspectaculo && (
-        <div className="tipos-section tipos-section--gramilla">
-          <h4 className="tipos-section-title">Zonas de gramilla</h4>
-          <p className="toolbar-hint">
-            Plantilla activa: <strong>{fieldTemplate} partes</strong>. Agrega un sector por cada zona de la gramilla.
-            Puedes cambiar la plantilla y los límites en el editor de mapa.
-          </p>
-          {gramillaSlots.length === 0 ? (
-            <p className="muted">Todas las zonas de gramilla ya tienen sector.</p>
-          ) : (
+function EventWizardModal({ onClose, onDone }) {
+  const [paso, setPaso] = useState(0);
+  const [templates, setTemplates] = useState([]);
+  const [templateId, setTemplateId] = useState('');
+  const [evento, setEvento] = useState(null); // se crea al completar el paso Datos
+  const [tipos, setTipos] = useState([]);
+  const [aplicado, setAplicado] = useState(null); // resultado de aplicar template
+  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '', formato: 'partido' });
+  const [fee, setFee] = useState({ feeTipo: '', feeValor: 0 });
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { api('/admin/api/entradas/templates').then((d) => { if (d.ok) setTemplates(d.templates); }); }, []);
+
+  const refresh = async (id = evento?.id) => {
+    if (!id) return;
+    const d = await api(`/admin/api/entradas/eventos/${id}`);
+    if (d.ok) { setEvento(d.evento); setTipos(d.tipos); }
+  };
+
+  function goto(n) { setError(''); setMsg(''); setPaso(n); }
+
+  // Paso 1 → crea el borrador (o guarda cambios si ya existe) y avanza.
+  async function guardarDatos() {
+    setError(''); setLoading(true);
+    const body = { ...form, ...fee };
+    const d = evento
+      ? await api(`/admin/api/entradas/eventos/${evento.id}`, { method: 'PUT', body: JSON.stringify(body) })
+      : await api('/admin/api/entradas/eventos', { method: 'POST', body: JSON.stringify(body) });
+    if (!d.ok) { setLoading(false); return setError(d.error); }
+    let ev = d.evento;
+    // Desde template: se aplica una sola vez, justo después de crear el borrador.
+    if (!evento && templateId) {
+      const r = await api(`/admin/api/entradas/eventos/${ev.id}/aplicar-template`, { method: 'POST', body: JSON.stringify({ templateId }) });
+      if (r.ok) setAplicado(r);
+      else setError(`Template: ${r.error}`);
+    }
+    setLoading(false);
+    setEvento(ev);
+    await refresh(ev.id);
+    goto(2);
+  }
+
+  async function guardarFee() {
+    setError(''); setLoading(true);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ nombre: evento.nombre, venue: evento.venue, fecha: evento.fecha, descripcion: evento.descripcion, imagenUrl: evento.imagenUrl, formato: evento.formato, ...fee }),
+    });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    setEvento(d.evento);
+    goto(5);
+  }
+
+  async function publicar() {
+    setError(''); setLoading(true);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/estado`, { method: 'POST', body: JSON.stringify({ estado: 'publicado' }) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    onDone();
+  }
+
+  async function guardarComoTemplate() {
+    const nombre = window.prompt('Nombre del template (ej. "Partido ERC estándar"):', form.nombre);
+    if (!nombre) return;
+    setError(''); setMsg('');
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/guardar-template`, { method: 'POST', body: JSON.stringify({ nombre }) });
+    if (!d.ok) return setError(d.error);
+    setMsg(`Template "${d.template.nombre}" guardado.`);
+  }
+
+  const numerados = tipos.filter((t) => t.numerado);
+  const capacidad = tipos.reduce((s, t) => s + (t.stockTotal || 0), 0);
+  const tplSel = templates.find((t) => t.id === templateId);
+
+  return (
+    <Modal title={evento ? `Nuevo evento · ${evento.nombre}` : 'Nuevo evento'} onClose={() => { if (evento) onDone(); else onClose(); }} wide>
+      <WizardProgress paso={paso} />
+
+      {paso === 0 && (
+        <>
+          <h3>¿Cómo querés empezar?</h3>
+          <div className="evento-formato-opts">
+            <label className={`evento-formato-opt${!templateId ? ' active' : ''}`}>
+              <input type="radio" name="inicio" checked={!templateId} onChange={() => setTemplateId('')} />
+              <span className="evento-formato-opt-label">Desde cero</span>
+              <span className="evento-formato-opt-desc">Configurás sectores y precios a mano</span>
+            </label>
+            <label className={`evento-formato-opt${templateId ? ' active' : ''}`} style={{ opacity: templates.length === 0 ? 0.5 : 1 }}>
+              <input type="radio" name="inicio" disabled={templates.length === 0} checked={Boolean(templateId)} onChange={() => setTemplateId(templates[0]?.id || '')} />
+              <span className="evento-formato-opt-label">Desde template</span>
+              <span className="evento-formato-opt-desc">{templates.length === 0 ? 'Aún no hay templates guardados' : 'Sectores, butacas y preventa preconfigurados'}</span>
+            </label>
+          </div>
+          {templateId && (
             <>
-              <label>Zona de gramilla</label>
-              <select
-                value={gramForm.key}
-                onChange={(e) => pickGramillaSlot(e.target.value)}
-                disabled={adding}
-              >
-                <option value="">Seleccionar zona…</option>
-                {gramillaSlots.map((k) => {
-                  const meta = GRAMILLA_ZONE_META[k];
-                  return <option key={k} value={k}>{meta?.label ?? k}</option>;
-                })}
+              <label>Template</label>
+              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nombre} · {t.sectores} sectores{t.numerados > 0 ? ` (${t.numerados} numerados)` : ''}</option>
+                ))}
               </select>
-              {gramForm.key && (
-                <>
-                  <label>Nombre visible</label>
-                  <input value={gramForm.nombre} onChange={(e) => setGramForm({ ...gramForm, nombre: e.target.value })} disabled={adding} placeholder={GRAMILLA_ZONE_META[gramForm.key]?.label} />
-                  <div className="two">
-                    <div>
-                      <label>Precio CRC</label>
-                      <input inputMode="numeric" value={gramForm.precioCrc} onChange={(e) => setGramForm({ ...gramForm, precioCrc: e.target.value.replace(/\D/g, '') })} disabled={adding} />
-                    </div>
-                    <div>
-                      <label>Cupo</label>
-                      <input inputMode="numeric" value={gramForm.stockTotal} onChange={(e) => setGramForm({ ...gramForm, stockTotal: e.target.value.replace(/\D/g, '') })} disabled={adding} />
-                    </div>
-                  </div>
-                  <button className="btn btn--green" onClick={addGramilla} disabled={adding}>
-                    <Plus size={16} />{adding ? 'Agregando…' : 'Agregar zona gramilla'}
-                  </button>
-                </>
-              )}
+              {tplSel?.descripcion && <p className="muted" style={{ fontSize: '.85rem' }}>{tplSel.descripcion}</p>}
             </>
           )}
-        </div>
+          <div className="modal-actions">
+            <button className="btn" onClick={() => goto(1)}>Siguiente</button>
+          </div>
+        </>
       )}
-    </>
+
+      {paso === 1 && (
+        <>
+          <label>Nombre</label>
+          <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
+          <label>Lugar</label>
+          <input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} />
+          <label>Fecha y hora</label>
+          <input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+          <label>Descripcion</label>
+          <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+          <label>Formato</label>
+          <div className="evento-formato-opts">
+            {[
+              { value: 'partido', label: 'Partido', desc: '6 tribunas del estadio' },
+              { value: 'espectaculo', label: 'Espectáculo', desc: 'Tribunas + zonas en la gramilla' },
+            ].map(({ value, label, desc }) => (
+              <label key={value} className={`evento-formato-opt${form.formato === value ? ' active' : ''}`}>
+                <input type="radio" name="formato" value={value} checked={form.formato === value} disabled={Boolean(evento)} onChange={() => setForm({ ...form, formato: value })} />
+                <span className="evento-formato-opt-label">{label}</span>
+                <span className="evento-formato-opt-desc">{desc}</span>
+              </label>
+            ))}
+          </div>
+          {error && <div className="error">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => goto(0)} disabled={Boolean(evento)}>Atrás</button>
+            <button className="btn" onClick={guardarDatos} disabled={loading || form.nombre.trim().length < 3 || !form.fecha}>
+              {loading ? 'Guardando…' : evento ? 'Guardar y continuar' : templateId ? 'Crear desde template' : 'Crear y continuar'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {paso === 2 && evento && (
+        <>
+          {aplicado && (
+            <div className="okbox">
+              Template aplicado: {aplicado.sectores} sectores, {aplicado.butacas} butacas, {aplicado.tandas} tandas.
+              {aplicado.advertencias?.length > 0 && <><br />Advertencias: {aplicado.advertencias.join(' · ')}</>}
+            </div>
+          )}
+          <VenueMapConfig evento={evento} autoSeed />
+          {error && <div className="error">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => goto(1)}>Atrás</button>
+            <button className="btn" onClick={async () => { await refresh(); goto(3); }}>Siguiente</button>
+          </div>
+        </>
+      )}
+
+      {paso === 3 && evento && (
+        <>
+          <h3>Butacas por sector <span className="muted" style={{ fontSize: '.8rem', fontWeight: 400 }}>(opcional — sin grilla el sector vende por cantidad)</span></h3>
+          {tipos.length === 0 && <p className="muted">Este evento aún no tiene sectores; volvé al paso anterior.</p>}
+          {tipos.map((t) => (
+            <details key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,.08)', padding: '8px 0' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>
+                {t.nombre} {t.numerado ? <span className="pill publicado" style={{ marginLeft: 6, fontSize: '.65rem' }}>numerado</span> : <span className="pill borrador" style={{ marginLeft: 6, fontSize: '.65rem' }}>admisión general</span>}
+              </summary>
+              <div style={{ padding: '10px 0 4px' }}>
+                <SeatAdminGrid tipo={t} onChanged={refresh} />
+              </div>
+            </details>
+          ))}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => goto(2)}>Atrás</button>
+            <button className="btn" onClick={async () => { await refresh(); goto(4); }}>Siguiente</button>
+          </div>
+        </>
+      )}
+
+      {paso === 4 && evento && (
+        <>
+          <h3>Preventa y cargo por servicio <span className="muted" style={{ fontSize: '.8rem', fontWeight: 400 }}>(opcional)</span></h3>
+          <p className="muted" style={{ fontSize: '.85rem' }}>Tandas de precio por sector (ej. "Preventa" más barata con cupo limitado):</p>
+          {tipos.map((t) => <WizardTandaRow key={t.id} tipo={t} />)}
+          <label style={{ marginTop: 12 }}>Cargo por servicio del evento</label>
+          <div className="two">
+            <div>
+              <select value={fee.feeTipo} onChange={(e) => setFee({ ...fee, feeTipo: e.target.value })}>
+                <option value="">Usar cargo global</option>
+                <option value="ninguno">Sin cargo</option>
+                <option value="pct">Porcentaje (%)</option>
+                <option value="crc">Monto fijo (CRC)</option>
+              </select>
+            </div>
+            <div>
+              <input type="number" min="0" value={fee.feeValor} disabled={fee.feeTipo === '' || fee.feeTipo === 'ninguno'} onChange={(e) => setFee({ ...fee, feeValor: Number(e.target.value) })} />
+            </div>
+          </div>
+          {error && <div className="error">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => goto(3)}>Atrás</button>
+            <button className="btn" onClick={guardarFee} disabled={loading}>{loading ? 'Guardando…' : 'Siguiente'}</button>
+          </div>
+        </>
+      )}
+
+      {paso === 5 && evento && (
+        <>
+          <h3>Revisión</h3>
+          <div className="event-meta" style={{ marginBottom: 10 }}>
+            <span><CalendarDays size={14} /> {fmtFullDate(evento.fecha)}</span>
+            {evento.venue && <span>📍 {evento.venue}</span>}
+            <span className={`pill ${evento.estado}`}>{evento.estado}</span>
+          </div>
+          <section className="coupon-stats">
+            <div><span>Sectores</span><b>{tipos.length}</b></div>
+            <div><span>Capacidad</span><b>{capacidad}</b></div>
+            <div><span>Numerados</span><b>{numerados.length}</b></div>
+          </section>
+          <div className="table"><table><thead><tr><th>Sector</th><th>Precio</th><th>Cupo</th><th>Butacas</th></tr></thead><tbody>
+            {tipos.map((t) => (
+              <tr key={t.id}><td>{t.nombre}</td><td>{money(t.precioCrc)}</td><td>{t.stockTotal}</td><td>{t.numerado ? 'Numerado' : 'General'}</td></tr>
+            ))}
+            {tipos.length === 0 && <tr><td colSpan={4} className="muted">Sin sectores — el evento no se puede vender así.</td></tr>}
+          </tbody></table></div>
+          {msg && <div className="okbox">{msg}</div>}
+          {error && <div className="error">{error}</div>}
+          <div className="modal-actions" style={{ flexWrap: 'wrap' }}>
+            <button className="btn ghost" onClick={() => goto(4)}>Atrás</button>
+            <button className="btn ghost" onClick={guardarComoTemplate}>Guardar como template</button>
+            <button className="btn ghost" onClick={onDone}>Guardar borrador</button>
+            <button className="btn" onClick={publicar} disabled={loading || tipos.length === 0}><Send size={15} />{loading ? 'Publicando…' : 'Publicar ahora'}</button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
   return asPanel ? inner : <Modal title={`Sectores · ${evento.nombre}`} onClose={onClose}>{inner}</Modal>;
 }
+
+// Fila compacta del paso Preventa: abre el editor de tandas del sector.
+function WizardTandaRow({ tipo }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="tipo-row">
+      <div><b>{tipo.nombre}</b><span> {money(tipo.precioCrc)} · cupo {tipo.stockTotal}</span></div>
+      <button className="btn ghost" onClick={() => setOpen(true)}>Tandas</button>
+      {open && <TandasModal tipo={tipo} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+// ── Configurador del venue sobre el mapa (map-first) ────────────────
+// El mapa del estadio ES la interfaz de sectores: entra con todo el venue
+// activo (aforo fijo repartido) y cada ajuste se hace tocando una zona.
+
+const VENUE_AFORO_DEFAULT = 3000;
+
+// Reparte un aforo fijo entre las zonas, proporcional a sus tamaños relativos
+// del catálogo; el residuo se ajusta en la zona más grande para sumar exacto.
+function repartirAforo(sectores, totalAforo = VENUE_AFORO_DEFAULT) {
+  const base = sectores.reduce((s, x) => s + x.stock, 0) || 1;
+  const cupos = sectores.map((s) => Math.max(1, Math.round((s.stock / base) * totalAforo)));
+  const diff = totalAforo - cupos.reduce((a, b) => a + b, 0);
+  const iMax = sectores.reduce((im, s, i) => (s.stock > sectores[im].stock ? i : im), 0);
+  cupos[iMax] = Math.max(1, cupos[iMax] + diff);
+  return cupos;
+}
+
+// Variante admin de tiposByZoneKey: incluye sectores inactivos (para reactivarlos).
+function zonasByKeyAdmin(tipos) {
+  const map = {};
+  for (const t of tipos || []) {
+    const key = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
+    if (key && !map[key]) map[key] = t;
+  }
+  return map;
+}
+
+const SPLITS_POR_TEMPLATE = { 2: [0.5], 3: [0.33, 0.66], 4: [0.25, 0.5, 0.75] };
+
+function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
+  const [ev, setEv] = useState(evento);
+  const [tipos, setTipos] = useState(null); // null = cargando
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [hoveredKey, setHoveredKey] = useState(null);
+  const [form, setForm] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [tandasFor, setTandasFor] = useState(null);
+  const [asientosFor, setAsientosFor] = useState(null);
+  const seededRef = useRef(false);
+
+  const esEspectaculo = (ev?.formato ?? evento.formato) === 'espectaculo';
+  const fieldTemplate = ev?.fieldTemplate ?? (esEspectaculo ? '2' : null);
+
+  const catalogo = useMemo(() => {
+    const zonas = [...ERC_SECTORES];
+    if (esEspectaculo) {
+      const keys = gramillaKeysForTemplate(fieldTemplate ?? '2');
+      for (const g of GRAMILLA_SECTORES) if (keys.includes(g.key)) zonas.push(g);
+    }
+    return zonas;
+  }, [esEspectaculo, fieldTemplate]);
+
+  const refresh = async () => {
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}`);
+    if (!d.ok) return [];
+    setEv(d.evento);
+    setTipos(d.tipos);
+    onChanged?.();
+    return d.tipos;
+  };
+
+  // Crea las zonas del catálogo que falten, con el aforo fijo repartido.
+  async function seedFaltantes(current, aviso = true) {
+    const byKey = zonasByKeyAdmin(current);
+    const cupos = repartirAforo(catalogo);
+    let creadas = 0;
+    setBusy(true);
+    for (let i = 0; i < catalogo.length; i++) {
+      const s = catalogo[i];
+      if (byKey[s.key]) continue;
+      const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, {
+        method: 'POST',
+        body: JSON.stringify({ nombre: s.nombre, precioCrc: s.precio, stockTotal: cupos[i], zoneKey: s.key }),
+      });
+      if (d.ok) creadas += 1;
+    }
+    setBusy(false);
+    const updated = await refresh();
+    if (aviso && creadas > 0) setMsg({ type: 'ok', text: `Venue listo: ${creadas} zonas creadas · aforo total ${VENUE_AFORO_DEFAULT} repartido en el mapa.` });
+    return updated;
+  }
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const current = await refresh();
+      if (!alive) return;
+      if (autoSeed && !seededRef.current && current.length === 0) {
+        seededRef.current = true;
+        await seedFaltantes(current);
+      }
+    })();
+    return () => { alive = false; };
+  }, [evento.id]);
+
+  const allByKey = useMemo(() => zonasByKeyAdmin(tipos || []), [tipos]);
+
+  function selectZone(key) {
+    setSelectedKey(key);
+    setMsg(null);
+    const t = allByKey[key];
+    setForm(t ? { nombre: t.nombre, precioCrc: String(t.precioCrc), stockTotal: String(t.stockTotal) } : null);
+  }
+
+  async function guardarSector() {
+    const t = allByKey[selectedKey];
+    if (!t || !form) return;
+    setBusy(true);
+    const d = await api(`/admin/api/entradas/tipos/${t.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ nombre: form.nombre, precioCrc: Number(form.precioCrc), stockTotal: t.numerado ? t.stockTotal : Number(form.stockTotal), estado: t.estado }),
+    });
+    setBusy(false);
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setMsg({ type: 'ok', text: `${d.tipo.nombre} actualizado.` });
+    refresh();
+  }
+
+  async function setEstadoSector(t, estado) {
+    setBusy(true);
+    const d = await api(`/admin/api/entradas/tipos/${t.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ nombre: t.nombre, precioCrc: t.precioCrc, stockTotal: t.stockTotal, estado }),
+    });
+    setBusy(false);
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    refresh();
+  }
+
+  async function agregarZona(key) {
+    const i = catalogo.findIndex((s) => s.key === key);
+    if (i < 0) return;
+    const s = catalogo[i];
+    const cupos = repartirAforo(catalogo);
+    setBusy(true);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, {
+      method: 'POST',
+      body: JSON.stringify({ nombre: s.nombre, precioCrc: s.precio, stockTotal: cupos[i], zoneKey: s.key }),
+    });
+    setBusy(false);
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    const updated = await refresh();
+    const t = zonasByKeyAdmin(updated)[key];
+    if (t) setForm({ nombre: t.nombre, precioCrc: String(t.precioCrc), stockTotal: String(t.stockTotal) });
+  }
+
+  // Presets del venue ("templates del mapa").
+  async function presetEstadioCompleto() {
+    setMsg(null);
+    const current = tipos || [];
+    for (const t of current) {
+      if (t.estado === 'inactivo') await setEstadoSector(t, 'activo');
+    }
+    await seedFaltantes(current);
+  }
+
+  async function presetGramilla(template) {
+    setMsg(null); setBusy(true);
+    await api(`/admin/api/entradas/eventos/${evento.id}/mapa`, {
+      method: 'PUT',
+      body: JSON.stringify({ fieldTemplate: String(template), fieldSplits: SPLITS_POR_TEMPLATE[template] }),
+    });
+    setBusy(false);
+    const updated = await refresh();
+    // Desactiva zonas de gramilla fuera de la plantilla y crea/reactiva las que aplican.
+    const keys = gramillaKeysForTemplate(String(template));
+    const byKey = zonasByKeyAdmin(updated);
+    for (const g of GRAMILLA_SECTORES) {
+      const t = byKey[g.key];
+      if (keys.includes(g.key)) {
+        if (t && t.estado === 'inactivo') await setEstadoSector(t, 'activo');
+      } else if (t && t.estado === 'activo') {
+        await setEstadoSector(t, 'inactivo');
+      }
+    }
+    await seedFaltantes(await refresh(), false);
+    setMsg({ type: 'ok', text: `Gramilla configurada en ${template} zonas.` });
+  }
+
+  async function presetSoloTribunas() {
+    setMsg(null);
+    const byKey = zonasByKeyAdmin(tipos || []);
+    for (const g of GRAMILLA_SECTORES) {
+      const t = byKey[g.key];
+      if (t && t.estado === 'activo') await setEstadoSector(t, 'inactivo');
+    }
+    setMsg({ type: 'ok', text: 'Gramilla desactivada: solo tribunas a la venta.' });
+  }
+
+  if (tipos === null) return <p className="muted">Cargando venue…</p>;
+
+  const seleccionado = selectedKey ? allByKey[selectedKey] : null;
+  const metaSel = selectedKey ? (ERC_ZONE_META[selectedKey] ?? GRAMILLA_ZONE_META[selectedKey]) : null;
+  const esGramillaSel = selectedKey?.startsWith('gramilla-');
+  const aforoActivo = (tipos || []).filter((t) => t.estado === 'activo').reduce((s, t) => s + t.stockTotal, 0);
+
+  const chipEstado = (key) => {
+    const t = allByKey[key];
+    if (!t) return { label: 'sin zona', cls: 'borrador' };
+    if (t.estado === 'inactivo') return { label: 'quitada', cls: 'borrador' };
+    return { label: money(t.precioVigente ?? t.precioCrc), cls: 'publicado' };
+  };
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+        <span className="muted" style={{ fontSize: '.8rem' }}>Presets del venue:</span>
+        {!esEspectaculo && <button className="btn ghost" onClick={presetEstadioCompleto} disabled={busy}>Estadio completo</button>}
+        {esEspectaculo && (
+          <>
+            {[2, 3, 4].map((n) => (
+              <button key={n} className={`btn ghost${String(fieldTemplate) === String(n) ? ' active' : ''}`} onClick={() => presetGramilla(n)} disabled={busy}>Gramilla ×{n}</button>
+            ))}
+            <button className="btn ghost" onClick={presetSoloTribunas} disabled={busy}>Solo tribunas</button>
+            <button className="btn ghost" onClick={presetEstadioCompleto} disabled={busy}>Todo activo</button>
+          </>
+        )}
+        <span className="pill publicado" style={{ marginLeft: 'auto', fontSize: '.7rem' }}>Aforo activo: {aforoActivo}</span>
+      </div>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ flex: '1 1 420px', minWidth: 300 }}>
+          <StadiumSvgERC
+            tiposByKey={allByKey}
+            hoveredKey={hoveredKey}
+            selectedKey={selectedKey}
+            onZoneClick={(key) => selectZone(key)}
+            onZoneHover={setHoveredKey}
+            venue={ev?.venue || evento.venue}
+            fieldTemplate={esEspectaculo ? fieldTemplate : null}
+            fieldSplits={esEspectaculo ? ev?.fieldSplits : null}
+          />
+          <div className="stadium-legend-chips" style={{ marginTop: 8 }} aria-label="Zonas del venue">
+            {catalogo.map((s) => {
+              const est = chipEstado(s.key);
+              const meta = ERC_ZONE_META[s.key] ?? GRAMILLA_ZONE_META[s.key];
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  className={`stadium-chip${selectedKey === s.key ? ' active' : ''}`}
+                  onClick={() => selectZone(s.key)}
+                >
+                  <span className="stadium-chip-swatch" style={{ background: meta?.color ?? '#c9a961', opacity: est.cls === 'borrador' ? 0.35 : 1 }} />
+                  <span className="stadium-chip-name">{meta?.short ?? s.nombre}</span>
+                  <span className={`pill ${est.cls}`} style={{ fontSize: '.62rem' }}>{est.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ flex: '0 1 300px', minWidth: 260 }}>
+          {!selectedKey && (
+            <div className="stadium-panel stadium-panel--sidebar">
+              <h3 className="stadium-panel-name">Tocá una zona del mapa</h3>
+              <p className="stadium-panel-hint">Todo el venue ya está a la venta. Seleccioná una zona para ajustar precio, cupo, butacas o quitarla del mapa.</p>
+            </div>
+          )}
+          {selectedKey && !seleccionado && (
+            <div className="stadium-panel stadium-panel--sidebar">
+              <h3 className="stadium-panel-name">{metaSel?.label ?? selectedKey}</h3>
+              <p className="stadium-panel-hint">Esta zona no está en el venue.</p>
+              <button className="btn" onClick={() => agregarZona(selectedKey)} disabled={busy}><Plus size={15} />Agregar al mapa</button>
+            </div>
+          )}
+          {seleccionado && form && (
+            <div className="stadium-panel stadium-panel--sidebar" style={{ textAlign: 'left' }}>
+              <h3 className="stadium-panel-name">{metaSel?.label ?? seleccionado.nombre}</h3>
+              {seleccionado.estado === 'inactivo' && <p className="stadium-panel-hint">Zona quitada del mapa: no se vende.</p>}
+              {esGramillaSel && (
+                <>
+                  <label>Nombre</label>
+                  <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                </>
+              )}
+              <label>Precio CRC</label>
+              <input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} />
+              <label>Cupo{seleccionado.numerado ? ' (lo definen las butacas)' : ''}</label>
+              <input inputMode="numeric" value={form.stockTotal} disabled={seleccionado.numerado} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} />
+              <p className="muted" style={{ fontSize: '.75rem', margin: '4px 0 8px' }}>
+                {seleccionado.stockVendido}/{seleccionado.stockTotal} vendidos
+                {seleccionado.numerado ? ' · sector numerado' : ''}
+                {seleccionado.tandaNombre ? ` · tanda: ${seleccionado.tandaNombre}` : ''}
+              </p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button className="btn" onClick={guardarSector} disabled={busy || !form.precioCrc}>Guardar</button>
+                <button className="btn ghost" onClick={() => setAsientosFor(seleccionado)}>{seleccionado.numerado ? 'Butacas ✓' : 'Butacas'}</button>
+                <button className="btn ghost" onClick={() => setTandasFor(seleccionado)}>Tandas</button>
+                {seleccionado.estado === 'activo'
+                  ? <button className="btn ghost" onClick={() => setEstadoSector(seleccionado, 'inactivo')} disabled={busy}>Quitar del mapa</button>
+                  : <button className="btn ghost" onClick={() => setEstadoSector(seleccionado, 'activo')} disabled={busy}>Reactivar</button>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {tandasFor && <TandasModal tipo={tandasFor} onClose={() => { setTandasFor(null); refresh(); }} />}
+      {asientosFor && <AsientosModal tipo={asientosFor} onClose={() => { setAsientosFor(null); refresh(); }} />}
+    </>
+  );
+}
+
+function TandasModal({ tipo, onClose }) {
+  const toLocal = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : '');
+  const emptyForm = { nombre: '', precioCrc: '', ventaDesde: '', ventaHasta: '', cupo: '' };
+  const [tandas, setTandas] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [editing, setEditing] = useState(null); // tanda en edición o null (creando)
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const load = async () => {
+    const d = await api(`/admin/api/entradas/tipos/${tipo.id}/tandas`);
+    if (d.ok) setTandas(d.tandas);
+  };
+  useEffect(() => { load(); }, [tipo.id]);
+  function startEdit(t) {
+    setEditing(t);
+    setForm({ nombre: t.nombre, precioCrc: String(t.precioCrc), ventaDesde: toLocal(t.ventaDesde), ventaHasta: toLocal(t.ventaHasta), cupo: t.cupo == null ? '' : String(t.cupo) });
+  }
+  function cancelEdit() { setEditing(null); setForm(emptyForm); setError(''); }
+  async function submit() {
+    setError(''); setLoading(true);
+    const body = {
+      nombre: form.nombre,
+      precioCrc: Number(form.precioCrc),
+      ventaDesde: form.ventaDesde || null,
+      ventaHasta: form.ventaHasta || null,
+      cupo: form.cupo === '' ? null : Number(form.cupo),
+    };
+    const url = editing ? `/admin/api/entradas/tandas/${editing.id}` : `/admin/api/entradas/tipos/${tipo.id}/tandas`;
+    const d = await api(url, { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    cancelEdit(); load();
+  }
+  async function del(t) {
+    if (!window.confirm(`¿Eliminar la tanda "${t.nombre}"?`)) return;
+    const d = await api(`/admin/api/entradas/tandas/${t.id}`, { method: 'DELETE' });
+    if (d.ok) load();
+  }
+  const fmtVentana = (t) => {
+    const desde = t.ventaDesde ? fmtFullDate(t.ventaDesde) : 'ya';
+    const hasta = t.ventaHasta ? fmtFullDate(t.ventaHasta) : 'sin límite';
+    return `${desde} → ${hasta}`;
+  };
+  return (
+    <Modal title={`Tandas · ${tipo.nombre}`} onClose={onClose}>
+      <p className="muted" style={{ fontSize: '.85rem' }}>
+        La tanda vigente (por fechas, cupo y orden) define el precio de venta. Sin tanda activa se usa el precio base ({money(tipo.precioCrc)}).
+      </p>
+      {tandas.length > 0 && (
+        <div className="tipos-list">
+          {tandas.map((t) => (
+            <div key={t.id} className="tipo-row">
+              <div>
+                <b>{t.nombre}</b>
+                <span>{money(t.precioCrc)} · {t.vendidos}{t.cupo != null ? `/${t.cupo}` : ''} vendidos · {fmtVentana(t)}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn ghost" onClick={() => startEdit(t)}>Editar</button>
+                <button className="btn ghost" onClick={() => del(t)}>Eliminar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <h4 className="tipos-section-title">{editing ? `Editar "${editing.nombre}"` : 'Nueva tanda'}</h4>
+      <div className="two">
+        <div><label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Preventa" /></div>
+        <div><label>Precio CRC</label><input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} /></div>
+      </div>
+      <div className="two">
+        <div><label>Venta desde</label><input type="datetime-local" value={form.ventaDesde} onChange={(e) => setForm({ ...form, ventaDesde: e.target.value })} /></div>
+        <div><label>Venta hasta</label><input type="datetime-local" value={form.ventaHasta} onChange={(e) => setForm({ ...form, ventaHasta: e.target.value })} /></div>
+      </div>
+      <label>Cupo (opcional)</label>
+      <input inputMode="numeric" value={form.cupo} onChange={(e) => setForm({ ...form, cupo: e.target.value.replace(/\D/g, '') })} placeholder="Sin límite" />
+      {error && <div className="error">{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn" onClick={submit} disabled={loading || !form.nombre || form.precioCrc === ''}>{loading ? 'Guardando…' : editing ? 'Guardar cambios' : 'Agregar tanda'}</button>
+        {editing && <button className="btn ghost" onClick={cancelEdit}>Cancelar</button>}
+      </div>
+    </Modal>
+  );
+}
+
+function AsientosModal({ tipo, onClose }) {
+  return (
+    <Modal title={`Butacas · ${tipo.nombre}`} onClose={onClose}>
+      <SeatAdminGrid tipo={tipo} />
+    </Modal>
+  );
+}
+
 
 function CortesiaModal({ evento, tipos, onClose, asPanel }) {
   const [form, setForm] = useState({ tipoId: tipos?.[0]?.id || '', nombre: '', email: '' });
@@ -2983,10 +3878,45 @@ function BarRow({ label, value, max, display, sub }) {
   );
 }
 
+// Pestaña Butacas del detalle: todos los sectores del evento con su grilla.
+function EventButacasPanel({ evento }) {
+  const [tipos, setTipos] = useState([]);
+  const refresh = async () => {
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}`);
+    if (d.ok) setTipos(d.tipos);
+  };
+  useEffect(() => { refresh(); }, [evento.id]);
+  if (tipos.length === 0) return <p className="muted">Este evento no tiene sectores todavía. Agregalos en la pestaña Sectores.</p>;
+  return (
+    <>
+      {tipos.map((t) => (
+        <details key={t.id} open={t.numerado} style={{ borderBottom: '1px solid rgba(255,255,255,.08)', padding: '8px 0' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>
+            {t.nombre} {t.numerado
+              ? <span className="pill publicado" style={{ marginLeft: 6, fontSize: '.65rem' }}>numerado · {t.disponibles} disp.</span>
+              : <span className="pill borrador" style={{ marginLeft: 6, fontSize: '.65rem' }}>admisión general</span>}
+          </summary>
+          <div style={{ padding: '10px 0 4px' }}>
+            <SeatAdminGrid tipo={t} onChanged={refresh} />
+          </div>
+        </details>
+      ))}
+    </>
+  );
+}
+
 function EventDetalleModal({ evento, tipos, onClose, onToggleEstado, onChanged }) {
   const [tab, setTab] = useState('detalles');
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [tplMsg, setTplMsg] = useState(null);
+  async function guardarComoTemplate() {
+    const nombre = window.prompt('Nombre del template (ej. "Partido ERC estándar"):', evento.nombre);
+    if (!nombre) return;
+    setTplMsg(null);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/guardar-template`, { method: 'POST', body: JSON.stringify({ nombre }) });
+    setTplMsg(d.ok ? { type: 'ok', text: `Template "${d.template.nombre}" guardado.` } : { type: 'error', text: d.error });
+  }
   useEffect(() => {
     if (tab !== 'detalles') return undefined;
     let alive = true;
@@ -3003,19 +3933,23 @@ function EventDetalleModal({ evento, tipos, onClose, onToggleEstado, onChanged }
         <button className={`btn ghost${tab === 'detalles' ? ' active' : ''}`} onClick={() => setTab('detalles')}><BarChart3 size={16} />Detalles</button>
         <button className={`btn ghost${tab === 'sectores' ? ' active' : ''}`} onClick={() => setTab('sectores')}><LayoutGrid size={16} />Sectores</button>
         <button className={`btn ghost${tab === 'mapa' ? ' active' : ''}`} onClick={() => setTab('mapa')}><MapIcon size={16} />Mapa</button>
+        <button className={`btn ghost${tab === 'butacas' ? ' active' : ''}`} onClick={() => setTab('butacas')}><Accessibility size={16} />Butacas</button>
         <button className={`btn ghost${tab === 'cortesia' ? ' active' : ''}`} onClick={() => setTab('cortesia')}><Gift size={16} />Cortesia</button>
+        <button className="btn ghost" onClick={guardarComoTemplate}><Sparkles size={16} />Guardar como template</button>
         {onToggleEstado && (evento.estado === 'publicado'
           ? <button className="btn ghost" onClick={onToggleEstado}><Lock size={16} />Finalizar</button>
           : <button className="btn ghost" onClick={onToggleEstado}><Send size={16} />Publicar</button>)}
       </div>
 
+      {tplMsg && <div className={tplMsg.type === 'ok' ? 'okbox' : 'error'}>{tplMsg.text}</div>}
       {tab === 'detalles' && <>
         {error && <div className="error">{error}</div>}
         {!error && !data && <p className="muted">Cargando detalle…</p>}
         {data && <EventDetalleContenido evento={evento} data={data} />}
       </>}
-      {tab === 'sectores' && <TiposModal evento={evento} asPanel onClose={() => setTab('detalles')} />}
+      {tab === 'sectores' && <VenueMapConfig evento={evento} onChanged={onChanged} />}
       {tab === 'mapa' && <StadiumMapEditor evento={evento} tipos={tipos} embedded onClose={() => setTab('detalles')} onSaved={onChanged} />}
+      {tab === 'butacas' && <EventButacasPanel evento={evento} />}
       {tab === 'cortesia' && <CortesiaModal evento={evento} tipos={tipos} asPanel onClose={() => setTab('detalles')} />}
 
       <div className="modal-actions">
