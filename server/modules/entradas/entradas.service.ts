@@ -4,6 +4,7 @@ import { canManageEvents, canOperateGate, canViewSales } from '../usuarios/usuar
 import { getEntradasRepository, EntradasRepository } from './entradas.repository';
 import { sendEntradasEmail } from './entradas.mail';
 import { sendEntradasWhatsApp } from './entradas.whatsapp';
+import { aplicarTemplate, serializeEvento, validatePayload } from './entradas.templates';
 import { isWhatsAppEnabled, normalizePhone } from '../../core/whatsapp';
 import type { Boleto } from './entradas.types';
 import {
@@ -516,6 +517,77 @@ export async function adminEliminarTanda(id: string, user: AdminUser) {
   await getEntradasRepository().eliminarTanda(String(id));
   await getEntradasRepository().logEvento('tanda_eliminada', { user: actorOf(user), notas: String(id) });
   return { ok: true };
+}
+
+// ── Templates de evento ──────────────────────────────────────────
+
+function validateTemplateNombre(raw: unknown): string {
+  const nombre = String(raw || '').trim();
+  if (nombre.length < 3 || nombre.length > 80) throw new ApiError(400, 'Nombre de template inválido (3-80 caracteres)');
+  return nombre;
+}
+
+export async function adminListTemplates(user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const templates = await getEntradasRepository().listTemplates();
+  // La lista no necesita el payload completo; se resume para la UI.
+  return {
+    templates: templates.map((t) => ({
+      id: t.id,
+      nombre: t.nombre,
+      descripcion: t.descripcion,
+      creadoAt: t.creadoAt,
+      formato: t.payload?.formato ?? 'partido',
+      sectores: t.payload?.sectores?.length ?? 0,
+      numerados: t.payload?.sectores?.filter((s) => s.numerado).length ?? 0,
+    })),
+  };
+}
+
+export async function adminCrearTemplate(body: any, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const nombre = validateTemplateNombre(body?.nombre);
+  const payload = validatePayload(body?.payload);
+  const template = await getEntradasRepository().crearTemplate(nombre, String(body?.descripcion || '').trim(), payload);
+  await getEntradasRepository().logEvento('template_creado', { user: actorOf(user), notas: nombre });
+  return { template };
+}
+
+export async function adminActualizarTemplate(id: string, body: any, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const nombre = validateTemplateNombre(body?.nombre);
+  const template = await getEntradasRepository().actualizarTemplate(String(id), nombre, String(body?.descripcion || '').trim());
+  await getEntradasRepository().logEvento('template_actualizado', { user: actorOf(user), notas: nombre });
+  return { template };
+}
+
+export async function adminEliminarTemplate(id: string, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  await getEntradasRepository().eliminarTemplate(String(id));
+  await getEntradasRepository().logEvento('template_eliminado', { user: actorOf(user), notas: String(id) });
+  return { ok: true };
+}
+
+export async function adminGuardarComoTemplate(eventoId: string, body: any, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const nombre = validateTemplateNombre(body?.nombre);
+  const payload = await serializeEvento(String(eventoId));
+  const template = await getEntradasRepository().crearTemplate(nombre, String(body?.descripcion || '').trim(), payload);
+  await getEntradasRepository().logEvento('template_creado', { eventoId: String(eventoId), user: actorOf(user), notas: `${nombre} (desde evento)` });
+  return { template };
+}
+
+export async function adminAplicarTemplate(eventoId: string, body: any, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const templateId = String(body?.templateId || '').trim();
+  if (!templateId) throw new ApiError(400, 'Selecciona un template');
+  const resultado = await aplicarTemplate(String(eventoId), templateId);
+  await getEntradasRepository().logEvento('template_aplicado', {
+    eventoId: String(eventoId),
+    user: actorOf(user),
+    notas: `${resultado.sectores} sectores, ${resultado.butacas} butacas, ${resultado.tandas} tandas${resultado.advertencias.length ? `, ${resultado.advertencias.length} advertencias` : ''}`,
+  });
+  return resultado;
 }
 
 // ── Promotores / RRPP ────────────────────────────────────────────

@@ -212,6 +212,61 @@ export interface PromotorRanking {
   comisionCrc: number;
 }
 
+// ── Templates de evento ─────────────────────────────────────────────
+// Snapshot versionado de la configuración de un evento. Las tandas guardan
+// offsets en días antes de la fecha del evento (null = sin límite) para que
+// el template sirva para cualquier fecha futura.
+
+export interface TemplateTandaPayload {
+  nombre: string;
+  precioCrc: number;
+  cupo: number | null;
+  orden: number;
+  ventaDesdeDias: number | null;
+  ventaHastaDias: number | null;
+}
+
+export interface TemplateSectorPayload {
+  nombre: string;
+  precioCrc: number;
+  stockTotal: number;
+  orden: number;
+  mapa: ZonaMapa | null;
+  numerado: boolean;
+  filas: number | null;    // dimensiones de la grilla si es numerado
+  porFila: number | null;
+  bloqueadas: Array<{ fila: string; numero: number }>;
+  tandas: TemplateTandaPayload[];
+}
+
+export interface EventTemplatePayload {
+  v: 1;
+  formato: EventoFormato;
+  venue: string;
+  imagenUrl: string;
+  mapImageUrl: string;
+  fieldTemplate: string | null;
+  fieldSplits: number[] | null;
+  feeTipo: FeeTipo | null;
+  feeValor: number | null;
+  sectores: TemplateSectorPayload[];
+}
+
+export interface EventTemplate {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  payload: EventTemplatePayload;
+  creadoAt: string;
+}
+
+export interface AplicarTemplateResultado {
+  sectores: number;
+  butacas: number;
+  tandas: number;
+  advertencias: string[];
+}
+
 export interface EntradaConfig {
   feeTipoDefault: FeeTipo;
   feeValorDefault: number;

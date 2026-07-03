@@ -227,6 +227,55 @@ entradasRouter.delete('/admin/api/entradas/tandas/:id', requireAdmin, async (req
   }
 });
 
+// ── Templates de evento ─────────────────────────────────────────────
+entradasRouter.get('/admin/api/entradas/templates', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminListTemplates(req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/templates', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminCrearTemplate(req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.put('/admin/api/entradas/templates/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminActualizarTemplate(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.delete('/admin/api/entradas/templates/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await entradas.adminEliminarTemplate(String(req.params.id), req.adminUser!));
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/eventos/:id/guardar-template', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminGuardarComoTemplate(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/eventos/:id/aplicar-template', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminAplicarTemplate(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Promotores / RRPP ───────────────────────────────────────────────
 entradasRouter.get('/admin/api/entradas/promotores', requireAdmin, async (req, res, next) => {
   try {

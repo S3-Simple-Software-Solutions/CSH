@@ -3,6 +3,7 @@ import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Ch
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
 import { StadiumMap } from './pages/entradas/StadiumMap.jsx';
+import { SeatAdminGrid } from './pages/entradas/SeatAdminGrid.jsx';
 import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
 import { gramillaKeysForTemplate } from './pages/entradas/stadiumFieldGeometry.js';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
@@ -2952,7 +2953,10 @@ function AdminEventosTab() {
   }
   return (
     <>
-      <div className="actions left"><button className="btn" onClick={() => setModal({ type: 'evento' })}><Plus size={16} />Nuevo evento</button></div>
+      <div className="actions left">
+        <button className="btn" onClick={() => setModal({ type: 'evento' })}><Plus size={16} />Nuevo evento</button>
+        <button className="btn ghost" onClick={() => setModal({ type: 'templates' })}><Sparkles size={16} />Templates</button>
+      </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <div className="table"><table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>
         {eventos.map((ev) => (
@@ -2975,7 +2979,8 @@ function AdminEventosTab() {
           onChanged={() => { refresh(); refreshLog(); }}
         />
       )}
-      {modal?.type === 'evento' && <EventFormModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); refreshLog(); }} />}
+      {modal?.type === 'evento' && <EventWizardModal onClose={() => setModal(null)} onDone={() => { setModal(null); refresh(); refreshLog(); }} />}
+      {modal?.type === 'templates' && <TemplatesModal onClose={() => setModal(null)} />}
     </>
   );
 }
@@ -3051,61 +3056,329 @@ function EntradasLogPanel({ eventos, refreshKey }) {
   );
 }
 
-function EventFormModal({ onClose, onDone }) {
-  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '', formato: 'partido', feeTipo: '', feeValor: 0 });
+// Gestión de templates de evento: listar, renombrar, eliminar.
+function TemplatesModal({ onClose }) {
+  const [templates, setTemplates] = useState([]);
+  const [msg, setMsg] = useState(null);
+  const load = async () => {
+    const d = await api('/admin/api/entradas/templates');
+    if (d.ok) setTemplates(d.templates);
+  };
+  useEffect(() => { load(); }, []);
+  async function renombrar(t) {
+    const nombre = window.prompt('Nuevo nombre del template:', t.nombre);
+    if (!nombre || nombre === t.nombre) return;
+    const d = await api(`/admin/api/entradas/templates/${t.id}`, { method: 'PUT', body: JSON.stringify({ nombre, descripcion: t.descripcion }) });
+    setMsg(d.ok ? null : { type: 'error', text: d.error });
+    if (d.ok) load();
+  }
+  async function eliminar(t) {
+    if (!window.confirm(`¿Eliminar el template "${t.nombre}"? Los eventos ya creados no se ven afectados.`)) return;
+    const d = await api(`/admin/api/entradas/templates/${t.id}`, { method: 'DELETE' });
+    if (d.ok) load();
+  }
+  return (
+    <Modal title="Templates de evento" onClose={onClose}>
+      <p className="muted" style={{ fontSize: '.85rem' }}>
+        Un template guarda sectores, precios, butacas (con bloqueos) y tandas de preventa. Se crean desde el detalle
+        de un evento ("Guardar como template") o al final del wizard.
+      </p>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      <div className="table"><table><thead><tr><th>Template</th><th>Formato</th><th>Sectores</th><th></th></tr></thead><tbody>
+        {templates.map((t) => (
+          <tr key={t.id}>
+            <td><b>{t.nombre}</b>{t.descripcion && <><br /><small className="muted">{t.descripcion}</small></>}</td>
+            <td>{t.formato}</td>
+            <td>{t.sectores}{t.numerados > 0 ? ` (${t.numerados} num.)` : ''}</td>
+            <td className="row-actions">
+              <button className="link-cell" onClick={() => renombrar(t)}>Renombrar</button>
+              <button className="link-cell danger" onClick={() => eliminar(t)}>Eliminar</button>
+            </td>
+          </tr>
+        ))}
+        {templates.length === 0 && <tr><td colSpan={4} className="muted">Sin templates guardados.</td></tr>}
+      </tbody></table></div>
+      <div className="modal-actions"><button className="btn ghost" onClick={onClose}>Cerrar</button></div>
+    </Modal>
+  );
+}
+
+// ── Wizard de creación de eventos ───────────────────────────────────
+// Flujo por pasos: 0) punto de partida → 1) datos (crea el borrador) →
+// 2) sectores → 3) butacas → 4) preventa/fee → 5) revisión y publicación.
+// Si se cierra a mitad, el borrador queda en la tabla y se completa después.
+
+const WIZARD_PASOS = ['Inicio', 'Datos', 'Sectores', 'Butacas', 'Preventa', 'Revisión'];
+
+function WizardProgress({ paso }) {
+  return (
+    <div style={{ display: 'flex', gap: 4, margin: '0 0 16px', flexWrap: 'wrap' }}>
+      {WIZARD_PASOS.map((label, i) => (
+        <span
+          key={label}
+          className={`pill ${i === paso ? 'publicado' : i < paso ? 'agotado' : 'borrador'}`}
+          style={{ fontSize: '.68rem', opacity: i <= paso ? 1 : 0.5 }}
+        >
+          {i + 1}. {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function EventWizardModal({ onClose, onDone }) {
+  const [paso, setPaso] = useState(0);
+  const [templates, setTemplates] = useState([]);
+  const [templateId, setTemplateId] = useState('');
+  const [evento, setEvento] = useState(null); // se crea al completar el paso Datos
+  const [tipos, setTipos] = useState([]);
+  const [aplicado, setAplicado] = useState(null); // resultado de aplicar template
+  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '', formato: 'partido' });
+  const [fee, setFee] = useState({ feeTipo: '', feeValor: 0 });
   const [error, setError] = useState('');
-  async function submit() {
-    setError('');
-    const d = await api('/admin/api/entradas/eventos', { method: 'POST', body: JSON.stringify(form) });
+  const [msg, setMsg] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { api('/admin/api/entradas/templates').then((d) => { if (d.ok) setTemplates(d.templates); }); }, []);
+
+  const refresh = async (id = evento?.id) => {
+    if (!id) return;
+    const d = await api(`/admin/api/entradas/eventos/${id}`);
+    if (d.ok) { setEvento(d.evento); setTipos(d.tipos); }
+  };
+
+  function goto(n) { setError(''); setMsg(''); setPaso(n); }
+
+  // Paso 1 → crea el borrador (o guarda cambios si ya existe) y avanza.
+  async function guardarDatos() {
+    setError(''); setLoading(true);
+    const body = { ...form, ...fee };
+    const d = evento
+      ? await api(`/admin/api/entradas/eventos/${evento.id}`, { method: 'PUT', body: JSON.stringify(body) })
+      : await api('/admin/api/entradas/eventos', { method: 'POST', body: JSON.stringify(body) });
+    if (!d.ok) { setLoading(false); return setError(d.error); }
+    let ev = d.evento;
+    // Desde template: se aplica una sola vez, justo después de crear el borrador.
+    if (!evento && templateId) {
+      const r = await api(`/admin/api/entradas/eventos/${ev.id}/aplicar-template`, { method: 'POST', body: JSON.stringify({ templateId }) });
+      if (r.ok) setAplicado(r);
+      else setError(`Template: ${r.error}`);
+    }
+    setLoading(false);
+    setEvento(ev);
+    await refresh(ev.id);
+    goto(2);
+  }
+
+  async function guardarFee() {
+    setError(''); setLoading(true);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ nombre: evento.nombre, venue: evento.venue, fecha: evento.fecha, descripcion: evento.descripcion, imagenUrl: evento.imagenUrl, formato: evento.formato, ...fee }),
+    });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    setEvento(d.evento);
+    goto(5);
+  }
+
+  async function publicar() {
+    setError(''); setLoading(true);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/estado`, { method: 'POST', body: JSON.stringify({ estado: 'publicado' }) });
+    setLoading(false);
     if (!d.ok) return setError(d.error);
     onDone();
   }
+
+  async function guardarComoTemplate() {
+    const nombre = window.prompt('Nombre del template (ej. "Partido ERC estándar"):', form.nombre);
+    if (!nombre) return;
+    setError(''); setMsg('');
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/guardar-template`, { method: 'POST', body: JSON.stringify({ nombre }) });
+    if (!d.ok) return setError(d.error);
+    setMsg(`Template "${d.template.nombre}" guardado.`);
+  }
+
+  const numerados = tipos.filter((t) => t.numerado);
+  const capacidad = tipos.reduce((s, t) => s + (t.stockTotal || 0), 0);
+  const tplSel = templates.find((t) => t.id === templateId);
+
   return (
-    <Modal title="Nuevo evento" onClose={onClose}>
-      <label>Nombre</label>
-      <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
-      <label>Lugar</label>
-      <input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} />
-      <label>Fecha y hora</label>
-      <input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
-      <label>Descripcion</label>
-      <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
-      <label>Formato</label>
-      <div className="evento-formato-opts">
-        {[
-          { value: 'partido', label: 'Partido', desc: '6 tribunas del estadio' },
-          { value: 'espectaculo', label: 'Espectáculo', desc: 'Tribunas + zonas en la gramilla' },
-        ].map(({ value, label, desc }) => (
-          <label key={value} className={`evento-formato-opt${form.formato === value ? ' active' : ''}`}>
-            <input
-              type="radio"
-              name="formato"
-              value={value}
-              checked={form.formato === value}
-              onChange={() => setForm({ ...form, formato: value })}
-            />
-            <span className="evento-formato-opt-label">{label}</span>
-            <span className="evento-formato-opt-desc">{desc}</span>
-          </label>
-        ))}
-      </div>
-      <label>Cargo por servicio (opcional)</label>
-      <div className="two">
-        <div>
-          <select value={form.feeTipo} onChange={(e) => setForm({ ...form, feeTipo: e.target.value })}>
-            <option value="">Usar cargo global</option>
-            <option value="ninguno">Sin cargo</option>
-            <option value="pct">Porcentaje (%)</option>
-            <option value="crc">Monto fijo (CRC)</option>
-          </select>
-        </div>
-        <div>
-          <input type="number" min="0" value={form.feeValor} disabled={form.feeTipo === '' || form.feeTipo === 'ninguno'} onChange={(e) => setForm({ ...form, feeValor: Number(e.target.value) })} />
-        </div>
-      </div>
-      {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={submit}>Crear evento</button>
+    <Modal title={evento ? `Nuevo evento · ${evento.nombre}` : 'Nuevo evento'} onClose={() => { if (evento) onDone(); else onClose(); }} wide>
+      <WizardProgress paso={paso} />
+
+      {paso === 0 && (
+        <>
+          <h3>¿Cómo querés empezar?</h3>
+          <div className="evento-formato-opts">
+            <label className={`evento-formato-opt${!templateId ? ' active' : ''}`}>
+              <input type="radio" name="inicio" checked={!templateId} onChange={() => setTemplateId('')} />
+              <span className="evento-formato-opt-label">Desde cero</span>
+              <span className="evento-formato-opt-desc">Configurás sectores y precios a mano</span>
+            </label>
+            <label className={`evento-formato-opt${templateId ? ' active' : ''}`} style={{ opacity: templates.length === 0 ? 0.5 : 1 }}>
+              <input type="radio" name="inicio" disabled={templates.length === 0} checked={Boolean(templateId)} onChange={() => setTemplateId(templates[0]?.id || '')} />
+              <span className="evento-formato-opt-label">Desde template</span>
+              <span className="evento-formato-opt-desc">{templates.length === 0 ? 'Aún no hay templates guardados' : 'Sectores, butacas y preventa preconfigurados'}</span>
+            </label>
+          </div>
+          {templateId && (
+            <>
+              <label>Template</label>
+              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nombre} · {t.sectores} sectores{t.numerados > 0 ? ` (${t.numerados} numerados)` : ''}</option>
+                ))}
+              </select>
+              {tplSel?.descripcion && <p className="muted" style={{ fontSize: '.85rem' }}>{tplSel.descripcion}</p>}
+            </>
+          )}
+          <div className="modal-actions">
+            <button className="btn" onClick={() => goto(1)}>Siguiente</button>
+          </div>
+        </>
+      )}
+
+      {paso === 1 && (
+        <>
+          <label>Nombre</label>
+          <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
+          <label>Lugar</label>
+          <input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} />
+          <label>Fecha y hora</label>
+          <input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+          <label>Descripcion</label>
+          <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+          <label>Formato</label>
+          <div className="evento-formato-opts">
+            {[
+              { value: 'partido', label: 'Partido', desc: '6 tribunas del estadio' },
+              { value: 'espectaculo', label: 'Espectáculo', desc: 'Tribunas + zonas en la gramilla' },
+            ].map(({ value, label, desc }) => (
+              <label key={value} className={`evento-formato-opt${form.formato === value ? ' active' : ''}`}>
+                <input type="radio" name="formato" value={value} checked={form.formato === value} disabled={Boolean(evento)} onChange={() => setForm({ ...form, formato: value })} />
+                <span className="evento-formato-opt-label">{label}</span>
+                <span className="evento-formato-opt-desc">{desc}</span>
+              </label>
+            ))}
+          </div>
+          {error && <div className="error">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => goto(0)} disabled={Boolean(evento)}>Atrás</button>
+            <button className="btn" onClick={guardarDatos} disabled={loading || form.nombre.trim().length < 3 || !form.fecha}>
+              {loading ? 'Guardando…' : evento ? 'Guardar y continuar' : templateId ? 'Crear desde template' : 'Crear y continuar'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {paso === 2 && evento && (
+        <>
+          {aplicado && (
+            <div className="okbox">
+              Template aplicado: {aplicado.sectores} sectores, {aplicado.butacas} butacas, {aplicado.tandas} tandas.
+              {aplicado.advertencias?.length > 0 && <><br />Advertencias: {aplicado.advertencias.join(' · ')}</>}
+            </div>
+          )}
+          <TiposModal evento={evento} asPanel onClose={() => {}} />
+          {error && <div className="error">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => goto(1)}>Atrás</button>
+            <button className="btn" onClick={async () => { await refresh(); goto(3); }}>Siguiente</button>
+          </div>
+        </>
+      )}
+
+      {paso === 3 && evento && (
+        <>
+          <h3>Butacas por sector <span className="muted" style={{ fontSize: '.8rem', fontWeight: 400 }}>(opcional — sin grilla el sector vende por cantidad)</span></h3>
+          {tipos.length === 0 && <p className="muted">Este evento aún no tiene sectores; volvé al paso anterior.</p>}
+          {tipos.map((t) => (
+            <details key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,.08)', padding: '8px 0' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>
+                {t.nombre} {t.numerado ? <span className="pill publicado" style={{ marginLeft: 6, fontSize: '.65rem' }}>numerado</span> : <span className="pill borrador" style={{ marginLeft: 6, fontSize: '.65rem' }}>admisión general</span>}
+              </summary>
+              <div style={{ padding: '10px 0 4px' }}>
+                <SeatAdminGrid tipo={t} onChanged={refresh} />
+              </div>
+            </details>
+          ))}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => goto(2)}>Atrás</button>
+            <button className="btn" onClick={async () => { await refresh(); goto(4); }}>Siguiente</button>
+          </div>
+        </>
+      )}
+
+      {paso === 4 && evento && (
+        <>
+          <h3>Preventa y cargo por servicio <span className="muted" style={{ fontSize: '.8rem', fontWeight: 400 }}>(opcional)</span></h3>
+          <p className="muted" style={{ fontSize: '.85rem' }}>Tandas de precio por sector (ej. "Preventa" más barata con cupo limitado):</p>
+          {tipos.map((t) => <WizardTandaRow key={t.id} tipo={t} />)}
+          <label style={{ marginTop: 12 }}>Cargo por servicio del evento</label>
+          <div className="two">
+            <div>
+              <select value={fee.feeTipo} onChange={(e) => setFee({ ...fee, feeTipo: e.target.value })}>
+                <option value="">Usar cargo global</option>
+                <option value="ninguno">Sin cargo</option>
+                <option value="pct">Porcentaje (%)</option>
+                <option value="crc">Monto fijo (CRC)</option>
+              </select>
+            </div>
+            <div>
+              <input type="number" min="0" value={fee.feeValor} disabled={fee.feeTipo === '' || fee.feeTipo === 'ninguno'} onChange={(e) => setFee({ ...fee, feeValor: Number(e.target.value) })} />
+            </div>
+          </div>
+          {error && <div className="error">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => goto(3)}>Atrás</button>
+            <button className="btn" onClick={guardarFee} disabled={loading}>{loading ? 'Guardando…' : 'Siguiente'}</button>
+          </div>
+        </>
+      )}
+
+      {paso === 5 && evento && (
+        <>
+          <h3>Revisión</h3>
+          <div className="event-meta" style={{ marginBottom: 10 }}>
+            <span><CalendarDays size={14} /> {fmtFullDate(evento.fecha)}</span>
+            {evento.venue && <span>📍 {evento.venue}</span>}
+            <span className={`pill ${evento.estado}`}>{evento.estado}</span>
+          </div>
+          <section className="coupon-stats">
+            <div><span>Sectores</span><b>{tipos.length}</b></div>
+            <div><span>Capacidad</span><b>{capacidad}</b></div>
+            <div><span>Numerados</span><b>{numerados.length}</b></div>
+          </section>
+          <div className="table"><table><thead><tr><th>Sector</th><th>Precio</th><th>Cupo</th><th>Butacas</th></tr></thead><tbody>
+            {tipos.map((t) => (
+              <tr key={t.id}><td>{t.nombre}</td><td>{money(t.precioCrc)}</td><td>{t.stockTotal}</td><td>{t.numerado ? 'Numerado' : 'General'}</td></tr>
+            ))}
+            {tipos.length === 0 && <tr><td colSpan={4} className="muted">Sin sectores — el evento no se puede vender así.</td></tr>}
+          </tbody></table></div>
+          {msg && <div className="okbox">{msg}</div>}
+          {error && <div className="error">{error}</div>}
+          <div className="modal-actions" style={{ flexWrap: 'wrap' }}>
+            <button className="btn ghost" onClick={() => goto(4)}>Atrás</button>
+            <button className="btn ghost" onClick={guardarComoTemplate}>Guardar como template</button>
+            <button className="btn ghost" onClick={onDone}>Guardar borrador</button>
+            <button className="btn" onClick={publicar} disabled={loading || tipos.length === 0}><Send size={15} />{loading ? 'Publicando…' : 'Publicar ahora'}</button>
+          </div>
+        </>
+      )}
     </Modal>
+  );
+}
+
+// Fila compacta del paso Preventa: abre el editor de tandas del sector.
+function WizardTandaRow({ tipo }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="tipo-row">
+      <div><b>{tipo.nombre}</b><span> {money(tipo.precioCrc)} · cupo {tipo.stockTotal}</span></div>
+      <button className="btn ghost" onClick={() => setOpen(true)}>Tandas</button>
+      {open && <TandasModal tipo={tipo} onClose={() => setOpen(false)} />}
+    </div>
   );
 }
 
@@ -3194,88 +3467,9 @@ function TandasModal({ tipo, onClose }) {
 }
 
 function AsientosModal({ tipo, onClose }) {
-  const [asientos, setAsientos] = useState([]);
-  const [form, setForm] = useState({ filas: '10', porFila: '20' });
-  const [error, setError] = useState('');
-  const [msg, setMsg] = useState('');
-  const [loading, setLoading] = useState(false);
-  const load = async () => {
-    const d = await api(`/admin/api/entradas/tipos/${tipo.id}/asientos`);
-    if (d.ok) setAsientos(d.asientos);
-  };
-  useEffect(() => { load(); }, [tipo.id]);
-  const stats = asientos.reduce((s, a) => ({ ...s, [a.estado]: (s[a.estado] || 0) + 1 }), {});
-  async function generar() {
-    const total = Number(form.filas) * Number(form.porFila);
-    const warn = asientos.length > 0
-      ? `Esto reemplaza las ${asientos.length} butacas actuales del sector (se rechaza si hay vendidas). ¿Continuar?`
-      : `Se generarán ${total} butacas (${form.filas} filas × ${form.porFila}). El cupo del sector pasa a ${total}. ¿Continuar?`;
-    if (!window.confirm(warn)) return;
-    setError(''); setMsg(''); setLoading(true);
-    const d = await api(`/admin/api/entradas/tipos/${tipo.id}/asientos/generar`, { method: 'POST', body: JSON.stringify({ filas: Number(form.filas), porFila: Number(form.porFila) }) });
-    setLoading(false);
-    if (!d.ok) return setError(d.error);
-    setMsg(`${d.total} butacas generadas.`);
-    load();
-  }
-  async function toggleBloqueo(a) {
-    if (a.estado !== 'disponible' && a.estado !== 'bloqueado') return;
-    const estado = a.estado === 'bloqueado' ? 'disponible' : 'bloqueado';
-    const d = await api(`/admin/api/entradas/asientos/${a.id}`, { method: 'PATCH', body: JSON.stringify({ estado }) });
-    if (!d.ok) return setError(d.error);
-    setAsientos((prev) => prev.map((x) => (x.id === a.id ? d.asiento : x)));
-  }
-  const porFila = new Map();
-  for (const a of asientos) {
-    if (!porFila.has(a.fila)) porFila.set(a.fila, []);
-    porFila.get(a.fila).push(a);
-  }
-  const seatColor = (a) => (
-    a.estado === 'vendido' ? { bg: '#7a2020', fg: '#f3baba' }
-      : a.estado === 'bloqueado' ? { bg: '#555', fg: '#ccc' }
-        : a.estado === 'reservado' ? { bg: '#7a6420', fg: '#f0e0a0' }
-          : { bg: '#1d2e1d', fg: '#9fd49f' }
-  );
   return (
     <Modal title={`Butacas · ${tipo.nombre}`} onClose={onClose}>
-      <p className="muted" style={{ fontSize: '.85rem' }}>
-        {asientos.length === 0
-          ? 'Este sector aún no tiene butacas. Generá la grilla para venderlo por asiento numerado.'
-          : `${asientos.length} butacas · ${stats.disponible || 0} disponibles · ${stats.vendido || 0} vendidas · ${stats.bloqueado || 0} bloqueadas. Click en una butaca para bloquear/desbloquear.`}
-      </p>
-      <div className="two">
-        <div><label>Filas</label><input inputMode="numeric" value={form.filas} onChange={(e) => setForm({ ...form, filas: e.target.value.replace(/\D/g, '') })} /></div>
-        <div><label>Asientos por fila</label><input inputMode="numeric" value={form.porFila} onChange={(e) => setForm({ ...form, porFila: e.target.value.replace(/\D/g, '') })} /></div>
-      </div>
-      <button className="btn" onClick={generar} disabled={loading || !Number(form.filas) || !Number(form.porFila)}>
-        {loading ? 'Generando…' : asientos.length > 0 ? 'Regenerar butacas' : 'Generar butacas'}
-      </button>
-      {error && <div className="error">{error}</div>}
-      {msg && <div className="okbox">{msg}</div>}
-      {asientos.length > 0 && (
-        <div style={{ marginTop: 12, overflowX: 'auto', maxHeight: 340, overflowY: 'auto' }}>
-          {[...porFila.keys()].sort().map((fila) => (
-            <div key={fila} style={{ display: 'flex', gap: 3, alignItems: 'center', marginBottom: 3 }}>
-              <span className="muted" style={{ width: 26, fontSize: '.68rem', textAlign: 'center', flexShrink: 0 }}>{fila}</span>
-              {porFila.get(fila).sort((a, b) => a.numero - b.numero).map((a) => {
-                const c = seatColor(a);
-                return (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => toggleBloqueo(a)}
-                    disabled={a.estado === 'vendido' || a.estado === 'reservado'}
-                    title={`${a.fila}${a.numero} · ${a.estado}`}
-                    style={{ width: 24, height: 24, borderRadius: 5, fontSize: '.6rem', fontWeight: 700, border: '1px solid #444', background: c.bg, color: c.fg, cursor: a.estado === 'vendido' ? 'not-allowed' : 'pointer', padding: 0 }}
-                  >
-                    {a.numero}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      )}
+      <SeatAdminGrid tipo={tipo} />
     </Modal>
   );
 }
@@ -3616,10 +3810,45 @@ function BarRow({ label, value, max, display, sub }) {
   );
 }
 
+// Pestaña Butacas del detalle: todos los sectores del evento con su grilla.
+function EventButacasPanel({ evento }) {
+  const [tipos, setTipos] = useState([]);
+  const refresh = async () => {
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}`);
+    if (d.ok) setTipos(d.tipos);
+  };
+  useEffect(() => { refresh(); }, [evento.id]);
+  if (tipos.length === 0) return <p className="muted">Este evento no tiene sectores todavía. Agregalos en la pestaña Sectores.</p>;
+  return (
+    <>
+      {tipos.map((t) => (
+        <details key={t.id} open={t.numerado} style={{ borderBottom: '1px solid rgba(255,255,255,.08)', padding: '8px 0' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>
+            {t.nombre} {t.numerado
+              ? <span className="pill publicado" style={{ marginLeft: 6, fontSize: '.65rem' }}>numerado · {t.disponibles} disp.</span>
+              : <span className="pill borrador" style={{ marginLeft: 6, fontSize: '.65rem' }}>admisión general</span>}
+          </summary>
+          <div style={{ padding: '10px 0 4px' }}>
+            <SeatAdminGrid tipo={t} onChanged={refresh} />
+          </div>
+        </details>
+      ))}
+    </>
+  );
+}
+
 function EventDetalleModal({ evento, tipos, onClose, onToggleEstado, onChanged }) {
   const [tab, setTab] = useState('detalles');
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [tplMsg, setTplMsg] = useState(null);
+  async function guardarComoTemplate() {
+    const nombre = window.prompt('Nombre del template (ej. "Partido ERC estándar"):', evento.nombre);
+    if (!nombre) return;
+    setTplMsg(null);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/guardar-template`, { method: 'POST', body: JSON.stringify({ nombre }) });
+    setTplMsg(d.ok ? { type: 'ok', text: `Template "${d.template.nombre}" guardado.` } : { type: 'error', text: d.error });
+  }
   useEffect(() => {
     if (tab !== 'detalles') return undefined;
     let alive = true;
@@ -3636,12 +3865,15 @@ function EventDetalleModal({ evento, tipos, onClose, onToggleEstado, onChanged }
         <button className={`btn ghost${tab === 'detalles' ? ' active' : ''}`} onClick={() => setTab('detalles')}><BarChart3 size={16} />Detalles</button>
         <button className={`btn ghost${tab === 'sectores' ? ' active' : ''}`} onClick={() => setTab('sectores')}><LayoutGrid size={16} />Sectores</button>
         <button className={`btn ghost${tab === 'mapa' ? ' active' : ''}`} onClick={() => setTab('mapa')}><MapIcon size={16} />Mapa</button>
+        <button className={`btn ghost${tab === 'butacas' ? ' active' : ''}`} onClick={() => setTab('butacas')}><Accessibility size={16} />Butacas</button>
         <button className={`btn ghost${tab === 'cortesia' ? ' active' : ''}`} onClick={() => setTab('cortesia')}><Gift size={16} />Cortesia</button>
+        <button className="btn ghost" onClick={guardarComoTemplate}><Sparkles size={16} />Guardar como template</button>
         {onToggleEstado && (evento.estado === 'publicado'
           ? <button className="btn ghost" onClick={onToggleEstado}><Lock size={16} />Finalizar</button>
           : <button className="btn ghost" onClick={onToggleEstado}><Send size={16} />Publicar</button>)}
       </div>
 
+      {tplMsg && <div className={tplMsg.type === 'ok' ? 'okbox' : 'error'}>{tplMsg.text}</div>}
       {tab === 'detalles' && <>
         {error && <div className="error">{error}</div>}
         {!error && !data && <p className="muted">Cargando detalle…</p>}
@@ -3649,6 +3881,7 @@ function EventDetalleModal({ evento, tipos, onClose, onToggleEstado, onChanged }
       </>}
       {tab === 'sectores' && <TiposModal evento={evento} asPanel onClose={() => setTab('detalles')} />}
       {tab === 'mapa' && <StadiumMapEditor evento={evento} tipos={tipos} embedded onClose={() => setTab('detalles')} onSaved={onChanged} />}
+      {tab === 'butacas' && <EventButacasPanel evento={evento} />}
       {tab === 'cortesia' && <CortesiaModal evento={evento} tipos={tipos} asPanel onClose={() => setTab('detalles')} />}
 
       <div className="modal-actions">

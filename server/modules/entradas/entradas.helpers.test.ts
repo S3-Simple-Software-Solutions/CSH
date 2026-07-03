@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { boletoCodigo, calcularTotales, extractCodigo, filaLabel, normalizeCodigo, qrData, slugify, tandaActiva } from './entradas.helpers';
+import { boletoCodigo, calcularTotales, diasAntesToFecha, extractCodigo, fechaToDiasAntes, filaLabel, normalizeCodigo, qrData, slugify, tandaActiva } from './entradas.helpers';
 
 describe('entradas helpers', () => {
   it('creates short slugs for event URLs', () => {
@@ -63,6 +63,27 @@ describe('calcularTotales', () => {
 
   it('ignora fee y descuento en subtotal cero', () => {
     expect(calcularTotales(0, { tipo: 'pct', valor: 10 }, { tipo: 'pct', valor: 50 })).toEqual({ subtotal: 0, descuento: 0, fee: 0, total: 0 });
+  });
+});
+
+describe('offsets de tandas para templates', () => {
+  const evento = '2026-08-15T20:00:00.000Z';
+
+  it('convierte fechas absolutas a días antes del evento', () => {
+    expect(fechaToDiasAntes(evento, '2026-08-01T20:00:00.000Z')).toBe(14);
+    expect(fechaToDiasAntes(evento, evento)).toBe(0);
+    expect(fechaToDiasAntes(evento, null)).toBeNull();
+  });
+
+  it('reconstruye fechas desde los offsets para una nueva fecha de evento', () => {
+    const nuevaFecha = '2026-09-10T20:00:00.000Z';
+    expect(diasAntesToFecha(nuevaFecha, 14)).toBe('2026-08-27T20:00:00.000Z');
+    expect(diasAntesToFecha(nuevaFecha, null)).toBeNull();
+  });
+
+  it('ida y vuelta preserva la distancia al evento', () => {
+    const dias = fechaToDiasAntes(evento, '2026-07-30T20:00:00.000Z');
+    expect(diasAntesToFecha(evento, dias)).toBe('2026-07-30T20:00:00.000Z');
   });
 });
 

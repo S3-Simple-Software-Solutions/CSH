@@ -13,6 +13,8 @@ import {
   EntradaConfigInput,
   Evento,
   EventoInput,
+  EventTemplate,
+  EventTemplatePayload,
   EntradaLog,
   FeeTipo,
   GenerarAsientosInput,
@@ -935,6 +937,41 @@ export class PgEntradasRepository implements EntradasRepository {
 
   async eliminarTanda(id: string): Promise<void> {
     await query('delete from entrada_tipo_tandas where id = $1', [id]);
+  }
+
+  // ── Templates de evento ──────────────────────────────────────────
+
+  async listTemplates(): Promise<EventTemplate[]> {
+    const rows = await query<any>('select * from entrada_event_templates order by creado_at desc');
+    return rows.map((r) => ({ id: r.id, nombre: r.nombre, descripcion: r.descripcion, payload: r.payload, creadoAt: r.creado_at.toISOString() }));
+  }
+
+  async getTemplate(id: string): Promise<EventTemplate | null> {
+    const rows = await query<any>('select * from entrada_event_templates where id = $1', [id]);
+    if (!rows[0]) return null;
+    return { id: rows[0].id, nombre: rows[0].nombre, descripcion: rows[0].descripcion, payload: rows[0].payload, creadoAt: rows[0].creado_at.toISOString() };
+  }
+
+  async crearTemplate(nombre: string, descripcion: string, payload: EventTemplatePayload): Promise<EventTemplate> {
+    const exists = await query<any>('select 1 from entrada_event_templates where lower(nombre) = lower($1)', [nombre]);
+    if (exists[0]) throw new ApiError(409, 'Ya existe un template con ese nombre');
+    const rows = await query<any>(
+      'insert into entrada_event_templates (id, nombre, descripcion, payload) values ($1,$2,$3,$4) returning *',
+      [genId('TPL'), nombre, descripcion, JSON.stringify(payload)],
+    );
+    return { id: rows[0].id, nombre: rows[0].nombre, descripcion: rows[0].descripcion, payload: rows[0].payload, creadoAt: rows[0].creado_at.toISOString() };
+  }
+
+  async actualizarTemplate(id: string, nombre: string, descripcion: string): Promise<EventTemplate> {
+    const dup = await query<any>('select 1 from entrada_event_templates where lower(nombre) = lower($1) and id <> $2', [nombre, id]);
+    if (dup[0]) throw new ApiError(409, 'Ya existe un template con ese nombre');
+    const rows = await query<any>('update entrada_event_templates set nombre=$1, descripcion=$2 where id=$3 returning *', [nombre, descripcion, id]);
+    if (!rows[0]) throw new ApiError(404, 'Template no encontrado');
+    return { id: rows[0].id, nombre: rows[0].nombre, descripcion: rows[0].descripcion, payload: rows[0].payload, creadoAt: rows[0].creado_at.toISOString() };
+  }
+
+  async eliminarTemplate(id: string): Promise<void> {
+    await query('delete from entrada_event_templates where id = $1', [id]);
   }
 
   // ── Promotores / RRPP (P1) ───────────────────────────────────────

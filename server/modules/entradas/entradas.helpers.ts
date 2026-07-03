@@ -93,6 +93,27 @@ export interface TandaLike {
   orden: number;
 }
 
+// ── Templates: offsets de tandas ────────────────────────────────────
+// Un template no puede guardar fechas absolutas de preventa: se convierten a
+// "días antes del evento" al serializar y se recalculan al aplicar.
+
+const DIA_MS = 86400000;
+
+export function fechaToDiasAntes(fechaEvento: string, fecha: string | null): number | null {
+  if (!fecha) return null;
+  const evento = new Date(fechaEvento).getTime();
+  const f = new Date(fecha).getTime();
+  if (!isFinite(evento) || !isFinite(f)) return null;
+  return Math.round((evento - f) / DIA_MS);
+}
+
+export function diasAntesToFecha(fechaEvento: string, dias: number | null): string | null {
+  if (dias == null) return null;
+  const evento = new Date(fechaEvento).getTime();
+  if (!isFinite(evento)) return null;
+  return new Date(evento - dias * DIA_MS).toISOString();
+}
+
 // ── Asientos numerados ──────────────────────────────────────────────
 // Etiqueta de fila estilo hoja de cálculo: 0 → A, 25 → Z, 26 → AA.
 

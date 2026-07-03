@@ -10,6 +10,8 @@ import {
   EntradaConfigInput,
   Evento,
   EventoInput,
+  EventTemplate,
+  EventTemplatePayload,
   GenerarAsientosInput,
   ListLogOptions,
   EntradaLog,
@@ -71,6 +73,13 @@ export interface EntradasRepository {
   crearTanda(tipoId: string, input: TandaInput): Promise<Tanda>;
   actualizarTanda(id: string, input: TandaInput): Promise<Tanda>;
   eliminarTanda(id: string): Promise<void>;
+
+  // Templates de evento
+  listTemplates(): Promise<EventTemplate[]>;
+  getTemplate(id: string): Promise<EventTemplate | null>;
+  crearTemplate(nombre: string, descripcion: string, payload: EventTemplatePayload): Promise<EventTemplate>;
+  actualizarTemplate(id: string, nombre: string, descripcion: string): Promise<EventTemplate>;
+  eliminarTemplate(id: string): Promise<void>;
 
   // Promotores / RRPP (P1)
   listPromotores(): Promise<Promotor[]>;

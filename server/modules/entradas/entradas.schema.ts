@@ -145,6 +145,16 @@ export async function ensureEntradasSchema(): Promise<void> {
       add column if not exists comision_crc integer not null default 0;
     create index if not exists idx_entrada_ordenes_promotor on entrada_ordenes(promotor_id) where promotor_id is not null;
   `);
+  // Templates de evento: snapshot reutilizable (sectores, butacas, tandas, fee).
+  await pool.query(`
+    create table if not exists entrada_event_templates (
+      id          text primary key,
+      nombre      text unique not null,
+      descripcion text not null default '',
+      payload     jsonb not null,
+      creado_at   timestamptz not null default now()
+    );
+  `);
   // Asientos numerados (P2): butaca individual por sector, con soft-lock de reserva.
   await pool.query(`
     alter table entrada_tipos
