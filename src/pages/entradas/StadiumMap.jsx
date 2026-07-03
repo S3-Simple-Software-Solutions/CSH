@@ -14,7 +14,7 @@ function precioDe(tipo) {
   return tipo.precioVigente ?? tipo.precioCrc;
 }
 
-function tiposByZoneKey(tipos) {
+export function tiposByZoneKey(tipos) {
   const map = {};
   for (const t of tipos) {
     if (t.estado === 'inactivo') continue;
