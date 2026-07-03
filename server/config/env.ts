@@ -40,4 +40,12 @@ export const env = {
   AGENTS_BASE_URL: process.env.AGENTS_BASE_URL || 'http://127.0.0.1:3400',
   AGENTS_API_KEY: process.env.AGENTS_API_KEY || '',
   ANALYTICS_MODEL: process.env.ANALYTICS_MODEL || 'claude-sonnet-4-6',
+  // WhatsApp (Meta Cloud API). Requiere número de negocio verificado y una
+  // plantilla aprobada con header de imagen (ver entradas.whatsapp.ts).
+  WHATSAPP_ENABLED: bool(process.env.WHATSAPP_ENABLED),
+  WHATSAPP_PHONE_ID: process.env.WHATSAPP_PHONE_ID || '',
+  WHATSAPP_TOKEN: process.env.WHATSAPP_TOKEN || '',
+  WHATSAPP_API_VERSION: process.env.WHATSAPP_API_VERSION || 'v21.0',
+  WHATSAPP_TEMPLATE_ENTRADAS: process.env.WHATSAPP_TEMPLATE_ENTRADAS || 'entrada_confirmacion',
+  WHATSAPP_TEMPLATE_LANG: process.env.WHATSAPP_TEMPLATE_LANG || 'es',
 };

@@ -18,6 +18,8 @@ export type OrdenEstado = 'pagada' | 'cancelada';
 export type BoletoEstado = 'valido' | 'usado' | 'cancelado';
 
 export type EventoFormato = 'partido' | 'espectaculo';
+export type FeeTipo = 'pct' | 'crc' | 'ninguno';
+export type DescuentoTipo = 'pct' | 'monto';
 
 export interface Evento {
   id: string;
@@ -34,6 +36,8 @@ export interface Evento {
   formato: EventoFormato;
   fieldTemplate: string | null;
   fieldSplits: number[] | null;
+  feeTipo: FeeTipo | null; // null => usa el default global (entrada_config)
+  feeValor: number | null;
 }
 
 export interface TicketType {
@@ -47,6 +51,70 @@ export interface TicketType {
   orden: number;
   disponibles: number;
   mapa: ZonaMapa | null;
+  // Preventa: precio de la tanda vigente (si hay); si no, igual a precioCrc.
+  precioVigente?: number;
+  tandaNombre?: string | null;
+  // Asientos numerados: cuando true, la compra exige seleccionar butacas.
+  numerado: boolean;
+}
+
+export type AsientoEstado = 'disponible' | 'reservado' | 'vendido' | 'bloqueado';
+
+export interface Asiento {
+  id: string;
+  eventoId: string;
+  tipoId: string;
+  fila: string;
+  numero: number;
+  x: number | null;
+  y: number | null;
+  estado: AsientoEstado;
+  reservadoHasta: string | null;
+  boletoId: string | null;
+  ordenId: string | null;
+}
+
+// Vista pública de una butaca: no expone quién la reservó ni distingue bloqueado.
+export interface AsientoPublico {
+  id: string;
+  tipoId: string;
+  fila: string;
+  numero: number;
+  x: number | null;
+  y: number | null;
+  estado: 'disponible' | 'reservado' | 'ocupado';
+}
+
+export interface GenerarAsientosInput {
+  filas: number;
+  porFila: number;
+}
+
+export interface ReservaAsientos {
+  holdId: string;
+  expiraAt: string;
+  asientos: string[];
+}
+
+export interface Tanda {
+  id: string;
+  tipoId: string;
+  nombre: string;
+  precioCrc: number;
+  ventaDesde: string | null;
+  ventaHasta: string | null;
+  cupo: number | null;
+  vendidos: number;
+  orden: number;
+}
+
+export interface TandaInput {
+  nombre: string;
+  precioCrc: number;
+  ventaDesde?: string | null;
+  ventaHasta?: string | null;
+  cupo?: number | null;
+  orden?: number;
 }
 
 export interface MapaTipoInput {
@@ -79,10 +147,79 @@ export interface Orden {
   eventoId: string;
   compradorNombre: string;
   compradorEmail: string;
+  subtotalCrc: number;
+  descuentoCrc: number;
+  descuentoCodigo: string | null;
+  feeCrc: number;
   totalCrc: number;
+  promotorId: string | null;
+  comisionCrc: number;
   pago: PagoEntrada | null;
   estado: OrdenEstado;
   createdAt: string;
+}
+
+export interface Descuento {
+  id: string;
+  codigo: string;
+  tipo: DescuentoTipo;
+  valor: number;
+  eventoId: string | null; // null => aplica a cualquier evento
+  usosMax: number | null;
+  usosActuales: number;
+  vigenciaDesde: string | null;
+  vigenciaHasta: string | null;
+  activo: boolean;
+  creadoAt: string;
+}
+
+export interface DescuentoInput {
+  codigo: string;
+  tipo: DescuentoTipo;
+  valor: number;
+  eventoId?: string | null;
+  usosMax?: number | null;
+  vigenciaDesde?: string | null;
+  vigenciaHasta?: string | null;
+  activo?: boolean;
+}
+
+export type ComisionTipo = 'pct' | 'crc';
+
+export interface Promotor {
+  id: string;
+  nombre: string;
+  codigo: string;
+  comisionTipo: ComisionTipo; // pct: % sobre subtotal · crc: monto fijo por orden
+  comisionValor: number;
+  activo: boolean;
+  creadoAt: string;
+}
+
+export interface PromotorInput {
+  nombre: string;
+  codigo: string;
+  comisionTipo: ComisionTipo;
+  comisionValor: number;
+  activo?: boolean;
+}
+
+export interface PromotorRanking {
+  promotor: Promotor;
+  ordenes: number;
+  boletos: number;
+  ventasCrc: number;
+  comisionCrc: number;
+}
+
+export interface EntradaConfig {
+  feeTipoDefault: FeeTipo;
+  feeValorDefault: number;
+}
+
+export interface EntradaConfigInput {
+  feeTipoDefault?: FeeTipo;
+  feeValorDefault?: number;
 }
 
 export interface Boleto {
@@ -97,6 +234,8 @@ export interface Boleto {
   validadoPor: string | null;
   tipoNombre?: string;
   eventoNombre?: string;
+  asientoId?: string | null;
+  asientoLabel?: string | null; // "Fila B · Asiento 12"
 }
 
 export interface EntradaLog {
@@ -119,13 +258,20 @@ export interface EntradaActor {
 export interface CompraLinea {
   tipoId: string;
   cantidad: number;
+  // Sectores numerados: ids de butacas elegidas (cantidad = asientos.length).
+  asientos?: string[];
 }
 
 export interface CompraInput {
   slug: string;
   lineas: CompraLinea[];
-  comprador: { nombre: string; email: string };
+  comprador: { nombre: string; email: string; telefono?: string | null; notifWhatsapp?: boolean };
   pago?: PagoEntrada;
+  descuentoCodigo?: string | null;
+  // Soft-lock: id del hold creado con reservar-asientos, si el comprador reservó.
+  holdId?: string | null;
+  // RRPP: código de promotor capturado de ?ref=. Inválido/inactivo => sin atribución.
+  refCodigo?: string | null;
 }
 
 export interface CompraResultado {
@@ -141,6 +287,8 @@ export interface EventoInput {
   fecha: string;
   imagenUrl?: string;
   formato?: EventoFormato;
+  feeTipo?: FeeTipo | null;
+  feeValor?: number | null;
 }
 
 export interface TipoInput {

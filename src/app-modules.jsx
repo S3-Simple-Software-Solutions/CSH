@@ -10,6 +10,8 @@ import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
 import AdminSponsors from './pages/admin/AdminSponsors.jsx';
 import AdminMensajes from './pages/admin/AdminMensajes.jsx';
+import { entradasFaq } from './data/entradasInfo.js';
+import { contacto as clubContacto } from './data/club.js';
 import QRCode from 'qrcode';
 import { useEscClose } from './utils/useEscClose.js';
 import sotano1Img from './croquis/sotano-1.png';
@@ -2264,7 +2266,18 @@ function QRImage({ data, size = 140 }) {
   return <img className="qr-img" src={src} width={size} height={size} alt="Codigo QR del boleto" />;
 }
 
+// RRPP: persiste el código de promotor (?ref=CODIGO) para atribuir la compra.
+function capturarRef() {
+  const ref = new URLSearchParams(location.search).get('ref');
+  if (ref) sessionStorage.setItem('entradas_ref', ref.trim().toUpperCase());
+}
+
+function refActual() {
+  return sessionStorage.getItem('entradas_ref') || undefined;
+}
+
 function PublicEntradas() {
+  useEffect(() => { capturarRef(); }, []);
   const path = location.pathname;
   const slug = path.startsWith('/entradas/') ? decodeURIComponent(path.slice(10).replace(/\/$/, '')) : '';
   return slug ? <PublicEventDetail slug={slug} /> : <PublicEntradasList />;
@@ -2296,8 +2309,68 @@ function PublicEntradasList() {
           ))}
         </section>
         <BoletoLookup />
+        <EntradasInfo />
+        <EntradasContacto />
       </main>
     </>
+  );
+}
+
+// ── Más información (FAQ estático) ─────────────────────────────────
+function EntradasInfo() {
+  return (
+    <section className="card" style={{ marginTop: 24 }}>
+      <p className="eyebrow">Más información</p>
+      <h2 style={{ marginTop: 4 }}>Preguntas frecuentes</h2>
+      {entradasFaq.map((item) => (
+        <details key={item.q} style={{ borderBottom: '1px solid rgba(255,255,255,.08)', padding: '10px 0' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>{item.q}</summary>
+          <p className="muted" style={{ margin: '8px 0 2px', lineHeight: 1.55 }}>{item.a}</p>
+        </details>
+      ))}
+    </section>
+  );
+}
+
+// ── Contáctenos (reutiliza el módulo contacto: llega al inbox admin) ──
+function EntradasContacto() {
+  const [form, setForm] = useState({ nombre: '', email: '', mensaje: '' });
+  const [status, setStatus] = useState(null); // { type, text }
+  const [loading, setLoading] = useState(false);
+  const waNumber = String(clubContacto.general.whatsapp || '').replace(/\D/g, '');
+  async function submit(e) {
+    e.preventDefault();
+    setStatus(null); setLoading(true);
+    const d = await api('/api/contacto', { method: 'POST', body: JSON.stringify({ ...form, asunto: 'Entradas' }) });
+    setLoading(false);
+    if (!d.ok) return setStatus({ type: 'error', text: d.error });
+    setStatus({ type: 'ok', text: 'Mensaje enviado. Te respondemos por correo.' });
+    setForm({ nombre: '', email: '', mensaje: '' });
+  }
+  return (
+    <section className="card" style={{ marginTop: 18 }}>
+      <p className="eyebrow">Contáctenos</p>
+      <h2 style={{ marginTop: 4 }}>¿Necesitás ayuda con tus entradas?</h2>
+      <p className="muted">
+        Escribinos por WhatsApp al{' '}
+        <a href={`https://api.whatsapp.com/send/?phone=${encodeURIComponent(waNumber)}`} target="_blank" rel="noreferrer" style={{ fontWeight: 700 }}>
+          {clubContacto.general.whatsapp}
+        </a>{' '}
+        ({clubContacto.general.horario}) o dejanos tu consulta:
+      </p>
+      <form onSubmit={submit}>
+        <div className="two">
+          <div><label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} required /></div>
+          <div><label>Correo</label><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></div>
+        </div>
+        <label>Mensaje</label>
+        <textarea rows={4} value={form.mensaje} onChange={(e) => setForm({ ...form, mensaje: e.target.value })} required style={{ width: '100%', resize: 'vertical' }} />
+        {status && <div className={status.type === 'ok' ? 'okbox' : 'error'}>{status.text}</div>}
+        <button className="btn" type="submit" disabled={loading || !form.nombre || !form.email || !form.mensaje}>
+          <Send size={15} />{loading ? 'Enviando…' : 'Enviar consulta'}
+        </button>
+      </form>
+    </section>
   );
 }
 
@@ -2349,19 +2422,70 @@ function BoletoLookup() {
   );
 }
 
+function SeatGrid({ tipo, asientos, selected, onToggle }) {
+  const porFila = new Map();
+  for (const a of asientos) {
+    if (!porFila.has(a.fila)) porFila.set(a.fila, []);
+    porFila.get(a.fila).push(a);
+  }
+  const filas = [...porFila.keys()].sort();
+  const seatStyle = (a) => {
+    const isSel = selected.includes(a.id);
+    const libre = a.estado === 'disponible';
+    return {
+      width: 26, height: 26, borderRadius: 6, fontSize: '.62rem', fontWeight: 700,
+      border: '1px solid ' + (isSel ? '#c9a961' : libre ? '#3a5a3a' : '#444'),
+      background: isSel ? '#c9a961' : libre ? '#1d2e1d' : '#333',
+      color: isSel ? '#1a1a1a' : libre ? '#9fd49f' : '#666',
+      cursor: libre || isSel ? 'pointer' : 'not-allowed',
+      padding: 0,
+    };
+  };
+  return (
+    <div className="seat-grid" style={{ margin: '10px 0 4px', overflowX: 'auto' }}>
+      <p className="muted" style={{ fontSize: '.78rem', margin: '0 0 6px' }}>
+        {tipo.nombre}: elegí tus butacas ({selected.length} seleccionada{selected.length === 1 ? '' : 's'})
+      </p>
+      {filas.map((fila) => (
+        <div key={fila} style={{ display: 'flex', gap: 3, alignItems: 'center', marginBottom: 3 }}>
+          <span className="muted" style={{ width: 26, fontSize: '.68rem', textAlign: 'center', flexShrink: 0 }}>{fila}</span>
+          {porFila.get(fila).sort((a, b) => a.numero - b.numero).map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              style={seatStyle(a)}
+              disabled={a.estado !== 'disponible' && !selected.includes(a.id)}
+              title={`Fila ${a.fila} · Asiento ${a.numero}${a.estado !== 'disponible' ? ' · Ocupado' : ''}`}
+              onClick={() => onToggle(tipo.id, a.id)}
+            >
+              {a.numero}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PublicEventDetail({ slug }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [qty, setQty] = useState({});
+  const [seats, setSeats] = useState({}); // tipoId → [asientoId]
+  const [asientos, setAsientos] = useState([]);
   const [checkout, setCheckout] = useState(false);
+  const [hold, setHold] = useState(null);
+  const [seatError, setSeatError] = useState('');
   const [done, setDone] = useState(null);
   const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'mapa'
+  const loadAsientos = () => api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}/asientos`).then((d) => { if (d.ok) setAsientos(d.asientos); });
   useEffect(() => {
     api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}`).then((d) => {
       if (d.ok) {
         setData(d);
         // Si hay zonas con mapa, mostrar mapa por defecto
         if (d.tipos?.some((t) => t.mapa) || isErcVectorLayout(d.evento)) setViewMode('mapa');
+        if (d.tipos?.some((t) => t.numerado)) loadAsientos();
       } else {
         setError(d.error);
       }
@@ -2373,14 +2497,41 @@ function PublicEventDetail({ slug }) {
   const setCantidad = (id, n, max) => setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(max, n)) }));
   const handleMapUpdate = (tipoId, delta) => {
     const t = tipos.find((t) => t.id === tipoId);
-    if (!t) return;
+    if (!t || t.numerado) return; // numerado se elige por butaca, no por stepper
     const cur = qty[tipoId] ?? 0;
     setCantidad(tipoId, cur + delta, Math.min(10, t.disponibles));
   };
-  const lineas = tipos.filter((t) => qty[t.id] > 0).map((t) => ({ tipoId: t.id, cantidad: qty[t.id] }));
-  const total = tipos.reduce((s, t) => s + t.precioCrc * (qty[t.id] || 0), 0);
+  const toggleSeat = (tipoId, asientoId) => {
+    setSeats((s) => {
+      const cur = s[tipoId] || [];
+      if (cur.includes(asientoId)) return { ...s, [tipoId]: cur.filter((id) => id !== asientoId) };
+      if (cur.length >= 10) return s;
+      return { ...s, [tipoId]: [...cur, asientoId] };
+    });
+  };
+  const cantidadDe = (t) => (t.numerado ? (seats[t.id] || []).length : (qty[t.id] || 0));
+  const lineas = tipos
+    .filter((t) => cantidadDe(t) > 0)
+    .map((t) => (t.numerado ? { tipoId: t.id, cantidad: seats[t.id].length, asientos: seats[t.id] } : { tipoId: t.id, cantidad: qty[t.id] }));
+  const total = tipos.reduce((s, t) => s + (t.precioVigente ?? t.precioCrc) * cantidadDe(t), 0);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
   const hasMapa = isErcVectorLayout(evento) || tipos.some((t) => t.mapa);
+  const tiposNumerados = tipos.filter((t) => t.numerado);
+  const allSelectedSeats = tiposNumerados.flatMap((t) => seats[t.id] || []);
+  async function continuar() {
+    setSeatError('');
+    if (allSelectedSeats.length === 0) return setCheckout(true);
+    // Soft-lock: reserva las butacas 7 minutos mientras se completa el pago.
+    const d = await api('/api/entradas/publico/reservar-asientos', { method: 'POST', body: JSON.stringify({ slug, asientos: allSelectedSeats }) });
+    if (!d.ok) {
+      setSeatError(d.error);
+      setSeats({});
+      loadAsientos();
+      return;
+    }
+    setHold(d.holdId);
+    setCheckout(true);
+  }
   return (
     <>
       <main className="page">
@@ -2402,39 +2553,88 @@ function PublicEventDetail({ slug }) {
             <section className="sector-list">
               {tipos.map((t) => (
                 <div key={t.id} className={`sector ${t.disponibles === 0 ? 'agotado' : ''}`}>
-                  <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioCrc)}</span></div>
-                  <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
-                  <div className="stepper">
-                    <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
-                    <span>{qty[t.id] || 0}</span>
-                    <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
+                  <div className="sector-info">
+                    <b>{t.nombre}</b>
+                    <span>
+                      {t.tandaNombre && t.precioVigente !== t.precioCrc && <s className="muted" style={{ marginRight: 6 }}>{money(t.precioCrc)}</s>}
+                      {money(t.precioVigente ?? t.precioCrc)}
+                      {t.tandaNombre && <em className="pill publicado" style={{ marginLeft: 6, fontStyle: 'normal', fontSize: '.7rem' }}>{t.tandaNombre}</em>}
+                    </span>
                   </div>
+                  <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
+                  {t.numerado ? (
+                    <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} />
+                  ) : (
+                    <div className="stepper">
+                      <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
+                      <span>{qty[t.id] || 0}</span>
+                      <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </section>
           )
         }
 
+        {viewMode === 'mapa' && tiposNumerados.length > 0 && (
+          <section className="sector-list" style={{ marginTop: 12 }}>
+            {tiposNumerados.map((t) => (
+              <div key={t.id} className="sector">
+                <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioVigente ?? t.precioCrc)}</span></div>
+                <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} />
+              </div>
+            ))}
+          </section>
+        )}
+        {seatError && <div className="error">{seatError}</div>}
+
         <div className="checkout-bar">
           <div><span>{count} boleto(s)</span><b>{money(total)}</b></div>
-          <button className="btn" disabled={count === 0} onClick={() => setCheckout(true)}>Continuar</button>
+          <button className="btn" disabled={count === 0} onClick={continuar}>Continuar</button>
         </div>
       </main>
-      {checkout && <CheckoutModal slug={slug} lineas={lineas} total={total} evento={evento} onClose={() => setCheckout(false)} onDone={(res) => { setCheckout(false); setDone(res); }} />}
+      {checkout && <CheckoutModal slug={slug} lineas={lineas} total={total} evento={evento} fee={data.fee} holdId={hold} onClose={() => setCheckout(false)} onDone={(res) => { setCheckout(false); setDone(res); }} />}
       {done && <TicketsModal result={done} onClose={() => { setDone(null); location.reload(); }} />}
     </>
   );
 }
 
-function CheckoutModal({ slug, lineas, total, evento, onClose, onDone }) {
-  const [buyer, setBuyer] = useState({ nombre: '', email: '' });
+function calcFeeCrc(base, fee) {
+  if (!fee || fee.tipo === 'ninguno' || !fee.valor || base <= 0) return 0;
+  return fee.tipo === 'pct' ? Math.round((base * fee.valor) / 100) : Math.round(fee.valor);
+}
+
+function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose, onDone }) {
+  const [buyer, setBuyer] = useState({ nombre: '', email: '', telefono: '', notifWhatsapp: false });
   const [pago, setPago] = useState({ name: '', cardNumber: '', exp: '', cvv: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [codigo, setCodigo] = useState('');
+  const [aplicado, setAplicado] = useState(null); // { codigo, descuento }
+  const [descMsg, setDescMsg] = useState('');
+  const [descLoading, setDescLoading] = useState(false);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
+
+  const subtotal = total;
+  const descuento = aplicado ? aplicado.descuento : 0;
+  const base = Math.max(0, subtotal - descuento);
+  const feeCrc = calcFeeCrc(base, fee);
+  const grandTotal = base + feeCrc;
+
+  async function aplicarCodigo() {
+    setDescMsg(''); setDescLoading(true);
+    const d = await api('/api/entradas/publico/validar-descuento', { method: 'POST', body: JSON.stringify({ slug, lineas, codigo }) });
+    setDescLoading(false);
+    if (!d.ok) { setAplicado(null); return setDescMsg(d.error); }
+    setAplicado({ codigo: d.codigo, descuento: d.descuento });
+    setDescMsg(d.descuento > 0 ? `Código ${d.codigo} aplicado` : `Código ${d.codigo} sin efecto en esta compra`);
+  }
+  function quitarCodigo() { setAplicado(null); setCodigo(''); setDescMsg(''); }
+
   async function submit() {
     setError(''); setLoading(true);
-    const body = { slug, lineas, comprador: buyer, pago: total > 0 ? pago : undefined };
+    const body = { slug, lineas, comprador: buyer, pago: grandTotal > 0 ? pago : undefined, descuentoCodigo: aplicado ? aplicado.codigo : undefined, holdId: holdId || undefined, ref: refActual() };
     const d = await api('/api/entradas/publico/comprar', { method: 'POST', body: JSON.stringify(body) });
     setLoading(false);
     if (!d.ok) return setError(d.error);
@@ -2442,10 +2642,37 @@ function CheckoutModal({ slug, lineas, total, evento, onClose, onDone }) {
   }
   return (
     <Modal title="Finalizar compra" onClose={onClose}>
-      <div className="pay-summary">{evento.nombre}<br />{count} boleto(s) · Total <b>{money(total)}</b></div>
+      <div className="pay-summary">{evento.nombre}<br />{count} boleto(s)</div>
       <label>Nombre completo</label><input value={buyer.nombre} onChange={(e) => setBuyer({ ...buyer, nombre: e.target.value })} autoFocus />
       <label>Correo (recibis el QR aqui)</label><input type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} />
-      {total > 0 && (
+
+      <label className="check" style={{ margin: '8px 0 4px' }}>
+        <input type="checkbox" checked={buyer.notifWhatsapp} onChange={(e) => setBuyer({ ...buyer, notifWhatsapp: e.target.checked })} />
+        {' '}Quiero recibir mis entradas también por WhatsApp
+      </label>
+      {buyer.notifWhatsapp && (
+        <>
+          <label>Teléfono (WhatsApp)</label>
+          <input inputMode="tel" placeholder="8888 8888" value={buyer.telefono} onChange={(e) => setBuyer({ ...buyer, telefono: e.target.value })} />
+        </>
+      )}
+
+      <label>¿Tenés un código de descuento?</label>
+      {aplicado ? (
+        <div className="two"><div><input value={aplicado.codigo} disabled /></div><div><button className="btn ghost" onClick={quitarCodigo}>Quitar</button></div></div>
+      ) : (
+        <div className="two"><div><input value={codigo} placeholder="CODIGO" onChange={(e) => setCodigo(e.target.value.toUpperCase())} /></div><div><button className="btn ghost" onClick={aplicarCodigo} disabled={descLoading || codigo.trim().length < 3}>{descLoading ? '...' : 'Aplicar'}</button></div></div>
+      )}
+      {descMsg && <div className="muted" style={{ fontSize: '.85rem' }}>{descMsg}</div>}
+
+      <div className="checkout-desglose" style={{ margin: '12px 0', fontSize: '.9rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>{money(subtotal)}</span></div>
+        {descuento > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0a7d3a' }}><span>Descuento</span><span>−{money(descuento)}</span></div>}
+        {feeCrc > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Cargo por servicio</span><span>{money(feeCrc)}</span></div>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #ddd', marginTop: 6, paddingTop: 6 }}><span>Total</span><span>{money(grandTotal)}</span></div>
+      </div>
+
+      {grandTotal > 0 && (
         <>
           <label>Nombre en la tarjeta</label><input value={pago.name} onChange={(e) => setPago({ ...pago, name: e.target.value })} />
           <label>Numero de tarjeta</label><input inputMode="numeric" value={pago.cardNumber} onChange={(e) => setPago({ ...pago, cardNumber: e.target.value })} />
@@ -2453,7 +2680,7 @@ function CheckoutModal({ slug, lineas, total, evento, onClose, onDone }) {
         </>
       )}
       {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={submit} disabled={loading}>{loading ? 'Procesando...' : `Pagar ${money(total)}`}</button>
+      <button className="btn" onClick={submit} disabled={loading}>{loading ? 'Procesando...' : `Pagar ${money(grandTotal)}`}</button>
     </Modal>
   );
 }
@@ -2461,12 +2688,16 @@ function CheckoutModal({ slug, lineas, total, evento, onClose, onDone }) {
 function TicketsModal({ result, onClose }) {
   return (
     <Modal title="Compra exitosa" onClose={onClose}>
-      <p className="muted">{result.emailSent ? `Enviamos tus boletos a ${result.correo}.` : 'Compra registrada. No se pudo enviar el correo ahora, guarda estos codigos.'}</p>
+      <p className="muted">
+        {result.emailSent ? `Enviamos tus boletos a ${result.correo}.` : 'Compra registrada. No se pudo enviar el correo ahora, guarda estos codigos.'}
+        {result.whatsappSent ? ' También los enviamos por WhatsApp.' : ''}
+      </p>
       <div className="tickets-grid">
         {result.boletos.map((b) => (
           <div key={b.codigo} className="ticket-qr">
             <QRImage data={b.qrData} size={130} />
             <b>{b.tipoNombre}</b>
+            {b.asientoLabel && <span style={{ fontWeight: 700 }}>{b.asientoLabel}</span>}
             <span>{b.codigo}</span>
           </div>
         ))}
@@ -2487,12 +2718,221 @@ function AdminEntradas({ user }) {
       <div className="tabs">
         {canManage && <button className={tab === 'eventos' ? 'active' : ''} onClick={() => setTab('eventos')}>Eventos</button>}
         {canSales && <button className={tab === 'ventas' ? 'active' : ''} onClick={() => setTab('ventas')}>Ventas</button>}
+        {canManage && <button className={tab === 'descuentos' ? 'active' : ''} onClick={() => setTab('descuentos')}>Descuentos</button>}
+        {canSales && <button className={tab === 'promotores' ? 'active' : ''} onClick={() => setTab('promotores')}>Promotores</button>}
         {canGate && <button className={tab === 'puerta' ? 'active' : ''} onClick={() => setTab('puerta')}><ScanLine size={15} />Puerta</button>}
       </div>
       {tab === 'eventos' && canManage && <AdminEventosTab />}
       {tab === 'ventas' && canSales && <AdminVentasTab />}
+      {tab === 'descuentos' && canManage && <AdminDescuentosTab />}
+      {tab === 'promotores' && canSales && <AdminPromotoresTab canManage={canManage} />}
       {tab === 'puerta' && canGate && <AdminPuertaTab />}
     </main>
+  );
+}
+
+function AdminPromotoresTab({ canManage }) {
+  const [ranking, setRanking] = useState([]);
+  const [modal, setModal] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const load = async () => {
+    const d = await api('/admin/api/entradas/promotores/ranking');
+    if (d.ok) setRanking(d.ranking);
+  };
+  useEffect(() => { load(); }, []);
+  async function copiarLink(p) {
+    const link = `${location.origin}/entradas?ref=${encodeURIComponent(p.codigo)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setMsg({ type: 'ok', text: `Link de ${p.nombre} copiado: ${link}` });
+    } catch {
+      setMsg({ type: 'ok', text: link });
+    }
+  }
+  async function del(p) {
+    if (!window.confirm(`¿Eliminar al promotor "${p.nombre}"? Las ventas ya atribuidas se conservan.`)) return;
+    const d = await api(`/admin/api/entradas/promotores/${p.id}`, { method: 'DELETE' });
+    if (d.ok) load();
+  }
+  const comisionLabel = (p) => (p.comisionTipo === 'pct' ? `${p.comisionValor}% del subtotal` : `${money(p.comisionValor)} por orden`);
+  return (
+    <>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      {canManage && <div className="actions left"><button className="btn" onClick={() => setModal({})}><Plus size={16} />Nuevo promotor</button></div>}
+      <div className="table"><table><thead><tr><th>Promotor</th><th>Código</th><th>Comisión</th><th>Órdenes</th><th>Boletos</th><th>Ventas</th><th>Comisión ₡</th><th></th></tr></thead><tbody>
+        {ranking.map((r) => (
+          <tr key={r.promotor.id}>
+            <td><b>{r.promotor.nombre}</b>{!r.promotor.activo && <span className="pill borrador" style={{ marginLeft: 6 }}>inactivo</span>}</td>
+            <td>{r.promotor.codigo}</td>
+            <td>{comisionLabel(r.promotor)}</td>
+            <td>{r.ordenes}</td>
+            <td>{r.boletos}</td>
+            <td>{money(r.ventasCrc)}</td>
+            <td>{money(r.comisionCrc)}</td>
+            <td className="row-actions">
+              <button className="link-cell" onClick={() => copiarLink(r.promotor)}>Copiar link</button>
+              {canManage && <button className="link-cell" onClick={() => setModal(r.promotor)}>Editar</button>}
+              {canManage && <button className="link-cell danger" onClick={() => del(r.promotor)}>Eliminar</button>}
+            </td>
+          </tr>
+        ))}
+        {ranking.length === 0 && <tr><td colSpan={8} className="muted">Sin promotores registrados.</td></tr>}
+      </tbody></table></div>
+      {modal && <PromotorModal promotor={modal.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+    </>
+  );
+}
+
+function PromotorModal({ promotor, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    nombre: promotor?.nombre || '',
+    codigo: promotor?.codigo || '',
+    comisionTipo: promotor?.comisionTipo || 'pct',
+    comisionValor: promotor?.comisionValor ?? 10,
+    activo: promotor?.activo ?? true,
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  async function submit() {
+    setError(''); setLoading(true);
+    const url = promotor ? `/admin/api/entradas/promotores/${promotor.id}` : '/admin/api/entradas/promotores';
+    const d = await api(url, { method: promotor ? 'PUT' : 'POST', body: JSON.stringify(form) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    onSaved();
+  }
+  return (
+    <Modal title={promotor ? 'Editar promotor' : 'Nuevo promotor'} onClose={onClose}>
+      <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus />
+      <label>Código (vacío = se genera automático)</label><input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value.toUpperCase() })} placeholder="JUAN10" />
+      <div className="two">
+        <div><label>Tipo de comisión</label><select value={form.comisionTipo} onChange={(e) => setForm({ ...form, comisionTipo: e.target.value })}><option value="pct">% del subtotal</option><option value="crc">Monto fijo por orden</option></select></div>
+        <div><label>Valor</label><input type="number" min="0" value={form.comisionValor} onChange={(e) => setForm({ ...form, comisionValor: Number(e.target.value) })} /></div>
+      </div>
+      <label className="check"><input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /> Activo</label>
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit} disabled={loading || form.nombre.trim().length < 3}>{loading ? 'Guardando...' : 'Guardar'}</button>
+    </Modal>
+  );
+}
+
+function AdminDescuentosTab() {
+  const [config, setConfig] = useState(null);
+  const [feeForm, setFeeForm] = useState({ feeTipoDefault: 'ninguno', feeValorDefault: 0 });
+  const [descuentos, setDescuentos] = useState([]);
+  const [eventos, setEventos] = useState([]);
+  const [msg, setMsg] = useState(null);
+  const [modal, setModal] = useState(null);
+  const load = async () => {
+    const c = await api('/admin/api/entradas/config');
+    if (c.ok) { setConfig(c.config); setFeeForm({ feeTipoDefault: c.config.feeTipoDefault, feeValorDefault: c.config.feeValorDefault }); }
+    const d = await api('/admin/api/entradas/descuentos');
+    if (d.ok) setDescuentos(d.descuentos);
+    const e = await api('/admin/api/entradas/eventos');
+    if (e.ok) setEventos(e.eventos.map((x) => x.evento));
+  };
+  useEffect(() => { load(); }, []);
+  async function saveConfig() {
+    setMsg(null);
+    const d = await api('/admin/api/entradas/config', { method: 'PUT', body: JSON.stringify(feeForm) });
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setConfig(d.config); setMsg({ type: 'ok', text: 'Cargo por servicio actualizado.' });
+  }
+  async function del(id) {
+    if (!window.confirm('¿Eliminar este código de descuento?')) return;
+    const d = await api(`/admin/api/entradas/descuentos/${id}`, { method: 'DELETE' });
+    if (d.ok) load();
+  }
+  const feeLabel = (t, v) => (t === 'ninguno' || !t ? 'Sin cargo' : t === 'pct' ? `${v}%` : money(v));
+  return (
+    <>
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+      <section className="card" style={{ marginBottom: 18 }}>
+        <h3>Cargo por servicio (global)</h3>
+        <p className="muted" style={{ fontSize: '.85rem' }}>Se aplica a todas las compras salvo que un evento defina su propio cargo.</p>
+        <div className="two">
+          <div>
+            <label>Tipo</label>
+            <select value={feeForm.feeTipoDefault} onChange={(e) => setFeeForm({ ...feeForm, feeTipoDefault: e.target.value })}>
+              <option value="ninguno">Sin cargo</option>
+              <option value="pct">Porcentaje (%)</option>
+              <option value="crc">Monto fijo (CRC)</option>
+            </select>
+          </div>
+          <div>
+            <label>Valor</label>
+            <input type="number" min="0" value={feeForm.feeValorDefault} disabled={feeForm.feeTipoDefault === 'ninguno'} onChange={(e) => setFeeForm({ ...feeForm, feeValorDefault: Number(e.target.value) })} />
+          </div>
+        </div>
+        <button className="btn" onClick={saveConfig}>Guardar cargo</button>
+      </section>
+
+      <div className="actions left"><button className="btn" onClick={() => setModal({})}><Plus size={16} />Nuevo código</button></div>
+      <div className="table"><table><thead><tr><th>Código</th><th>Descuento</th><th>Evento</th><th>Usos</th><th>Estado</th><th></th></tr></thead><tbody>
+        {descuentos.map((d) => (
+          <tr key={d.id}>
+            <td><b>{d.codigo}</b></td>
+            <td>{feeLabel(d.tipo === 'monto' ? 'crc' : 'pct', d.valor)}</td>
+            <td>{d.eventoId ? (eventos.find((e) => e.id === d.eventoId)?.nombre || '—') : 'Todos'}</td>
+            <td>{d.usosActuales}{d.usosMax != null ? ` / ${d.usosMax}` : ''}</td>
+            <td><span className={`pill ${d.activo ? 'publicado' : 'borrador'}`}>{d.activo ? 'activo' : 'inactivo'}</span></td>
+            <td className="row-actions">
+              <button className="link-cell" onClick={() => setModal(d)}>Editar</button>
+              <button className="link-cell danger" onClick={() => del(d.id)}>Eliminar</button>
+            </td>
+          </tr>
+        ))}
+        {descuentos.length === 0 && <tr><td colSpan={6} className="muted">Sin códigos de descuento.</td></tr>}
+      </tbody></table></div>
+      {modal && <DescuentoModal descuento={modal.id ? modal : null} eventos={eventos} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
+    </>
+  );
+}
+
+function DescuentoModal({ descuento, eventos, onClose, onSaved }) {
+  const toLocal = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : '');
+  const [form, setForm] = useState({
+    codigo: descuento?.codigo || '',
+    tipo: descuento?.tipo || 'pct',
+    valor: descuento?.valor || 10,
+    eventoId: descuento?.eventoId || '',
+    usosMax: descuento?.usosMax ?? '',
+    vigenciaDesde: toLocal(descuento?.vigenciaDesde),
+    vigenciaHasta: toLocal(descuento?.vigenciaHasta),
+    activo: descuento?.activo ?? true,
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  async function submit() {
+    setError(''); setLoading(true);
+    const body = { ...form, eventoId: form.eventoId || null, usosMax: form.usosMax === '' ? null : Number(form.usosMax) };
+    const url = descuento ? `/admin/api/entradas/descuentos/${descuento.id}` : '/admin/api/entradas/descuentos';
+    const d = await api(url, { method: descuento ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    onSaved();
+  }
+  return (
+    <Modal title={descuento ? 'Editar código' : 'Nuevo código'} onClose={onClose}>
+      <label>Código</label><input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value.toUpperCase() })} autoFocus />
+      <div className="two">
+        <div><label>Tipo</label><select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}><option value="pct">Porcentaje (%)</option><option value="monto">Monto fijo (CRC)</option></select></div>
+        <div><label>Valor</label><input type="number" min="1" value={form.valor} onChange={(e) => setForm({ ...form, valor: Number(e.target.value) })} /></div>
+      </div>
+      <label>Evento</label>
+      <select value={form.eventoId} onChange={(e) => setForm({ ...form, eventoId: e.target.value })}>
+        <option value="">Todos los eventos</option>
+        {eventos.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+      </select>
+      <label>Límite de usos (opcional)</label><input type="number" min="1" value={form.usosMax} onChange={(e) => setForm({ ...form, usosMax: e.target.value })} placeholder="Sin límite" />
+      <div className="two">
+        <div><label>Vigente desde</label><input type="datetime-local" value={form.vigenciaDesde} onChange={(e) => setForm({ ...form, vigenciaDesde: e.target.value })} /></div>
+        <div><label>Vigente hasta</label><input type="datetime-local" value={form.vigenciaHasta} onChange={(e) => setForm({ ...form, vigenciaHasta: e.target.value })} /></div>
+      </div>
+      <label className="check"><input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /> Activo</label>
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit} disabled={loading || form.codigo.trim().length < 3}>{loading ? 'Guardando...' : 'Guardar'}</button>
+    </Modal>
   );
 }
 
@@ -2612,7 +3052,7 @@ function EntradasLogPanel({ eventos, refreshKey }) {
 }
 
 function EventFormModal({ onClose, onDone }) {
-  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '', formato: 'partido' });
+  const [form, setForm] = useState({ nombre: '', venue: 'Estadio Eladio Rosabal Cordero', fecha: '', descripcion: '', formato: 'partido', feeTipo: '', feeValor: 0 });
   const [error, setError] = useState('');
   async function submit() {
     setError('');
@@ -2649,8 +3089,193 @@ function EventFormModal({ onClose, onDone }) {
           </label>
         ))}
       </div>
+      <label>Cargo por servicio (opcional)</label>
+      <div className="two">
+        <div>
+          <select value={form.feeTipo} onChange={(e) => setForm({ ...form, feeTipo: e.target.value })}>
+            <option value="">Usar cargo global</option>
+            <option value="ninguno">Sin cargo</option>
+            <option value="pct">Porcentaje (%)</option>
+            <option value="crc">Monto fijo (CRC)</option>
+          </select>
+        </div>
+        <div>
+          <input type="number" min="0" value={form.feeValor} disabled={form.feeTipo === '' || form.feeTipo === 'ninguno'} onChange={(e) => setForm({ ...form, feeValor: Number(e.target.value) })} />
+        </div>
+      </div>
       {error && <div className="error">{error}</div>}
       <button className="btn" onClick={submit}>Crear evento</button>
+    </Modal>
+  );
+}
+
+function TandasModal({ tipo, onClose }) {
+  const toLocal = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : '');
+  const emptyForm = { nombre: '', precioCrc: '', ventaDesde: '', ventaHasta: '', cupo: '' };
+  const [tandas, setTandas] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [editing, setEditing] = useState(null); // tanda en edición o null (creando)
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const load = async () => {
+    const d = await api(`/admin/api/entradas/tipos/${tipo.id}/tandas`);
+    if (d.ok) setTandas(d.tandas);
+  };
+  useEffect(() => { load(); }, [tipo.id]);
+  function startEdit(t) {
+    setEditing(t);
+    setForm({ nombre: t.nombre, precioCrc: String(t.precioCrc), ventaDesde: toLocal(t.ventaDesde), ventaHasta: toLocal(t.ventaHasta), cupo: t.cupo == null ? '' : String(t.cupo) });
+  }
+  function cancelEdit() { setEditing(null); setForm(emptyForm); setError(''); }
+  async function submit() {
+    setError(''); setLoading(true);
+    const body = {
+      nombre: form.nombre,
+      precioCrc: Number(form.precioCrc),
+      ventaDesde: form.ventaDesde || null,
+      ventaHasta: form.ventaHasta || null,
+      cupo: form.cupo === '' ? null : Number(form.cupo),
+    };
+    const url = editing ? `/admin/api/entradas/tandas/${editing.id}` : `/admin/api/entradas/tipos/${tipo.id}/tandas`;
+    const d = await api(url, { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    cancelEdit(); load();
+  }
+  async function del(t) {
+    if (!window.confirm(`¿Eliminar la tanda "${t.nombre}"?`)) return;
+    const d = await api(`/admin/api/entradas/tandas/${t.id}`, { method: 'DELETE' });
+    if (d.ok) load();
+  }
+  const fmtVentana = (t) => {
+    const desde = t.ventaDesde ? fmtFullDate(t.ventaDesde) : 'ya';
+    const hasta = t.ventaHasta ? fmtFullDate(t.ventaHasta) : 'sin límite';
+    return `${desde} → ${hasta}`;
+  };
+  return (
+    <Modal title={`Tandas · ${tipo.nombre}`} onClose={onClose}>
+      <p className="muted" style={{ fontSize: '.85rem' }}>
+        La tanda vigente (por fechas, cupo y orden) define el precio de venta. Sin tanda activa se usa el precio base ({money(tipo.precioCrc)}).
+      </p>
+      {tandas.length > 0 && (
+        <div className="tipos-list">
+          {tandas.map((t) => (
+            <div key={t.id} className="tipo-row">
+              <div>
+                <b>{t.nombre}</b>
+                <span>{money(t.precioCrc)} · {t.vendidos}{t.cupo != null ? `/${t.cupo}` : ''} vendidos · {fmtVentana(t)}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn ghost" onClick={() => startEdit(t)}>Editar</button>
+                <button className="btn ghost" onClick={() => del(t)}>Eliminar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <h4 className="tipos-section-title">{editing ? `Editar "${editing.nombre}"` : 'Nueva tanda'}</h4>
+      <div className="two">
+        <div><label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Preventa" /></div>
+        <div><label>Precio CRC</label><input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} /></div>
+      </div>
+      <div className="two">
+        <div><label>Venta desde</label><input type="datetime-local" value={form.ventaDesde} onChange={(e) => setForm({ ...form, ventaDesde: e.target.value })} /></div>
+        <div><label>Venta hasta</label><input type="datetime-local" value={form.ventaHasta} onChange={(e) => setForm({ ...form, ventaHasta: e.target.value })} /></div>
+      </div>
+      <label>Cupo (opcional)</label>
+      <input inputMode="numeric" value={form.cupo} onChange={(e) => setForm({ ...form, cupo: e.target.value.replace(/\D/g, '') })} placeholder="Sin límite" />
+      {error && <div className="error">{error}</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn" onClick={submit} disabled={loading || !form.nombre || form.precioCrc === ''}>{loading ? 'Guardando…' : editing ? 'Guardar cambios' : 'Agregar tanda'}</button>
+        {editing && <button className="btn ghost" onClick={cancelEdit}>Cancelar</button>}
+      </div>
+    </Modal>
+  );
+}
+
+function AsientosModal({ tipo, onClose }) {
+  const [asientos, setAsientos] = useState([]);
+  const [form, setForm] = useState({ filas: '10', porFila: '20' });
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  const [loading, setLoading] = useState(false);
+  const load = async () => {
+    const d = await api(`/admin/api/entradas/tipos/${tipo.id}/asientos`);
+    if (d.ok) setAsientos(d.asientos);
+  };
+  useEffect(() => { load(); }, [tipo.id]);
+  const stats = asientos.reduce((s, a) => ({ ...s, [a.estado]: (s[a.estado] || 0) + 1 }), {});
+  async function generar() {
+    const total = Number(form.filas) * Number(form.porFila);
+    const warn = asientos.length > 0
+      ? `Esto reemplaza las ${asientos.length} butacas actuales del sector (se rechaza si hay vendidas). ¿Continuar?`
+      : `Se generarán ${total} butacas (${form.filas} filas × ${form.porFila}). El cupo del sector pasa a ${total}. ¿Continuar?`;
+    if (!window.confirm(warn)) return;
+    setError(''); setMsg(''); setLoading(true);
+    const d = await api(`/admin/api/entradas/tipos/${tipo.id}/asientos/generar`, { method: 'POST', body: JSON.stringify({ filas: Number(form.filas), porFila: Number(form.porFila) }) });
+    setLoading(false);
+    if (!d.ok) return setError(d.error);
+    setMsg(`${d.total} butacas generadas.`);
+    load();
+  }
+  async function toggleBloqueo(a) {
+    if (a.estado !== 'disponible' && a.estado !== 'bloqueado') return;
+    const estado = a.estado === 'bloqueado' ? 'disponible' : 'bloqueado';
+    const d = await api(`/admin/api/entradas/asientos/${a.id}`, { method: 'PATCH', body: JSON.stringify({ estado }) });
+    if (!d.ok) return setError(d.error);
+    setAsientos((prev) => prev.map((x) => (x.id === a.id ? d.asiento : x)));
+  }
+  const porFila = new Map();
+  for (const a of asientos) {
+    if (!porFila.has(a.fila)) porFila.set(a.fila, []);
+    porFila.get(a.fila).push(a);
+  }
+  const seatColor = (a) => (
+    a.estado === 'vendido' ? { bg: '#7a2020', fg: '#f3baba' }
+      : a.estado === 'bloqueado' ? { bg: '#555', fg: '#ccc' }
+        : a.estado === 'reservado' ? { bg: '#7a6420', fg: '#f0e0a0' }
+          : { bg: '#1d2e1d', fg: '#9fd49f' }
+  );
+  return (
+    <Modal title={`Butacas · ${tipo.nombre}`} onClose={onClose}>
+      <p className="muted" style={{ fontSize: '.85rem' }}>
+        {asientos.length === 0
+          ? 'Este sector aún no tiene butacas. Generá la grilla para venderlo por asiento numerado.'
+          : `${asientos.length} butacas · ${stats.disponible || 0} disponibles · ${stats.vendido || 0} vendidas · ${stats.bloqueado || 0} bloqueadas. Click en una butaca para bloquear/desbloquear.`}
+      </p>
+      <div className="two">
+        <div><label>Filas</label><input inputMode="numeric" value={form.filas} onChange={(e) => setForm({ ...form, filas: e.target.value.replace(/\D/g, '') })} /></div>
+        <div><label>Asientos por fila</label><input inputMode="numeric" value={form.porFila} onChange={(e) => setForm({ ...form, porFila: e.target.value.replace(/\D/g, '') })} /></div>
+      </div>
+      <button className="btn" onClick={generar} disabled={loading || !Number(form.filas) || !Number(form.porFila)}>
+        {loading ? 'Generando…' : asientos.length > 0 ? 'Regenerar butacas' : 'Generar butacas'}
+      </button>
+      {error && <div className="error">{error}</div>}
+      {msg && <div className="okbox">{msg}</div>}
+      {asientos.length > 0 && (
+        <div style={{ marginTop: 12, overflowX: 'auto', maxHeight: 340, overflowY: 'auto' }}>
+          {[...porFila.keys()].sort().map((fila) => (
+            <div key={fila} style={{ display: 'flex', gap: 3, alignItems: 'center', marginBottom: 3 }}>
+              <span className="muted" style={{ width: 26, fontSize: '.68rem', textAlign: 'center', flexShrink: 0 }}>{fila}</span>
+              {porFila.get(fila).sort((a, b) => a.numero - b.numero).map((a) => {
+                const c = seatColor(a);
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => toggleBloqueo(a)}
+                    disabled={a.estado === 'vendido' || a.estado === 'reservado'}
+                    title={`${a.fila}${a.numero} · ${a.estado}`}
+                    style={{ width: 24, height: 24, borderRadius: 5, fontSize: '.6rem', fontWeight: 700, border: '1px solid #444', background: c.bg, color: c.fg, cursor: a.estado === 'vendido' ? 'not-allowed' : 'pointer', padding: 0 }}
+                  >
+                    {a.numero}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
     </Modal>
   );
 }
@@ -2661,6 +3286,8 @@ function TiposModal({ evento, onClose, asPanel }) {
   const [gramForm, setGramForm] = useState({ key: '', nombre: '', precioCrc: '', stockTotal: '' });
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
+  const [tandasFor, setTandasFor] = useState(null);
+  const [asientosFor, setAsientosFor] = useState(null);
   const esEspectaculo = evento?.formato === 'espectaculo';
   const fieldTemplate = evento?.fieldTemplate ?? '2';
 
@@ -2818,12 +3445,18 @@ function TiposModal({ evento, onClose, asPanel }) {
                   {tier && <span className="tipo-tier">{tier}</span>}
                   <span>{money(t.precioCrc)} · {t.stockVendido}/{t.stockTotal} · {t.estado}</span>
                 </div>
-                <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn ghost" onClick={() => setAsientosFor(t)}>{t.numerado ? 'Butacas ✓' : 'Butacas'}</button>
+                  <button className="btn ghost" onClick={() => setTandasFor(t)}>Tandas</button>
+                  <button className="btn ghost" onClick={() => toggle(t)}>{t.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
+                </div>
               </div>
             );
           })}
         </div>
       )}
+      {tandasFor && <TandasModal tipo={tandasFor} onClose={() => setTandasFor(null)} />}
+      {asientosFor && <AsientosModal tipo={asientosFor} onClose={() => { setAsientosFor(null); refresh(); }} />}
 
       {/* === Bloque Tribunas === */}
       <div className="tipos-section">
