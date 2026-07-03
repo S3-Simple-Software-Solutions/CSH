@@ -2991,8 +2991,6 @@ function DescuentoModal({ descuento, eventos, onClose, onSaved }) {
 function AdminEventosTab({ onNew, onOpen }) {
   const [eventos, setEventos] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [msg, setMsg] = useState(null);
-  const [logRefreshKey, setLogRefreshKey] = useState(0);
   const refresh = async () => { const d = await api('/admin/api/entradas/eventos'); if (d.ok) setEventos(d.eventos); };
   useEffect(() => { refresh(); }, []);
   return (
@@ -3001,7 +2999,6 @@ function AdminEventosTab({ onNew, onOpen }) {
         <button className="btn" onClick={onNew}><Plus size={16} />Nuevo evento</button>
         <button className={`btn ghost${showTemplates ? ' active' : ''}`} onClick={() => setShowTemplates((visible) => !visible)}><Sparkles size={16} />Templates</button>
       </div>
-      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       {showTemplates && <TemplatesPanel onClose={() => setShowTemplates(false)} />}
       <div className="table"><table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>
         {eventos.map((ev) => (
@@ -3014,7 +3011,7 @@ function AdminEventosTab({ onNew, onOpen }) {
           </tr>
         ))}
       </tbody></table></div>
-      <EntradasLogPanel eventos={eventos} refreshKey={logRefreshKey} />
+      <EntradasLogPanel eventos={eventos} refreshKey={0} />
     </>
   );
 }
@@ -3856,7 +3853,6 @@ function EventWizardModal({ onClose, onDone }) {
       )}
     </Modal>
   );
-  return asPanel ? inner : <Modal title={`Sectores · ${evento.nombre}`} onClose={onClose}>{inner}</Modal>;
 }
 
 // Fila compacta del paso Preventa: abre el editor de tandas del sector.

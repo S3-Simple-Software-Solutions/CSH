@@ -4,10 +4,20 @@ import { escapeHtml } from '../../core/http';
 import { makeMailTransport, emailShell, commonMailAttachments, fmtMailDate, MailAttachment } from '../../core/mailer';
 import { Boleto, Evento } from './entradas.types';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isValidEmailAddress(value: string): boolean {
+  if (!value || value.length > 254) return false;
+  for (const char of value) {
+    if (char === ' ' || char === '\t' || char === '\r' || char === '\n') return false;
+  }
+  const at = value.indexOf('@');
+  if (at <= 0 || at !== value.lastIndexOf('@')) return false;
+  const domain = value.slice(at + 1);
+  const dot = domain.lastIndexOf('.');
+  return dot > 0 && dot < domain.length - 1;
+}
 
 export async function sendEntradasEmail({ to, evento, boletos }: { to: string; evento: Evento; boletos: Boleto[] }): Promise<void> {
-  if (!to || !EMAIL_RE.test(to)) throw new Error('Correo invalido');
+  if (!isValidEmailAddress(to)) throw new Error('Correo invalido');
 
   const qrAttachments: MailAttachment[] = [];
   const cards: string[] = [];

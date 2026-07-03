@@ -45,6 +45,10 @@ const MAX_BOLETOS = 20;
 
 type Actor = { id: string; name: string; eventsRole: string };
 
+function safeLogValue(value: unknown): string {
+  return String(value ?? '').replace(/[\r\n\u2028\u2029]/g, ' ');
+}
+
 // Envío WhatsApp best-effort: nunca afecta la compra ni el email.
 async function tryWhatsApp(telefono: string | null | undefined, evento: Evento, boletos: Boleto[]): Promise<boolean> {
   if (!telefono || !isWhatsAppEnabled()) return false;
@@ -52,7 +56,7 @@ async function tryWhatsApp(telefono: string | null | undefined, evento: Evento, 
     await sendEntradasWhatsApp({ to: telefono, evento, boletos });
     return true;
   } catch (err) {
-    console.error(`[whatsapp] Error enviando entradas a ${telefono}: ${(err as Error).message}`);
+    console.error(`[whatsapp] Error enviando entradas a ${safeLogValue(telefono)}: ${safeLogValue((err as Error).message)}`);
     return false;
   }
 }
@@ -228,7 +232,7 @@ async function trySendEntradas(email: string, resultado: { orden?: any; evento: 
   try {
     await sendEntradasEmail({ to: email, evento: resultado.evento, boletos: resultado.boletos });
   } catch (err) {
-    console.error(`[mail] Error enviando entradas a ${email}: ${(err as Error).message}`);
+    console.error(`[mail] Error enviando entradas a ${safeLogValue(email)}: ${safeLogValue((err as Error).message)}`);
   }
   const orden = resultado.orden;
   if (orden?.notifWhatsapp && orden?.compradorTelefono) {
