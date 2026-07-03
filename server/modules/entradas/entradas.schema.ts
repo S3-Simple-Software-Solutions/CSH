@@ -84,6 +84,16 @@ export async function ensureEntradasSchema(): Promise<void> {
       add column if not exists field_template text,
       add column if not exists field_splits   jsonb;
   `);
+  // Pagos con pasarela: orden 'pendiente' hasta que el webhook confirme.
+  // provider/provider_ref correlacionan con la sesión de la pasarela; lineas es
+  // el snapshot de lo comprado para materializar los boletos al confirmar.
+  await pool.query(`
+    alter table entrada_ordenes
+      add column if not exists provider     text,
+      add column if not exists provider_ref text,
+      add column if not exists lineas       jsonb;
+    create index if not exists idx_entrada_ordenes_provider_ref on entrada_ordenes(provider_ref);
+  `);
 
   // P1: cargo por servicio (fee), desglose de orden, descuentos y config global.
   await pool.query(`

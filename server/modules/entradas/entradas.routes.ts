@@ -21,9 +21,17 @@ entradasRouter.get('/api/entradas/publico/eventos/:slug', async (req, res, next)
   }
 });
 
-entradasRouter.post('/api/entradas/publico/comprar', async (req, res, next) => {
+entradasRouter.post('/api/entradas/publico/checkout', async (req, res, next) => {
   try {
-    res.json({ ok: true, ...(await entradas.comprarPublico(req.body)) });
+    res.json({ ok: true, ...(await entradas.iniciarCheckoutPublico(req.body)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.get('/api/entradas/publico/orden/:ref', async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.consultarOrdenPublica(String(req.params.ref))) });
   } catch (err) {
     next(err);
   }

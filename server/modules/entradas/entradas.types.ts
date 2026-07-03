@@ -14,7 +14,7 @@ export interface ZonaMapa {
   labelY?: number | null;
 }
 export type TipoEstado = 'activo' | 'inactivo';
-export type OrdenEstado = 'pagada' | 'cancelada';
+export type OrdenEstado = 'pendiente' | 'pagada' | 'cancelada';
 export type BoletoEstado = 'valido' | 'usado' | 'cancelado';
 
 export type EventoFormato = 'partido' | 'espectaculo';
@@ -333,6 +333,41 @@ export interface CompraResultado {
   orden: Orden;
   boletos: Boleto[];
   evento: Evento;
+}
+
+// Snapshot de una línea comprada, guardado en la orden pendiente para poder
+// materializar los boletos cuando el webhook confirma el pago. Registra la
+// tanda consumida y las butacas del hold para poder revertir/confirmar.
+export interface OrdenLineaSnapshot {
+  tipoId: string;
+  cantidad: number;
+  nombre: string;
+  precioCrc: number; // precio unitario efectivo (tanda vigente o base)
+  tandaId?: string | null;
+  asientos?: Array<{ id: string; fila: string; numero: number }>;
+}
+
+export interface IniciarOrdenInput {
+  slug: string;
+  lineas: CompraLinea[];
+  comprador: { nombre: string; email: string; telefono?: string | null; notifWhatsapp?: boolean };
+  provider: string;
+  descuentoCodigo?: string | null;
+  holdId?: string | null; // hold del selector de asientos (soft-lock previo)
+  refCodigo?: string | null; // código de promotor RRPP
+}
+
+export interface IniciarOrdenResult {
+  ordenId: string;
+  total: number;
+  evento: Evento;
+  lineItems: { nombre: string; montoUnitarioCrc: number; cantidad: number }[];
+  desglose: { subtotal: number; descuento: number; fee: number; total: number };
+}
+
+export interface OrdenPublica {
+  estado: OrdenEstado;
+  boletos: { codigo: string; qrData: string; tipoNombre?: string; asientoLabel?: string | null }[];
 }
 
 export interface EventoInput {

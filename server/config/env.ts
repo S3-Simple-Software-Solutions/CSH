@@ -48,4 +48,16 @@ export const env = {
   WHATSAPP_API_VERSION: process.env.WHATSAPP_API_VERSION || 'v21.0',
   WHATSAPP_TEMPLATE_ENTRADAS: process.env.WHATSAPP_TEMPLATE_ENTRADAS || 'entrada_confirmacion',
   WHATSAPP_TEMPLATE_LANG: process.env.WHATSAPP_TEMPLATE_LANG || 'es',
+  // Pagos: pasarela seleccionable (hoy solo 'stripe'). La tarjeta nunca toca
+  // este servidor; se cobra con Stripe Checkout (página hospedada).
+  PAYMENTS_PROVIDER: process.env.HEREDIANO_PAYMENTS_PROVIDER || 'stripe',
+  STRIPE_SECRET_KEY: process.env.HEREDIANO_STRIPE_SECRET_KEY || '',
+  STRIPE_WEBHOOK_SECRET: process.env.HEREDIANO_STRIPE_WEBHOOK_SECRET || '',
+  STRIPE_CURRENCY: process.env.HEREDIANO_STRIPE_CURRENCY || 'crc',
 };
+
+// Guardrail de demo: este entorno es sandbox. Si alguien configura una llave
+// de producción (sk_live_...), abortamos el arranque para no arriesgar cobros reales.
+if (env.PAYMENTS_PROVIDER === 'stripe' && env.STRIPE_SECRET_KEY.startsWith('sk_live_')) {
+  throw new Error('Este demo solo admite llaves de prueba de Stripe (sk_test_...). Se detectó una llave sk_live_.');
+}

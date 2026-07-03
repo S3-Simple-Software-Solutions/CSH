@@ -1,4 +1,5 @@
 import { ApiError } from '../../core/errors';
+import { env } from '../../config/env';
 import type { AdminUser } from '../usuarios/usuarios.data';
 import { canManageEvents, canOperateGate, canViewSales } from '../usuarios/usuarios.service';
 import { getEntradasRepository, EntradasRepository } from './entradas.repository';
@@ -30,13 +31,13 @@ import {
   MapPoint,
   MapRect,
   MapZoneKey,
-  PagoEntrada,
   PromotorInput,
   TandaInput,
   TicketType,
   TipoInput,
 } from './entradas.types';
 import { isValidZoneKey, mapaFromZoneKey } from './entradas.erc.zones';
+import { getPaymentGateway } from './payments/payments.factory';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_POR_LINEA = 10;
@@ -89,18 +90,6 @@ function normalizeLineas(raw: unknown): CompraLinea[] {
   if (lineas.length === 0 || totalBoletos === 0) throw new ApiError(400, 'Selecciona al menos una entrada');
   if (totalBoletos > MAX_BOLETOS) throw new ApiError(400, `Maximo ${MAX_BOLETOS} boletos por compra`);
   return lineas;
-}
-
-// Pago simulado, idéntico al de parqueo: tarjeta terminada en 0000 = rechazo.
-function validatePago(pago: any, total: number): PagoEntrada | null {
-  if (total <= 0) return null;
-  const cardNumber = String(pago?.cardNumber || '').replace(/\D/g, '');
-  if (String(pago?.name || '').trim().length < 3) throw new ApiError(400, 'Ingresa el nombre del tarjetahabiente');
-  if (cardNumber.length < 13 || cardNumber.length > 19) throw new ApiError(400, 'Numero de tarjeta invalido');
-  if (!/^\d{2}\/\d{2}$/.test(String(pago?.exp || '').trim())) throw new ApiError(400, 'Fecha de expiracion invalida');
-  if (String(pago?.cvv || '').replace(/\D/g, '').length < 3) throw new ApiError(400, 'CVV invalido');
-  if (cardNumber.endsWith('0000')) throw new ApiError(402, 'La transaccion fue rechazada por el emisor');
-  return { transaccion: `CSH-ENT-${Date.now().toString(36).toUpperCase()}`, monto: total, timestamp: new Date().toISOString(), metodo: `****${cardNumber.slice(-4)}` };
 }
 
 // ---- Fee + descuentos ----
@@ -175,7 +164,11 @@ export async function getPublicEvento(slug: string) {
   return { ...data, fee };
 }
 
-export async function comprarPublico(body: { slug: string; lineas: unknown; comprador?: { nombre?: unknown; email?: unknown; telefono?: unknown; notifWhatsapp?: unknown }; pago?: any; descuentoCodigo?: unknown; holdId?: unknown; ref?: unknown }) {
+// Inicia el checkout: reserva cupo (orden pendiente con tandas, descuento, fee,
+// butacas y atribución RRPP) y crea la sesión de pago hospedada en la pasarela.
+// Devuelve la URL a la que el frontend redirige. El boleto NO se emite aquí:
+// se materializa en el webhook al confirmar el pago.
+export async function iniciarCheckoutPublico(body: { slug: string; lineas: unknown; comprador?: { nombre?: unknown; email?: unknown; telefono?: unknown; notifWhatsapp?: unknown }; descuentoCodigo?: unknown; holdId?: unknown; ref?: unknown }) {
   const slug = String(body.slug || '').trim();
   const nombre = String(body.comprador?.nombre || '').trim();
   const email = normalizeEmail(body.comprador?.email);
@@ -190,50 +183,81 @@ export async function comprarPublico(body: { slug: string; lineas: unknown; comp
   if (notifWhatsapp && !telefono) throw new ApiError(400, 'Ingresa un teléfono válido para WhatsApp (8 dígitos CR o formato internacional)');
 
   const repo = getEntradasRepository();
-  // Validación de precio antes de cobrar: recalcula subtotal/fee/descuento con datos reales.
-  const evento = await repo.publicEventoBySlug(slug);
-  if (!evento) throw new ApiError(404, 'Evento no disponible');
-  const { totales } = await computeTotales(repo, evento.evento, evento.tipos, lineas, descuentoCodigo);
-  const pago = validatePago(body.pago, totales.total);
-
-  // El repositorio recalcula y consume el descuento atómicamente: es la fuente autoritativa.
-  const resultado = await repo.comprar({
+  const gateway = getPaymentGateway();
+  // El repositorio es la fuente autoritativa: recalcula precios (tandas), consume
+  // descuento, resuelve fee, atribuye promotor y toma el hold de butacas.
+  const { ordenId, total, lineItems, desglose } = await repo.iniciarOrdenPendiente({
     slug,
     lineas,
     comprador: { nombre, email, telefono: telefono || null, notifWhatsapp },
-    pago: pago || undefined,
+    provider: gateway.id,
     descuentoCodigo,
     holdId,
     refCodigo,
   });
+
+  if (total <= 0) {
+    // Compras gratuitas (100% descuento o precio 0): no hay pago que cobrar.
+    const resultado = await repo.confirmarOrden(ordenId, { transaccion: `CSH-FREE-${Date.now().toString(36).toUpperCase()}`, monto: 0, timestamp: new Date().toISOString(), metodo: 'gratis' });
+    if (resultado) await trySendEntradas(email, resultado);
+    return { url: `${appBaseUrl()}/entradas/${encodeURIComponent(slug)}?orden=${encodeURIComponent(ordenId)}`, ordenId, desglose };
+  }
+
+  try {
+    // Nota: el retorno usa ?orden= (no ?ref=) para no chocar con el código de
+    // promotor RRPP que viaja como ?ref=CODIGO en los links compartidos.
+    const successUrl = `${appBaseUrl()}/entradas/${encodeURIComponent(slug)}?orden=${encodeURIComponent(ordenId)}`;
+    const cancelUrl = `${appBaseUrl()}/entradas/${encodeURIComponent(slug)}?pago=cancelado`;
+    const { url, providerRef } = await gateway.createCheckout({ ordenId, lineas: lineItems, comprador: { nombre, email }, successUrl, cancelUrl });
+    await repo.setProviderRef(ordenId, providerRef);
+    return { url, ordenId, desglose };
+  } catch (err) {
+    // Si la pasarela falla, liberamos el cupo reservado para no dejarlo colgado.
+    await repo.expirarOrden(ordenId).catch(() => { /* noop */ });
+    console.error(`[pagos] Error creando checkout para orden ${ordenId}: ${(err as Error).message}`);
+    throw new ApiError(502, 'No se pudo iniciar el pago. Intenta de nuevo.');
+  }
+}
+
+function appBaseUrl(): string {
+  return String(env.MAIL_APP_URL || 'http://localhost:8088').replace(/\/$/, '');
+}
+
+// Envía los boletos por correo y, si el comprador dio consentimiento, por WhatsApp.
+async function trySendEntradas(email: string, resultado: { orden?: any; evento: any; boletos: any[] }): Promise<void> {
+  try {
+    await sendEntradasEmail({ to: email, evento: resultado.evento, boletos: resultado.boletos });
+  } catch (err) {
+    console.error(`[mail] Error enviando entradas a ${email}: ${(err as Error).message}`);
+  }
   const orden = resultado.orden;
+  if (orden?.notifWhatsapp && orden?.compradorTelefono) {
+    await tryWhatsApp(orden.compradorTelefono, resultado.evento, resultado.boletos);
+  }
+}
 
-  let emailSent = false;
-  let emailError = '';
-  const [emailResult, whatsappSent] = await Promise.all([
-    sendEntradasEmail({ to: email, evento: resultado.evento, boletos: resultado.boletos })
-      .then(() => ({ ok: true, error: '' }))
-      .catch((err) => ({ ok: false, error: (err as Error).message })),
-    tryWhatsApp(notifWhatsapp ? telefono : null, resultado.evento, resultado.boletos),
-  ]);
-  emailSent = emailResult.ok;
-  emailError = emailResult.error;
-  if (emailError) console.error(`[mail] Error enviando entradas a ${email}: ${emailError}`);
+// Procesa el webhook de la pasarela. Verifica la firma (dentro de parseWebhook),
+// y al confirmar el pago materializa los boletos y envía correo/WhatsApp. Idempotente.
+export async function procesarWebhook(rawBody: Buffer, signature: string | undefined): Promise<void> {
+  const gateway = getPaymentGateway();
+  const evento = gateway.parseWebhook(rawBody, signature); // lanza si la firma es inválida
+  const repo = getEntradasRepository();
 
-  return {
-    whatsappSent,
-    ordenId: orden.id,
-    evento: { nombre: resultado.evento.nombre, venue: resultado.evento.venue, fecha: resultado.evento.fecha },
-    subtotal: orden.subtotalCrc,
-    descuento: orden.descuentoCrc,
-    descuentoCodigo: orden.descuentoCodigo,
-    fee: orden.feeCrc,
-    total: orden.totalCrc,
-    correo: email,
-    emailSent,
-    emailError,
-    boletos: resultado.boletos.map((b) => ({ codigo: b.codigo, qrData: b.qrData, tipoNombre: b.tipoNombre, asientoLabel: b.asientoLabel ?? null })),
-  };
+  if (evento.type === 'paid' && evento.ordenId && evento.pago) {
+    const resultado = await repo.confirmarOrden(evento.ordenId, evento.pago);
+    if (resultado) await trySendEntradas(resultado.orden.compradorEmail, resultado);
+    return;
+  }
+  if (evento.type === 'expired' && evento.ordenId) {
+    await repo.expirarOrden(evento.ordenId);
+  }
+}
+
+// Estado de la orden para el polling de la página de retorno tras el pago.
+export async function consultarOrdenPublica(ref: string) {
+  const orden = await getEntradasRepository().getOrdenPublica(String(ref || '').trim());
+  if (!orden) throw new ApiError(404, 'Orden no encontrada');
+  return orden;
 }
 
 // ── Asientos numerados (P2) ──────────────────────────────────────

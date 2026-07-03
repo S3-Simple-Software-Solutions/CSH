@@ -2478,6 +2478,7 @@ function PublicEventDetail({ slug }) {
   const [hold, setHold] = useState(null);
   const [seatError, setSeatError] = useState('');
   const [done, setDone] = useState(null);
+  const [banner, setBanner] = useState(null); // { type, text }
   const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'mapa'
   const loadAsientos = () => api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}/asientos`).then((d) => { if (d.ok) setAsientos(d.asientos); });
   useEffect(() => {
@@ -2491,6 +2492,46 @@ function PublicEventDetail({ slug }) {
         setError(d.error);
       }
     });
+  }, [slug]);
+
+  // Retorno desde la pasarela: ?orden=<ordenId> (pago hecho) o ?pago=cancelado.
+  // (?ref= queda reservado para el código de promotor RRPP.) El boleto lo emite
+  // el webhook, así que hacemos polling hasta que la orden quede 'pagada'.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const ref = params.get('orden');
+    if (params.get('pago') === 'cancelado') {
+      setBanner({ type: 'info', text: 'Pago cancelado. No se realizó ningún cobro.' });
+      window.history.replaceState({}, '', `/entradas/${encodeURIComponent(slug)}`);
+      return;
+    }
+    if (!ref) return;
+    let stop = false;
+    let tries = 0;
+    setBanner({ type: 'info', text: 'Confirmando tu pago…' });
+    const poll = async () => {
+      tries += 1;
+      const d = await api(`/api/entradas/publico/orden/${encodeURIComponent(ref)}`);
+      if (stop) return;
+      if (d.ok && d.estado === 'pagada') {
+        setBanner(null);
+        setDone({ boletos: d.boletos });
+        window.history.replaceState({}, '', `/entradas/${encodeURIComponent(slug)}`);
+        return;
+      }
+      if (d.ok && d.estado === 'cancelada') {
+        setBanner({ type: 'error', text: 'La orden fue cancelada o expiró. No se realizó ningún cobro.' });
+        window.history.replaceState({}, '', `/entradas/${encodeURIComponent(slug)}`);
+        return;
+      }
+      if (tries >= 30) {
+        setBanner({ type: 'info', text: 'Tu pago sigue procesándose. Te enviaremos los boletos por correo apenas se confirme.' });
+        return;
+      }
+      setTimeout(poll, 2000);
+    };
+    poll();
+    return () => { stop = true; };
   }, [slug]);
   if (error) return (<><main className="page"><p className="eyebrow">Entradas</p><h1>Evento no disponible</h1><p className="sub">{error}</p><a className="btn ghost" href="/entradas">Volver a eventos</a></main></>);
   if (!data) return (<><main className="page"><p>Cargando...</p></main></>);
@@ -2540,6 +2581,7 @@ function PublicEventDetail({ slug }) {
         <p className="eyebrow">{fmtFullDate(evento.fecha)} · {evento.venue}</p>
         <h1>{evento.nombre}</h1>
         <p className="sub">{evento.descripcion}</p>
+        {banner && <div className={banner.type === 'error' ? 'error' : 'okbox'}>{banner.text}</div>}
 
         {hasMapa && (
           <div className="view-toggle">
@@ -2595,7 +2637,7 @@ function PublicEventDetail({ slug }) {
           <button className="btn" disabled={count === 0} onClick={continuar}>Continuar</button>
         </div>
       </main>
-      {checkout && <CheckoutModal slug={slug} lineas={lineas} total={total} evento={evento} fee={data.fee} holdId={hold} onClose={() => setCheckout(false)} onDone={(res) => { setCheckout(false); setDone(res); }} />}
+      {checkout && <CheckoutModal slug={slug} lineas={lineas} total={total} evento={evento} fee={data.fee} holdId={hold} onClose={() => setCheckout(false)} />}
       {done && <TicketsModal result={done} onClose={() => { setDone(null); location.reload(); }} />}
     </>
   );
@@ -2606,9 +2648,8 @@ function calcFeeCrc(base, fee) {
   return fee.tipo === 'pct' ? Math.round((base * fee.valor) / 100) : Math.round(fee.valor);
 }
 
-function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose, onDone }) {
+function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose }) {
   const [buyer, setBuyer] = useState({ nombre: '', email: '', telefono: '', notifWhatsapp: false });
-  const [pago, setPago] = useState({ name: '', cardNumber: '', exp: '', cvv: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [codigo, setCodigo] = useState('');
@@ -2635,11 +2676,11 @@ function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose, onDo
 
   async function submit() {
     setError(''); setLoading(true);
-    const body = { slug, lineas, comprador: buyer, pago: grandTotal > 0 ? pago : undefined, descuentoCodigo: aplicado ? aplicado.codigo : undefined, holdId: holdId || undefined, ref: refActual() };
-    const d = await api('/api/entradas/publico/comprar', { method: 'POST', body: JSON.stringify(body) });
-    setLoading(false);
-    if (!d.ok) return setError(d.error);
-    onDone(d);
+    const body = { slug, lineas, comprador: buyer, descuentoCodigo: aplicado ? aplicado.codigo : undefined, holdId: holdId || undefined, ref: refActual() };
+    const d = await api('/api/entradas/publico/checkout', { method: 'POST', body: JSON.stringify(body) });
+    if (!d.ok) { setLoading(false); return setError(d.error); }
+    // La tarjeta se cobra en la pasarela hospedada (Stripe Checkout): redirigimos.
+    window.location.href = d.url;
   }
   return (
     <Modal title="Finalizar compra" onClose={onClose}>
@@ -2673,15 +2714,9 @@ function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose, onDo
         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #ddd', marginTop: 6, paddingTop: 6 }}><span>Total</span><span>{money(grandTotal)}</span></div>
       </div>
 
-      {grandTotal > 0 && (
-        <>
-          <label>Nombre en la tarjeta</label><input value={pago.name} onChange={(e) => setPago({ ...pago, name: e.target.value })} />
-          <label>Numero de tarjeta</label><input inputMode="numeric" value={pago.cardNumber} onChange={(e) => setPago({ ...pago, cardNumber: e.target.value })} />
-          <div className="two"><div><label>Expira</label><input placeholder="MM/AA" value={pago.exp} onChange={(e) => setPago({ ...pago, exp: e.target.value.replace(/\D/g, '').slice(0, 4).replace(/^(\d{2})(\d)/, '$1/$2') })} /></div><div><label>CVV</label><input inputMode="numeric" value={pago.cvv} onChange={(e) => setPago({ ...pago, cvv: e.target.value })} /></div></div>
-        </>
-      )}
+      <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.75rem' }}>Te llevaremos a la pasarela segura para completar el pago. Tus datos de tarjeta nunca pasan por este sitio.</p>
       {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={submit} disabled={loading}>{loading ? 'Procesando...' : `Pagar ${money(grandTotal)}`}</button>
+      <button className="btn" onClick={submit} disabled={loading}>{loading ? 'Redirigiendo...' : `Pagar ${money(grandTotal)}`}</button>
     </Modal>
   );
 }
@@ -2690,7 +2725,7 @@ function TicketsModal({ result, onClose }) {
   return (
     <Modal title="Compra exitosa" onClose={onClose}>
       <p className="muted">
-        {result.emailSent ? `Enviamos tus boletos a ${result.correo}.` : 'Compra registrada. No se pudo enviar el correo ahora, guarda estos codigos.'}
+        {result.emailSent === false ? 'Compra registrada. No se pudo enviar el correo ahora, guarda estos codigos.' : (result.correo ? `Enviamos tus boletos a ${result.correo}.` : 'Tus boletos estan listos. Tambien te los enviamos por correo.')}
         {result.whatsappSent ? ' También los enviamos por WhatsApp.' : ''}
       </p>
       <div className="tickets-grid">

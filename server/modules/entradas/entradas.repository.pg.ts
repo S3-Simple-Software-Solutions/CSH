@@ -5,7 +5,6 @@ import {
   Asiento,
   AsientoPublico,
   Boleto,
-  CompraInput,
   CompraResultado,
   Descuento,
   DescuentoInput,
@@ -18,10 +17,15 @@ import {
   EntradaLog,
   FeeTipo,
   GenerarAsientosInput,
+  IniciarOrdenInput,
+  IniciarOrdenResult,
   ListLogOptions,
   MapaBatchInput,
   MapaEventoInput,
   MapaTipoInput,
+  OrdenLineaSnapshot,
+  OrdenPublica,
+  PagoEntrada,
   Promotor,
   PromotorInput,
   PromotorRanking,
@@ -231,7 +235,7 @@ async function consumirTanda(
   client: Pool | PoolClient,
   tipoId: string,
   cantidad: number,
-): Promise<{ precio: number; nombre: string } | null> {
+): Promise<{ id: string; precio: number; nombre: string } | null> {
   const res = await client.query('select * from entrada_tipo_tandas where tipo_id = $1 order by orden for update', [tipoId]);
   if (res.rows.length === 0) return null;
   const now = new Date();
@@ -239,10 +243,10 @@ async function consumirTanda(
     if (row.venta_desde && row.venta_desde > now) continue;
     if (row.venta_hasta && row.venta_hasta < now) continue;
     const upd = await client.query(
-      'update entrada_tipo_tandas set vendidos = vendidos + $1 where id = $2 and (cupo is null or vendidos + $1 <= cupo) returning precio_crc, nombre',
+      'update entrada_tipo_tandas set vendidos = vendidos + $1 where id = $2 and (cupo is null or vendidos + $1 <= cupo) returning id, precio_crc, nombre',
       [cantidad, row.id],
     );
-    if (upd.rows[0]) return { precio: Number(upd.rows[0].precio_crc), nombre: upd.rows[0].nombre };
+    if (upd.rows[0]) return { id: upd.rows[0].id, precio: Number(upd.rows[0].precio_crc), nombre: upd.rows[0].nombre };
   }
   return null;
 }
@@ -293,7 +297,11 @@ export class PgEntradasRepository implements EntradasRepository {
     return { evento, tipos: await decorarPrecios(tipos) };
   }
 
-  async comprar({ slug, lineas, comprador, pago, descuentoCodigo, holdId, refCodigo }: CompraInput): Promise<CompraResultado> {
+  // Reserva cupo (hold) y crea una orden 'pendiente'. Los boletos NO se crean
+  // aquí: se materializan cuando el webhook confirma el pago (confirmarOrden).
+  // El hold incluye stock, cupo de tanda, uso del descuento y butacas
+  // (estado 'reservado' con hold_id = ordenId); expirarOrden lo revierte todo.
+  async iniciarOrdenPendiente({ slug, lineas, comprador, provider, descuentoCodigo, holdId, refCodigo }: IniciarOrdenInput): Promise<IniciarOrdenResult> {
     const client = await pool.connect();
     try {
       await client.query('begin');
@@ -307,8 +315,9 @@ export class PgEntradasRepository implements EntradasRepository {
         await client.query('rollback');
         throw new ApiError(409, 'El evento no esta disponible para compra');
       }
+      const ordenId = genId('ORD');
       let subtotal = 0;
-      const aCrear: { tipoId: string; tipoNombre: string; asiento?: { id: string; fila: string; numero: number } }[] = [];
+      const snapshot: OrdenLineaSnapshot[] = [];
       for (const linea of lineas) {
         const cantidad = Number(linea.cantidad);
         const tipoRows = await client.query('select * from entrada_tipos where id = $1 and evento_id = $2 for update', [linea.tipoId, evRow.id]);
@@ -331,11 +340,14 @@ export class PgEntradasRepository implements EntradasRepository {
         }
         // Preventa: si hay tanda vigente con cupo, vende al precio de la tanda.
         const tanda = await consumirTanda(client, tipo.id, cantidad);
-        subtotal += (tanda ? tanda.precio : Number(tipo.precio_crc)) * cantidad;
+        const precioUnit = tanda ? tanda.precio : Number(tipo.precio_crc);
+        subtotal += precioUnit * cantidad;
 
+        const lineaSnap: OrdenLineaSnapshot = { tipoId: tipo.id, cantidad, nombre: tipo.nombre, precioCrc: precioUnit, tandaId: tanda?.id ?? null };
         if (tipo.numerado) {
-          // Sector numerado: reclama las butacas elegidas en la misma transacción.
-          // Acepta disponibles, reservas vencidas, o reservas propias (mismo hold).
+          // Sector numerado: pasa las butacas al hold de la orden en la misma
+          // transacción. Acepta disponibles, reservas vencidas o reservas
+          // propias (mismo hold del selector de asientos).
           const asientoIds = [...new Set(linea.asientos ?? [])];
           if (asientoIds.length !== cantidad) {
             await client.query('rollback');
@@ -343,75 +355,45 @@ export class PgEntradasRepository implements EntradasRepository {
           }
           const claim = await client.query(
             `update entrada_asientos
-                set estado = 'vendido', hold_id = null, reservado_hasta = null
+                set estado = 'reservado', hold_id = $4, reservado_hasta = now() + interval '30 minutes', orden_id = $4
               where id = any($1) and tipo_id = $2
                 and (estado = 'disponible' or (estado = 'reservado' and (reservado_hasta < now() or hold_id = $3)))
               returning id, fila, numero`,
-            [asientoIds, tipo.id, holdId ?? ''],
+            [asientoIds, tipo.id, holdId ?? '', ordenId],
           );
           if (claim.rows.length !== asientoIds.length) {
             await client.query('rollback');
             throw new ApiError(409, `Alguna butaca de ${tipo.nombre} ya no está disponible. Elegí otras.`);
           }
-          for (const seat of claim.rows) {
-            aCrear.push({ tipoId: tipo.id, tipoNombre: tipo.nombre, asiento: { id: seat.id, fila: seat.fila, numero: Number(seat.numero) } });
-          }
-        } else {
-          for (let i = 0; i < cantidad; i++) aCrear.push({ tipoId: tipo.id, tipoNombre: tipo.nombre });
+          lineaSnap.asientos = claim.rows.map((s: any) => ({ id: s.id, fila: s.fila, numero: Number(s.numero) }));
         }
+        snapshot.push(lineaSnap);
       }
       // Fee: override por evento, si no, default global. Descuento: consumo atómico.
       const feeConfig = await resolveFeeConfig(client, evRow);
       const descAplicado = await consumeDescuento(client, descuentoCodigo, evRow.id);
       const totales = calcularTotales(subtotal, feeConfig, descAplicado?.aplicado ?? null);
       const promotor = await resolvePromotor(client, refCodigo, totales.subtotal);
-      const ordenId = genId('ORD');
       await client.query(
         `insert into entrada_ordenes
-           (id, evento_id, comprador_nombre, comprador_email, subtotal_crc, descuento_crc, descuento_codigo, fee_crc, total_crc, promotor_id, comision_crc, comprador_telefono, notif_whatsapp, pago, estado)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-        [ordenId, evRow.id, comprador.nombre, comprador.email, totales.subtotal, totales.descuento, descAplicado?.codigo ?? null, totales.fee, totales.total, promotor?.id ?? null, promotor?.comision ?? 0, comprador.telefono ?? null, comprador.notifWhatsapp ?? false, pago ? JSON.stringify(pago) : null, 'pagada'],
+           (id, evento_id, comprador_nombre, comprador_email, subtotal_crc, descuento_crc, descuento_codigo, fee_crc, total_crc, promotor_id, comision_crc, comprador_telefono, notif_whatsapp, estado, provider, lineas)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        [ordenId, evRow.id, comprador.nombre, comprador.email, totales.subtotal, totales.descuento, descAplicado?.codigo ?? null, totales.fee, totales.total, promotor?.id ?? null, promotor?.comision ?? 0, comprador.telefono ?? null, comprador.notifWhatsapp ?? false, 'pendiente', provider, JSON.stringify(snapshot)],
       );
-      const boletos: Boleto[] = [];
-      for (const b of aCrear) {
-        const id = genId('BOL');
-        const codigo = boletoCodigo();
-        const qr = qrData(codigo, evRow.id, b.tipoId, comprador.email);
-        await client.query(
-          'insert into entrada_boletos (id, orden_id, tipo_id, evento_id, codigo, qr_data, estado, asiento_id) values ($1,$2,$3,$4,$5,$6,$7,$8)',
-          [id, ordenId, b.tipoId, evRow.id, codigo, qr, 'valido', b.asiento?.id ?? null],
-        );
-        if (b.asiento) {
-          await client.query('update entrada_asientos set boleto_id = $1, orden_id = $2 where id = $3', [id, ordenId, b.asiento.id]);
-        }
-        boletos.push({
-          id, ordenId, tipoId: b.tipoId, eventoId: evRow.id, codigo, qrData: qr, estado: 'valido',
-          validadoAt: null, validadoPor: null, tipoNombre: b.tipoNombre, eventoNombre: evRow.nombre,
-          asientoId: b.asiento?.id ?? null,
-          asientoLabel: b.asiento ? asientoLabel(b.asiento.fila, b.asiento.numero) : null,
-        });
-      }
       const notaDesc = descAplicado ? `, desc ${descAplicado.codigo} -CRC ${totales.descuento}` : '';
-      await logEvento(client, 'compra', { eventoId: evRow.id, user: { id: null, name: comprador.nombre }, notas: `${boletos.length} boleto(s), CRC ${totales.total}${notaDesc}, ${comprador.email}` });
-      await this.autoAgotar(client, evRow.id);
+      await logEvento(client, 'checkout_iniciado', { eventoId: evRow.id, user: { id: null, name: comprador.nombre }, notas: `Orden ${ordenId}, CRC ${totales.total}${notaDesc}, ${comprador.email}` });
       await client.query('commit');
-      const orden = {
-        id: ordenId,
-        eventoId: evRow.id,
-        compradorNombre: comprador.nombre,
-        compradorEmail: comprador.email,
-        subtotalCrc: totales.subtotal,
-        descuentoCrc: totales.descuento,
-        descuentoCodigo: descAplicado?.codigo ?? null,
-        feeCrc: totales.fee,
-        totalCrc: totales.total,
-        promotorId: promotor?.id ?? null,
-        comisionCrc: promotor?.comision ?? 0,
-        pago: null,
-        estado: 'pagada' as const,
-        createdAt: new Date().toISOString(),
-      };
-      return { orden, boletos, evento: toEvento(evRow) };
+
+      // Line items para la pasarela. Stripe no admite líneas negativas: con
+      // descuento se colapsa a una sola línea por el total ya rebajado.
+      let lineItems: { nombre: string; montoUnitarioCrc: number; cantidad: number }[];
+      if (totales.descuento > 0) {
+        lineItems = [{ nombre: `Entradas ${evRow.nombre}${descAplicado ? ` (desc. ${descAplicado.codigo})` : ''}`, montoUnitarioCrc: totales.total, cantidad: 1 }];
+      } else {
+        lineItems = snapshot.map((s) => ({ nombre: s.nombre, montoUnitarioCrc: s.precioCrc, cantidad: s.cantidad }));
+        if (totales.fee > 0) lineItems.push({ nombre: 'Cargo por servicio', montoUnitarioCrc: totales.fee, cantidad: 1 });
+      }
+      return { ordenId, total: totales.total, evento: toEvento(evRow), lineItems, desglose: totales };
     } catch (err) {
       try {
         await client.query('rollback');
@@ -422,6 +404,163 @@ export class PgEntradasRepository implements EntradasRepository {
     } finally {
       client.release();
     }
+  }
+
+  async setProviderRef(ordenId: string, providerRef: string): Promise<void> {
+    await pool.query('update entrada_ordenes set provider_ref = $1 where id = $2', [providerRef, ordenId]);
+  }
+
+  // Confirma una orden pendiente: crea los boletos y la marca 'pagada'.
+  // Idempotente: si ya estaba 'pagada' devuelve los boletos existentes (Stripe
+  // reenvía eventos). Si estaba 'cancelada' o no existe, devuelve null.
+  async confirmarOrden(ordenId: string, pago: PagoEntrada): Promise<CompraResultado | null> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const ordRows = await client.query('select * from entrada_ordenes where id = $1 for update', [ordenId]);
+      const ord = ordRows.rows[0];
+      if (!ord) {
+        await client.query('rollback');
+        return null;
+      }
+      const evRows = await client.query('select * from entrada_eventos where id = $1', [ord.evento_id]);
+      const evRow = evRows.rows[0];
+
+      if (ord.estado === 'pagada') {
+        const existing = await this.getOrdenBoletos(ordenId);
+        await client.query('commit');
+        return { orden: this.toOrden(ord), boletos: existing, evento: toEvento(evRow) };
+      }
+      if (ord.estado !== 'pendiente') {
+        await client.query('rollback');
+        return null;
+      }
+
+      const snapshot: OrdenLineaSnapshot[] = Array.isArray(ord.lineas) ? ord.lineas : [];
+      const boletos: Boleto[] = [];
+      for (const linea of snapshot) {
+        // Sectores numerados: un boleto por butaca del hold; el resto por cantidad.
+        const asientos = linea.asientos ?? [];
+        for (let i = 0; i < linea.cantidad; i++) {
+          const asiento = asientos[i] ?? null;
+          const id = genId('BOL');
+          const codigo = boletoCodigo();
+          const qr = qrData(codigo, ord.evento_id, linea.tipoId, ord.comprador_email);
+          await client.query(
+            'insert into entrada_boletos (id, orden_id, tipo_id, evento_id, codigo, qr_data, estado, asiento_id) values ($1,$2,$3,$4,$5,$6,$7,$8)',
+            [id, ordenId, linea.tipoId, ord.evento_id, codigo, qr, 'valido', asiento?.id ?? null],
+          );
+          if (asiento) {
+            await client.query(
+              "update entrada_asientos set estado = 'vendido', hold_id = null, reservado_hasta = null, boleto_id = $1, orden_id = $2 where id = $3",
+              [id, ordenId, asiento.id],
+            );
+          }
+          boletos.push({
+            id, ordenId, tipoId: linea.tipoId, eventoId: ord.evento_id, codigo, qrData: qr, estado: 'valido',
+            validadoAt: null, validadoPor: null, tipoNombre: linea.nombre, eventoNombre: evRow?.nombre,
+            asientoId: asiento?.id ?? null,
+            asientoLabel: asiento ? asientoLabel(asiento.fila, asiento.numero) : null,
+          });
+        }
+      }
+      await client.query('update entrada_ordenes set estado = $1, pago = $2 where id = $3', ['pagada', JSON.stringify(pago), ordenId]);
+      await logEvento(client, 'compra', { eventoId: ord.evento_id, user: { id: null, name: ord.comprador_nombre }, notas: `${boletos.length} boleto(s), CRC ${ord.total_crc}, ${ord.comprador_email}` });
+      await this.autoAgotar(client, ord.evento_id);
+      await client.query('commit');
+      return { orden: this.toOrden({ ...ord, estado: 'pagada' }), boletos, evento: toEvento(evRow) };
+    } catch (err) {
+      try {
+        await client.query('rollback');
+      } catch {
+        /* noop */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Libera el cupo reservado de una orden pendiente que expiró o se canceló.
+  async expirarOrden(ordenId: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const ordRows = await client.query('select * from entrada_ordenes where id = $1 for update', [ordenId]);
+      const ord = ordRows.rows[0];
+      if (!ord || ord.estado !== 'pendiente') {
+        await client.query('rollback');
+        return;
+      }
+      const snapshot: OrdenLineaSnapshot[] = Array.isArray(ord.lineas) ? ord.lineas : [];
+      for (const linea of snapshot) {
+        await client.query(
+          'update entrada_tipos set stock_vendido = greatest(0, stock_vendido - $1) where id = $2',
+          [linea.cantidad, linea.tipoId],
+        );
+        // Devuelve el cupo consumido de la tanda de preventa, si aplicó.
+        if (linea.tandaId) {
+          await client.query('update entrada_tipo_tandas set vendidos = greatest(0, vendidos - $1) where id = $2', [linea.cantidad, linea.tandaId]);
+        }
+        // Libera las butacas del hold de esta orden.
+        if (linea.asientos?.length) {
+          await client.query(
+            `update entrada_asientos set estado = 'disponible', hold_id = null, reservado_hasta = null, orden_id = null
+              where id = any($1) and estado = 'reservado' and hold_id = $2`,
+            [linea.asientos.map((a) => a.id), ordenId],
+          );
+        }
+      }
+      // Devuelve el uso del código de descuento consumido al iniciar.
+      if (ord.descuento_codigo) {
+        await client.query('update entrada_descuentos set usos_actuales = greatest(0, usos_actuales - 1) where codigo = $1', [ord.descuento_codigo]);
+      }
+      await client.query('update entrada_ordenes set estado = $1 where id = $2', ['cancelada', ordenId]);
+      // Si el evento se había marcado 'agotado' por este hold, vuelve a 'publicado'.
+      await client.query("update entrada_eventos set estado = 'publicado' where id = $1 and estado = 'agotado'", [ord.evento_id]);
+      await logEvento(client, 'checkout_expirado', { eventoId: ord.evento_id, user: { id: null, name: ord.comprador_nombre }, notas: `Orden ${ordenId} liberada` });
+      await client.query('commit');
+    } catch (err) {
+      try {
+        await client.query('rollback');
+      } catch {
+        /* noop */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Estado de una orden para el polling de la página de retorno.
+  async getOrdenPublica(ref: string): Promise<OrdenPublica | null> {
+    const rows = await query<any>('select * from entrada_ordenes where id = $1', [ref]);
+    if (!rows[0]) return null;
+    const estado = rows[0].estado;
+    if (estado !== 'pagada') return { estado, boletos: [] };
+    const boletos = await this.getOrdenBoletos(ref);
+    return { estado, boletos: boletos.map((b) => ({ codigo: b.codigo, qrData: b.qrData, tipoNombre: b.tipoNombre, asientoLabel: b.asientoLabel ?? null })) };
+  }
+
+  private toOrden(row: any) {
+    return {
+      id: row.id,
+      eventoId: row.evento_id,
+      compradorNombre: row.comprador_nombre,
+      compradorEmail: row.comprador_email,
+      subtotalCrc: Number(row.subtotal_crc ?? row.total_crc),
+      descuentoCrc: Number(row.descuento_crc ?? 0),
+      descuentoCodigo: row.descuento_codigo ?? null,
+      feeCrc: Number(row.fee_crc ?? 0),
+      totalCrc: Number(row.total_crc),
+      promotorId: row.promotor_id ?? null,
+      comisionCrc: Number(row.comision_crc ?? 0),
+      compradorTelefono: row.comprador_telefono ?? null,
+      notifWhatsapp: Boolean(row.notif_whatsapp),
+      pago: null,
+      estado: row.estado as 'pendiente' | 'pagada' | 'cancelada',
+      createdAt: row.created_at ? row.created_at.toISOString() : new Date().toISOString(),
+    };
   }
 
   // Marca el evento como agotado cuando no queda stock activo.
