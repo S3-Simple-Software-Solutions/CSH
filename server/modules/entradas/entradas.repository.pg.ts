@@ -689,10 +689,10 @@ export class PgEntradasRepository implements EntradasRepository {
     const c = current[0];
     const nuevoTotal = input.stockTotal ?? Number(c.stock_total);
     if (nuevoTotal < Number(c.stock_vendido)) throw new ApiError(409, 'El stock total no puede ser menor a lo ya vendido');
-    const numerado = input.numerado ?? Boolean(c.numerado);
+    // `numerado` no se toca aquí: lo gestiona exclusivamente generarAsientos.
     const rows = await query<any>(
-      'update entrada_tipos set nombre=$1, precio_crc=$2, stock_total=$3, estado=$4, orden=$5, numerado=$6 where id=$7 returning *',
-      [input.nombre ?? c.nombre, input.precioCrc ?? Number(c.precio_crc), nuevoTotal, input.estado ?? c.estado, input.orden ?? Number(c.orden), numerado, id],
+      'update entrada_tipos set nombre=$1, precio_crc=$2, stock_total=$3, estado=$4, orden=$5 where id=$6 returning *',
+      [input.nombre ?? c.nombre, input.precioCrc ?? Number(c.precio_crc), nuevoTotal, input.estado ?? c.estado, input.orden ?? Number(c.orden), id],
     );
     return toTipo(rows[0]);
   }

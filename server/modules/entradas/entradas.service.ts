@@ -422,8 +422,10 @@ function buildTipoInput(body: any): TipoInput {
   const stockTotal = Number(body?.stockTotal);
   if (!Number.isInteger(stockTotal) || stockTotal < 0 || stockTotal > 200000) throw new ApiError(400, 'Stock invalido');
   const estado = body?.estado === 'inactivo' ? 'inactivo' : 'activo';
-  const numerado = typeof body?.numerado === 'boolean' ? body.numerado : undefined;
-  return { nombre, precioCrc, stockTotal, estado, numerado };
+  // Nota: `numerado` NO se acepta por este endpoint. El invariante es que solo
+  // generarAsientos lo activa (con grilla real); si no, se venderían asientos
+  // inexistentes o se desincronizaría un sector con butacas ya vendidas.
+  return { nombre, precioCrc, stockTotal, estado };
 }
 
 export async function adminCrearTipo(eventoId: string, body: any, user: AdminUser) {
@@ -568,7 +570,7 @@ export async function adminListTemplates(user: AdminUser) {
       creadoAt: t.creadoAt,
       formato: t.payload?.formato ?? 'partido',
       sectores: t.payload?.sectores?.length ?? 0,
-      numerados: 0,
+      numerados: t.payload?.sectores?.filter((s) => s.numerado).length ?? 0,
     })),
   };
 }
@@ -614,7 +616,7 @@ export async function adminAplicarTemplate(eventoId: string, body: any, user: Ad
   await getEntradasRepository().logEvento('template_aplicado', {
     eventoId: String(eventoId),
     user: actorOf(user),
-    notas: `${resultado.sectores} sectores, ${resultado.tandas} tandas${resultado.advertencias.length ? `, ${resultado.advertencias.length} advertencias` : ''}`,
+    notas: `${resultado.sectores} sectores, ${resultado.butacas} butacas, ${resultado.tandas} tandas${resultado.advertencias.length ? `, ${resultado.advertencias.length} advertencias` : ''}`,
   });
   return resultado;
 }

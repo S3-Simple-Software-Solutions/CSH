@@ -388,7 +388,6 @@ export interface TipoInput {
   stockTotal: number;
   estado?: TipoEstado;
   orden?: number;
-  numerado?: boolean;
 }
 
 export interface VentasEvento {

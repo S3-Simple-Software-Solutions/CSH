@@ -3884,7 +3884,12 @@ function repartirAforo(sectores, totalAforo = VENUE_AFORO_DEFAULT) {
 }
 
 function calcularDistribucionAforo(tipos, catalogo, totalAforo = VENUE_AFORO_DEFAULT) {
-  const activos = (tipos || []).filter((tipo) => tipo.estado === 'activo');
+  // Los sectores numerados quedan fuera del reparto: su cupo lo define la
+  // grilla de butacas. Su aforo se descuenta del total a distribuir.
+  const todosActivos = (tipos || []).filter((tipo) => tipo.estado === 'activo');
+  const aforoNumerado = todosActivos.filter((t) => t.numerado).reduce((s, t) => s + (t.stockTotal || 0), 0);
+  const activos = todosActivos.filter((tipo) => !tipo.numerado);
+  totalAforo = Math.max(0, totalAforo - aforoNumerado);
   if (activos.length === 0) return [];
   const catalogoByKey = new Map(catalogo.map((zona) => [zona.key, zona]));
   const ponderados = activos.map((tipo) => {
@@ -3936,6 +3941,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
   const [tandasFor, setTandasFor] = useState(null);
+  const [asientosFor, setAsientosFor] = useState(null);
   const seededRef = useRef(false);
 
   const esEspectaculo = (ev?.formato ?? evento.formato) === 'espectaculo';
@@ -3985,7 +3991,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     if (distribucion.length === 0) return current;
     setBusy(true);
     for (const { tipo, cupo } of distribucion) {
-      if (tipo.stockTotal === cupo && !tipo.numerado) continue;
+      if (tipo.stockTotal === cupo) continue;
       const d = await api(`/admin/api/entradas/tipos/${tipo.id}`, {
         method: 'PUT',
         body: JSON.stringify({
@@ -3993,7 +3999,6 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
           precioCrc: tipo.precioCrc,
           stockTotal: cupo,
           estado: tipo.estado,
-          numerado: false,
         }),
       });
       if (!d.ok) {
@@ -4018,7 +4023,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
         await seedFaltantes(current);
       } else if (current.length > 0) {
         const distribucion = calcularDistribucionAforo(current, catalogo);
-        const necesitaAjuste = distribucion.some(({ tipo, cupo }) => tipo.stockTotal !== cupo || tipo.numerado);
+        const necesitaAjuste = distribucion.some(({ tipo, cupo }) => tipo.stockTotal !== cupo);
         if (necesitaAjuste) await redistribuirAforo(current, false);
       }
     })();
@@ -4041,7 +4046,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     setBusy(true);
     const d = await api(`/admin/api/entradas/tipos/${t.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ nombre: form.nombre, precioCrc: Number(form.precioCrc), stockTotal: t.stockTotal, estado: t.estado, numerado: false }),
+      body: JSON.stringify({ nombre: form.nombre, precioCrc: Number(form.precioCrc), stockTotal: t.stockTotal, estado: t.estado }),
     });
     setBusy(false);
     if (!d.ok) return setMsg({ type: 'error', text: d.error });
@@ -4053,7 +4058,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     setBusy(true);
     const d = await api(`/admin/api/entradas/tipos/${t.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ nombre: t.nombre, precioCrc: t.precioCrc, stockTotal: t.stockTotal, estado, numerado: false }),
+      body: JSON.stringify({ nombre: t.nombre, precioCrc: t.precioCrc, stockTotal: t.stockTotal, estado }),
     });
     setBusy(false);
     if (!d.ok) return setMsg({ type: 'error', text: d.error });
@@ -4221,17 +4226,24 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
               <div className="zone-capacity-summary">
                 <span>Lugares asignados</span>
                 <b>{seleccionado.estado === 'activo' ? seleccionado.stockTotal.toLocaleString('es-CR') : '—'}</b>
-                <small>{seleccionado.stockVendido} vendidos · reparto automático de {VENUE_AFORO_DEFAULT.toLocaleString('es-CR')}</small>
+                <small>
+                  {seleccionado.stockVendido} vendidos ·{' '}
+                  {seleccionado.numerado
+                    ? 'sector numerado: el cupo lo definen sus butacas'
+                    : `reparto automático de ${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')}`}
+                </small>
               </div>
               {seleccionado.tandaNombre && <p className="muted zone-current-tanda">Tanda vigente: {seleccionado.tandaNombre}</p>}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button className="btn" onClick={guardarSector} disabled={busy || !form.precioCrc}>Guardar precio</button>
                 <button className="btn ghost" onClick={() => setTandasFor(seleccionado)}>Tandas</button>
+                <button className="btn ghost" onClick={() => setAsientosFor(seleccionado)}>{seleccionado.numerado ? 'Butacas ✓' : 'Butacas'}</button>
               </div>
             </div>
           )}
         </div>
       </div>
+      {asientosFor && <AsientosModal tipo={asientosFor} onClose={() => { setAsientosFor(null); refresh(); }} />}
     </>
   );
 }
