@@ -24,27 +24,17 @@ export async function serializeEvento(eventoId: string): Promise<EventTemplatePa
   const sectores: TemplateSectorPayload[] = [];
   for (const t of tipos) {
     const tandas = await repo.listTandas(t.id);
-    let filas: number | null = null;
-    let porFila: number | null = null;
-    const bloqueadas: Array<{ fila: string; numero: number }> = [];
-    if (t.numerado) {
-      const asientos = await repo.listAsientosTipo(t.id);
-      filas = new Set(asientos.map((a) => a.fila)).size || null;
-      porFila = asientos.reduce((m, a) => Math.max(m, a.numero), 0) || null;
-      for (const a of asientos) {
-        if (a.estado === 'bloqueado') bloqueadas.push({ fila: a.fila, numero: a.numero });
-      }
-    }
     sectores.push({
       nombre: t.nombre,
       precioCrc: t.precioCrc,
       stockTotal: t.stockTotal,
+      estado: t.estado,
       orden: t.orden,
       mapa: t.mapa,
-      numerado: t.numerado,
-      filas,
-      porFila,
-      bloqueadas,
+      numerado: false,
+      filas: null,
+      porFila: null,
+      bloqueadas: [],
       tandas: tandas.map((td) => ({
         nombre: td.nombre,
         precioCrc: td.precioCrc,
@@ -86,7 +76,6 @@ export async function aplicarTemplate(eventoId: string, templateId: string): Pro
 
   const advertencias: string[] = [];
   let sectoresOk = 0;
-  let butacasOk = 0;
   let tandasOk = 0;
 
   // Fee y plantilla de campo/mapa del evento.
@@ -117,6 +106,7 @@ export async function aplicarTemplate(eventoId: string, templateId: string): Pro
         nombre: s.nombre,
         precioCrc: s.precioCrc,
         stockTotal: s.stockTotal,
+        estado: s.estado ?? 'activo',
         orden: s.orden,
       });
       tipoId = tipo.id;
@@ -130,26 +120,6 @@ export async function aplicarTemplate(eventoId: string, templateId: string): Pro
         await repo.actualizarMapaTipo(tipoId, s.mapa);
       } catch (err) {
         advertencias.push(`Zona de mapa de "${s.nombre}": ${(err as Error).message}`);
-      }
-    }
-    if (s.numerado && s.filas && s.porFila) {
-      try {
-        const gen = await repo.generarAsientos(tipoId, { filas: s.filas, porFila: s.porFila });
-        butacasOk += gen.total;
-        if (s.bloqueadas?.length) {
-          const asientos = await repo.listAsientosTipo(tipoId);
-          const porPosicion = new Map(asientos.map((a) => [`${a.fila}|${a.numero}`, a.id]));
-          for (const b of s.bloqueadas) {
-            const asientoId = porPosicion.get(`${b.fila}|${b.numero}`);
-            if (asientoId) {
-              await repo.setEstadoAsiento(asientoId, 'bloqueado');
-            } else {
-              advertencias.push(`Butaca ${b.fila}${b.numero} de "${s.nombre}" no existe en la grilla nueva`);
-            }
-          }
-        }
-      } catch (err) {
-        advertencias.push(`Butacas de "${s.nombre}": ${(err as Error).message}`);
       }
     }
     for (const td of s.tandas ?? []) {
@@ -169,5 +139,5 @@ export async function aplicarTemplate(eventoId: string, templateId: string): Pro
     }
   }
 
-  return { sectores: sectoresOk, butacas: butacasOk, tandas: tandasOk, advertencias };
+  return { sectores: sectoresOk, butacas: 0, tandas: tandasOk, advertencias };
 }

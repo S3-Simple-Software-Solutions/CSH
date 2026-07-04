@@ -1058,6 +1058,20 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
   pointer-events: none;
   transition: font-size 0.15s ease;
 }
+.stadium-zone-label-price {
+  fill: #f7e6a9;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+.stadium-zone-label-status {
+  fill: #8ef0aa;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.stadium-zone-label-status.inactive { fill: #d5b45b; }
 .stadium-erc-title {
   fill: rgba(201,169,97,.8);
   font-size: 10px;
@@ -1683,6 +1697,56 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
   flex-wrap: wrap;
 }
 .stadium-panel--tool .btn { padding-inline: 12px; }
+.zone-status-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 14px 0 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.zone-status-selector button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-label);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.zone-status-selector button.active {
+  border-color: var(--green);
+  background: rgba(22,163,74,.12);
+  color: var(--ok);
+}
+.zone-status-selector button.active.inactive {
+  border-color: rgba(201,169,97,.6);
+  background: rgba(201,169,97,.1);
+  color: var(--gold-light);
+}
+.zone-status-selector button:disabled { cursor: default; opacity: 1; }
+.zone-capacity-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 3px 12px;
+  margin: 16px 0 4px;
+  padding: 13px 0;
+  border-block: 1px solid var(--line);
+}
+.zone-capacity-summary span {
+  color: var(--muted);
+  font-family: var(--font-label);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.zone-capacity-summary b { color: var(--gold); font-size: 28px; line-height: 1; }
+.zone-capacity-summary small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.zone-current-tanda { margin: 10px 0 0; font-size: 12px; }
 
 /* Creación: misma superficie amplia, antes de tener un evento persistido. */
 .event-create-page .event-workspace-header { align-items: center; }

@@ -230,6 +230,7 @@ export interface TemplateSectorPayload {
   nombre: string;
   precioCrc: number;
   stockTotal: number;
+  estado?: TipoEstado;
   orden: number;
   mapa: ZonaMapa | null;
   numerado: boolean;
@@ -387,6 +388,7 @@ export interface TipoInput {
   stockTotal: number;
   estado?: TipoEstado;
   orden?: number;
+  numerado?: boolean;
 }
 
 export interface VentasEvento {

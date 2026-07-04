@@ -19,6 +19,18 @@ function zoneGradientId(key) {
   return `zone-grad-${key}`;
 }
 
+function formatZonePrice(tipo) {
+  if (!tipo) return 'Sin precio';
+  return `₡${Number(tipo.precioVigente ?? tipo.precioCrc ?? 0).toLocaleString('es-CR')}`;
+}
+
+function zoneStateText(tipo) {
+  if (!tipo) return 'Sin configurar';
+  if (tipo.estado === 'inactivo') return 'Fuera de venta';
+  if (tipo.disponibles <= 0) return 'Agotada';
+  return 'A la venta';
+}
+
 function FieldMarkings() {
   return (
     <g className="stadium-field-marks" pointerEvents="none">
@@ -128,6 +140,8 @@ function GramillaZones({
   zoneStroke,
   zoneFilter,
   zoneFillProps,
+  showInactive,
+  showZoneDetails,
 }) {
   if (!fieldTemplate) return null;
 
@@ -136,9 +150,9 @@ function GramillaZones({
 
   return Object.entries(paths).map(([key, pathArr]) => {
     const status = zoneStatus(key);
-    if (status === 'inactive') return null;
+    if (status === 'inactive' && !showInactive) return null;
     const t = tiposByKey?.[key];
-    const canInteract = interactive && t;
+    const canInteract = interactive && (t || showInactive);
     const fillProps = zoneFillProps(key, status, true);
     const handlers = canInteract
       ? {
@@ -160,7 +174,7 @@ function GramillaZones({
         style={{ cursor: canInteract ? 'pointer' : 'default' }}
         tabIndex={canInteract ? 0 : -1}
         role={canInteract ? 'button' : undefined}
-        aria-label={canInteract ? `${meta?.label ?? key} · ₡${(t.precioVigente ?? t.precioCrc).toLocaleString('es-CR')} · ${t.disponibles} disponibles` : undefined}
+        aria-label={canInteract ? `${meta?.label ?? key} · ${formatZonePrice(t)} · ${zoneStateText(t)}` : undefined}
         {...handlers}
       >
         {pathArr.map((d, i) => (
@@ -185,7 +199,13 @@ function GramillaZones({
             className={`stadium-zone-label stadium-zone-label--gramilla${showFull ? ' stadium-zone-label--full' : ''}`}
             pointerEvents="none"
           >
-            {showFull ? (meta?.label ?? key) : (meta?.short ?? key)}
+            <tspan x={pos.x} dy={showZoneDetails ? -9 : 0}>{showFull ? (meta?.label ?? key) : (meta?.short ?? key)}</tspan>
+            {showZoneDetails && (
+              <>
+                <tspan x={pos.x} dy="15" className="stadium-zone-label-price">{formatZonePrice(t)}</tspan>
+                <tspan x={pos.x} dy="13" className={`stadium-zone-label-status${status === 'inactive' ? ' inactive' : ''}`}>{zoneStateText(t)}</tspan>
+              </>
+            )}
           </text>
         )}
       </g>
@@ -205,6 +225,8 @@ export function StadiumSvgERC({
   fieldTemplate = null,
   fieldSplits = null,
   className = '',
+  showInactive = false,
+  showZoneDetails = false,
 }) {
   function zoneStatus(key) {
     const t = tiposByKey?.[key];
@@ -319,9 +341,9 @@ export function StadiumSvgERC({
       {/* Zonas interactivas */}
       {Object.entries(ERC_ZONE_PATHS_V2).map(([key, paths]) => {
         const status = zoneStatus(key);
-        if (status === 'inactive') return null;
+        if (status === 'inactive' && !showInactive) return null;
         const t = tiposByKey?.[key];
-        const canInteract = interactive && t;
+        const canInteract = interactive && (t || showInactive);
         const handlers = canInteract
           ? {
               onClick: (e) => { e.stopPropagation(); onZoneClick?.(key, t); },
@@ -339,9 +361,9 @@ export function StadiumSvgERC({
             key={key}
             className={`stadium-zone-group stadium-zone--${status}`}
             style={{ cursor: canInteract ? 'pointer' : 'default' }}
-            tabIndex={canInteract ? 0 : -1}
-            role={canInteract ? 'button' : undefined}
-            aria-label={canInteract ? `${ERC_ZONE_META[key]?.label ?? key} · ₡${(t.precioVigente ?? t.precioCrc).toLocaleString('es-CR')} · ${t.disponibles} disponibles` : undefined}
+            tabIndex={canInteract && !showZoneDetails ? 0 : -1}
+            role={canInteract && !showZoneDetails ? 'button' : undefined}
+            aria-label={canInteract && !showZoneDetails ? `${ERC_ZONE_META[key]?.label ?? key} · ${formatZonePrice(t)} · ${zoneStateText(t)}` : undefined}
             {...handlers}
           >
             {paths.map((d, i) => (
@@ -388,14 +410,19 @@ export function StadiumSvgERC({
           zoneStroke={zoneStroke}
           zoneFilter={zoneFilter}
           zoneFillProps={zoneFillProps}
+          showInactive={showInactive}
+          showZoneDetails={showZoneDetails}
         />
       )}
 
       {/* Labels tribunas */}
       {showLabels && Object.entries(ERC_ZONE_META).map(([key, meta]) => {
         const status = zoneStatus(key);
-        if (status === 'inactive') return null;
+        if (status === 'inactive' && !showInactive) return null;
         const showFull = hoveredKey === key || selectedKey === key;
+        const tipo = tiposByKey?.[key];
+        const canInteract = interactive && showZoneDetails && (tipo || showInactive);
+        const activate = () => onZoneClick?.(key, tipo);
         return (
           <text
             key={`lbl-${key}`}
@@ -404,9 +431,35 @@ export function StadiumSvgERC({
             textAnchor="middle"
             dominantBaseline="middle"
             className={`stadium-zone-label${showFull ? ' stadium-zone-label--full' : ''}`}
-            pointerEvents="none"
+            pointerEvents={canInteract ? 'all' : 'none'}
+            style={{
+              cursor: canInteract ? 'pointer' : undefined,
+              pointerEvents: canInteract ? 'all' : 'none',
+            }}
+            tabIndex={canInteract ? 0 : undefined}
+            role={canInteract ? 'button' : undefined}
+            aria-label={canInteract ? `${meta.label} · ${formatZonePrice(tipo)} · ${zoneStateText(tipo)}` : undefined}
+            onClick={canInteract ? (event) => {
+              event.stopPropagation();
+              activate();
+            } : undefined}
+            onMouseEnter={canInteract ? () => onZoneHover?.(key) : undefined}
+            onMouseLeave={canInteract ? () => onZoneHover?.(null) : undefined}
+            onFocus={canInteract ? () => onZoneHover?.(key) : undefined}
+            onBlur={canInteract ? () => onZoneHover?.(null) : undefined}
+            onKeyDown={canInteract ? (event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              activate();
+            } : undefined}
           >
-            {showFull ? meta.label : meta.short}
+            <tspan x={meta.labelX} dy={showZoneDetails ? -9 : 0}>{showFull ? meta.label : meta.short}</tspan>
+            {showZoneDetails && (
+              <>
+                <tspan x={meta.labelX} dy="17" className="stadium-zone-label-price">{formatZonePrice(tipo)}</tspan>
+                <tspan x={meta.labelX} dy="14" className={`stadium-zone-label-status${status === 'inactive' ? ' inactive' : ''}`}>{zoneStateText(tipo)}</tspan>
+              </>
+            )}
           </text>
         );
       })}
