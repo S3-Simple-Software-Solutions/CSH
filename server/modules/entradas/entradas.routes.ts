@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Router, raw } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { requireAdmin } from '../auth/auth.middleware';
 import { PUBLIC_DIR } from '../../config/constants';
 import { IMG_EXT } from '../../core/id';
@@ -10,6 +11,9 @@ import * as entradas from './entradas.service';
 export const entradasRouter = Router();
 
 const flyerUpload = raw({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/avif'], limit: '8mb' });
+// La subida de flyer escribe a disco; aunque exige sesión de admin, se limita
+// por IP para acotar el abuso de I/O (CodeQL js/missing-rate-limiting).
+const flyerRateLimit = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
 const EVENT_FLYERS_DIR = path.join(PUBLIC_DIR, 'brand', 'events');
 
 // ---- Rutas publicas ----
@@ -118,7 +122,7 @@ entradasRouter.put('/admin/api/entradas/eventos/:id', requireAdmin, async (req, 
   }
 });
 
-entradasRouter.post('/admin/api/entradas/eventos/:id/flyer', requireAdmin, flyerUpload, async (req, res, next) => {
+entradasRouter.post('/admin/api/entradas/eventos/:id/flyer', flyerRateLimit, requireAdmin, flyerUpload, async (req, res, next) => {
   try {
     const id = String(req.params.id);
     const current = await entradas.adminGetEventoEditable(id, req.adminUser!);
