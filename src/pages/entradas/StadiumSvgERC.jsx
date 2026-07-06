@@ -2,6 +2,7 @@
  * StadiumSvgERC v2 — mapa vectorial detallado del Estadio Eladio Rosabal Cordero.
  * Soporta modo partido (6 tribunas) y modo espectáculo (tribunas + gramilla).
  */
+import { useRef, useState } from 'react';
 import { ERC_ZONE_KEYS, ERC_ZONE_META, GRAMILLA_ZONE_META } from './stadiumErc.js';
 import {
   BOWL_INNER_RIM,
@@ -10,6 +11,7 @@ import {
   FIELD_PATH,
   TRACK_PATH,
   ZONE_SEAT_LINES,
+  ZONE_SEAT_BOUNDS,
 } from './stadiumSvgGeometry.js';
 import { buildFieldZonePaths, buildFieldZoneLabelPositions } from './stadiumFieldGeometry.js';
 
@@ -79,6 +81,15 @@ function SeatLines({ zoneKey, status }) {
       <g pointerEvents="none" opacity={0.12}>
         {ys.map((y) => (
           <line key={y} x1="830" y1={y} x2="910" y2={y} stroke="#fff" strokeWidth="1" />
+        ))}
+      </g>
+    );
+  }
+  if (zoneKey === 'lateral-oeste') {
+    return (
+      <g pointerEvents="none" opacity={0.12}>
+        {ys.map((y) => (
+          <line key={y} x1="90" y1={y} x2="170" y2={y} stroke="#fff" strokeWidth="1" />
         ))}
       </g>
     );
@@ -213,6 +224,228 @@ function GramillaZones({
   });
 }
 
+/** Orden natural de filas: A..Z antes que AA (longitud primero, luego alfabético). */
+function filaSort(a, b) {
+  return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
+}
+
+/** Posiciones (coords del viewBox) de los dots de butacas de una zona. */
+export function seatDotLayout(zoneKey, asientos) {
+  const bounds = ZONE_SEAT_BOUNDS[zoneKey];
+  if (!bounds || !asientos || asientos.length === 0) return null;
+
+  const { x1, y1, x2, y2, axis } = bounds;
+  const w = x2 - x1;
+  const h = y2 - y1;
+
+  const filaMap = new Map();
+  for (const a of asientos) {
+    if (!filaMap.has(a.fila)) filaMap.set(a.fila, []);
+    filaMap.get(a.fila).push(a);
+  }
+  const filas = [...filaMap.keys()].sort(filaSort);
+  const nFilas = filas.length;
+  if (nFilas === 0) return null;
+  const maxCols = Math.max(...filas.map((f) => filaMap.get(f).length));
+
+  const spacing = axis === 'h'
+    ? Math.min(w / Math.max(maxCols, 1), h / Math.max(nFilas, 1))
+    : Math.min(h / Math.max(maxCols, 1), w / Math.max(nFilas, 1));
+  const dotR = Math.max(1.5, Math.min(spacing * 0.38, 5));
+
+  const dots = [];
+  filas.forEach((fila, fi) => {
+    const cols = filaMap.get(fila).sort((a, b) => a.numero - b.numero);
+    const nCols = cols.length;
+    cols.forEach((a, ci) => {
+      const cx = axis === 'h'
+        ? x1 + (ci + 0.5) / nCols * w
+        : x1 + (fi + 0.5) / nFilas * w;
+      const cy = axis === 'h'
+        ? y1 + (fi + 0.5) / nFilas * h
+        : y1 + (ci + 0.5) / nCols * h;
+      dots.push({ a, cx, cy });
+    });
+  });
+  return { dots, dotR };
+}
+
+function seatDotColor(estado) {
+  if (estado === 'vendido') return '#e05555';
+  if (estado === 'bloqueado') return '#888';
+  if (estado === 'reservado') return '#d4a84b';
+  return '#6de06d';
+}
+
+function ZoneSeatDots({ zoneKey, asientos, selectedSeatIds = null, onSeatClick = null }) {
+  const layout = seatDotLayout(zoneKey, asientos);
+  if (!layout) return null;
+  const { dots, dotR } = layout;
+
+  return (
+    <g pointerEvents="none" opacity={0.82}>
+      {dots.map(({ a, cx, cy }) => {
+        const selectable = !!onSeatClick && a.estado !== 'vendido';
+        const selected = selectedSeatIds?.has(a.id);
+        return (
+          <circle
+            key={`${a.fila}-${a.numero}`}
+            cx={cx}
+            cy={cy}
+            r={selected ? dotR * 1.25 : dotR}
+            fill={seatDotColor(a.estado)}
+            stroke={selected ? '#fff' : 'none'}
+            strokeWidth={selected ? Math.max(0.8, dotR * 0.5) : 0}
+            pointerEvents={selectable ? 'all' : 'none'}
+            style={selectable ? { cursor: 'pointer' } : undefined}
+            onClick={selectable ? (e) => { e.stopPropagation(); onSeatClick(a); } : undefined}
+          >
+            <title>{`${a.fila}${a.numero} · ${a.estado}`}</title>
+          </circle>
+        );
+      })}
+    </g>
+  );
+}
+
+/**
+ * Grilla expandida de las butacas de UNA zona, para tocarlas cómodamente
+ * (en el mapa completo los dots quedan demasiado densos). Mismos colores y
+ * gestos que el mapa: click marca/desmarca y arrastre selecciona en caja.
+ * Las butacas se dibujan a tamaño fijo; si la tribuna es muy ancha el
+ * contenedor scrollea horizontal en vez de encoger los dots.
+ */
+export function ZoneSeatGrid({ asientos, selectedSeatIds = null, onSeatClick = null, onBoxSelect = null }) {
+  const svgRef = useRef(null);
+  const [marquee, setMarquee] = useState(null);
+  if (!asientos || asientos.length === 0) return null;
+
+  const filaMap = new Map();
+  for (const a of asientos) {
+    if (!filaMap.has(a.fila)) filaMap.set(a.fila, []);
+    filaMap.get(a.fila).push(a);
+  }
+  const filas = [...filaMap.keys()].sort(filaSort);
+  const maxCols = Math.max(...filas.map((f) => filaMap.get(f).length));
+  const CELL = 24;
+  const LABEL_W = 34;
+  const PAD = 8;
+  const width = LABEL_W + maxCols * CELL + PAD;
+  const height = PAD * 2 + filas.length * CELL;
+
+  const dots = [];
+  filas.forEach((fila, fi) => {
+    const cols = [...filaMap.get(fila)].sort((x, y) => x.numero - y.numero);
+    cols.forEach((a, ci) => {
+      dots.push({ a, cx: LABEL_W + (ci + 0.5) * CELL, cy: PAD + (fi + 0.5) * CELL });
+    });
+  });
+
+  function svgCoords(clientX, clientY) {
+    const svg = svgRef.current;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    return { x: p.x, y: p.y };
+  }
+
+  function startMarquee(e) {
+    if (!onBoxSelect || e.button !== 0) return;
+    const start = svgCoords(e.clientX, e.clientY);
+    const startClient = { x: e.clientX, y: e.clientY };
+    let moved = false;
+    const rectFrom = (cur) => ({
+      x1: Math.min(start.x, cur.x),
+      y1: Math.min(start.y, cur.y),
+      x2: Math.max(start.x, cur.x),
+      y2: Math.max(start.y, cur.y),
+    });
+    const onMove = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - startClient.x, ev.clientY - startClient.y) < 6) return;
+      moved = true;
+      setMarquee(rectFrom(svgCoords(ev.clientX, ev.clientY)));
+    };
+    const onUp = (ev) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setMarquee(null);
+      if (!moved) return;
+      const rect = rectFrom(svgCoords(ev.clientX, ev.clientY));
+      const hits = dots
+        .filter(({ cx, cy }) => cx >= rect.x1 && cx <= rect.x2 && cy >= rect.y1 && cy <= rect.y2)
+        .map(({ a }) => a);
+      onBoxSelect(hits, ev.shiftKey || ev.ctrlKey);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  return (
+    <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
+      <svg
+        ref={svgRef}
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="Butacas de la zona seleccionada"
+        onPointerDown={onBoxSelect ? startMarquee : undefined}
+        style={{ display: 'block', background: '#11130c', borderRadius: 8, touchAction: onBoxSelect ? 'none' : undefined }}
+      >
+        {filas.map((fila, fi) => (
+          <text
+            key={fila}
+            x={LABEL_W - 12}
+            y={PAD + (fi + 0.5) * CELL + 3.5}
+            textAnchor="end"
+            fontSize="10"
+            fill="rgba(255,255,255,.55)"
+          >
+            {fila}
+          </text>
+        ))}
+        {dots.map(({ a, cx, cy }) => {
+          const selectable = !!onSeatClick && a.estado !== 'vendido';
+          const selected = selectedSeatIds?.has(a.id);
+          return (
+            <g key={a.id}>
+              <circle
+                cx={cx}
+                cy={cy}
+                r={9}
+                fill={seatDotColor(a.estado)}
+                stroke={selected ? '#fff' : 'rgba(0,0,0,.4)'}
+                strokeWidth={selected ? 2.5 : 1}
+                style={selectable ? { cursor: 'pointer' } : undefined}
+                onClick={selectable ? (e) => { e.stopPropagation(); onSeatClick(a); } : undefined}
+              >
+                <title>{`${a.fila}${a.numero} · ${a.estado}`}</title>
+              </circle>
+              <text x={cx} y={cy + 3} textAnchor="middle" fontSize="8" fill="rgba(0,0,0,.7)" pointerEvents="none">
+                {a.numero}
+              </text>
+            </g>
+          );
+        })}
+        {marquee && (
+          <rect
+            x={marquee.x1}
+            y={marquee.y1}
+            width={marquee.x2 - marquee.x1}
+            height={marquee.y2 - marquee.y1}
+            fill="rgba(255,255,255,0.08)"
+            stroke="#fff"
+            strokeWidth="1.5"
+            strokeDasharray="7 5"
+            pointerEvents="none"
+          />
+        )}
+      </svg>
+    </div>
+  );
+}
+
 export function StadiumSvgERC({
   tiposByKey,
   hoveredKey,
@@ -227,7 +460,68 @@ export function StadiumSvgERC({
   className = '',
   showInactive = false,
   showZoneDetails = false,
+  seatsByZoneKey = {},
+  selectedSeatIds = null,
+  onSeatClick = null,
+  onSeatBoxSelect = null,
 }) {
+  const svgRef = useRef(null);
+  const suppressZoneClick = useRef(false);
+  const [marquee, setMarquee] = useState(null);
+
+  // Suprime el click de zona que dispara el navegador al soltar un arrastre.
+  const zoneClick = onZoneClick
+    ? (key, t) => { if (!suppressZoneClick.current) onZoneClick(key, t); }
+    : undefined;
+
+  function svgCoords(clientX, clientY) {
+    const svg = svgRef.current;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    return { x: p.x, y: p.y };
+  }
+
+  // Arrastre sobre el mapa = selección en caja de butacas (como el parqueo).
+  function startSeatMarquee(e) {
+    if (!onSeatBoxSelect || e.button !== 0) return;
+    const start = svgCoords(e.clientX, e.clientY);
+    const startClient = { x: e.clientX, y: e.clientY };
+    let moved = false;
+    const rectFrom = (cur) => ({
+      x1: Math.min(start.x, cur.x),
+      y1: Math.min(start.y, cur.y),
+      x2: Math.max(start.x, cur.x),
+      y2: Math.max(start.y, cur.y),
+    });
+    const onMove = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - startClient.x, ev.clientY - startClient.y) < 6) return;
+      moved = true;
+      setMarquee(rectFrom(svgCoords(ev.clientX, ev.clientY)));
+    };
+    const onUp = (ev) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setMarquee(null);
+      if (!moved) return;
+      suppressZoneClick.current = true;
+      setTimeout(() => { suppressZoneClick.current = false; }, 0);
+      const rect = rectFrom(svgCoords(ev.clientX, ev.clientY));
+      const hits = [];
+      for (const [key, asientos] of Object.entries(seatsByZoneKey)) {
+        const layout = seatDotLayout(key, asientos);
+        if (!layout) continue;
+        for (const { a, cx, cy } of layout.dots) {
+          if (cx >= rect.x1 && cx <= rect.x2 && cy >= rect.y1 && cy <= rect.y2) hits.push(a);
+        }
+      }
+      onSeatBoxSelect(hits, ev.shiftKey || ev.ctrlKey);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
   function zoneStatus(key) {
     const t = tiposByKey?.[key];
     if (!t || t.estado === 'inactivo') return 'inactive';
@@ -273,10 +567,13 @@ export function StadiumSvgERC({
 
   return (
     <svg
+      ref={svgRef}
       viewBox="0 0 1000 720"
       className={`stadium-svg-erc stadium-svg-erc--v2 ${className}`}
       role="img"
       aria-label={ariaLabel}
+      onPointerDown={onSeatBoxSelect ? startSeatMarquee : undefined}
+      style={onSeatBoxSelect ? { touchAction: 'none' } : undefined}
     >
       <defs>
         <linearGradient id="erc-bg" x1="0" y1="0" x2="0" y2="1">
@@ -346,7 +643,7 @@ export function StadiumSvgERC({
         const canInteract = interactive && (t || showInactive);
         const handlers = canInteract
           ? {
-              onClick: (e) => { e.stopPropagation(); onZoneClick?.(key, t); },
+              onClick: (e) => { e.stopPropagation(); zoneClick?.(key, t); },
               onMouseEnter: () => onZoneHover?.(key),
               onMouseLeave: () => onZoneHover?.(null),
               onFocus: () => onZoneHover?.(key),
@@ -384,6 +681,17 @@ export function StadiumSvgERC({
         );
       })}
 
+      {/* Dots de butacas numeradas (solo en admin: seatsByZoneKey se pasa desde VenueMapConfig) */}
+      {Object.entries(seatsByZoneKey).map(([key, asientos]) => (
+        <ZoneSeatDots
+          key={`sd-${key}`}
+          zoneKey={key}
+          asientos={asientos}
+          selectedSeatIds={selectedSeatIds}
+          onSeatClick={onSeatClick}
+        />
+      ))}
+
       {/* Campo: opaco normal; semitransparente en espectáculo para ver zonas gramilla */}
       <path
         d={FIELD_PATH}
@@ -401,7 +709,7 @@ export function StadiumSvgERC({
           tiposByKey={tiposByKey}
           hoveredKey={hoveredKey}
           selectedKey={selectedKey}
-          onZoneClick={onZoneClick}
+          onZoneClick={zoneClick}
           onZoneHover={onZoneHover}
           interactive={interactive}
           showLabels={showLabels}
@@ -422,7 +730,7 @@ export function StadiumSvgERC({
         const showFull = hoveredKey === key || selectedKey === key;
         const tipo = tiposByKey?.[key];
         const canInteract = interactive && showZoneDetails && (tipo || showInactive);
-        const activate = () => onZoneClick?.(key, tipo);
+        const activate = () => zoneClick?.(key, tipo);
         return (
           <text
             key={`lbl-${key}`}
@@ -466,6 +774,21 @@ export function StadiumSvgERC({
 
       <NorthMarker />
       <VenueTitle venue={venue} />
+
+      {/* Rectángulo de selección en caja de butacas */}
+      {marquee && (
+        <rect
+          x={marquee.x1}
+          y={marquee.y1}
+          width={marquee.x2 - marquee.x1}
+          height={marquee.y2 - marquee.y1}
+          fill="rgba(255,255,255,0.08)"
+          stroke="#fff"
+          strokeWidth="1.5"
+          strokeDasharray="7 5"
+          pointerEvents="none"
+        />
+      )}
     </svg>
   );
 }

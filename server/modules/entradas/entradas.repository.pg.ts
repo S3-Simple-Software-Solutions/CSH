@@ -648,8 +648,27 @@ export class PgEntradasRepository implements EntradasRepository {
     if (!current[0]) throw new ApiError(404, 'Evento no encontrado');
     const c = current[0];
     const fecha = input.fecha ? new Date(input.fecha) : c.fecha;
+    // Cambiar el formato redefine el mapa: vuelve a los defaults del formato
+    // nuevo (mismos valores que usa crearEvento).
+    const formato = input.formato ?? c.formato ?? 'partido';
+    const formatoCambio = formato !== (c.formato ?? 'partido');
+    const mapImageUrl = formatoCambio
+      ? (formato === 'espectaculo' ? 'vector:erc-espectaculo-v1' : '/brand/estadio.jpg')
+      : c.map_image_url;
+    const fieldTemplate = formatoCambio ? (formato === 'espectaculo' ? '2' : null) : c.field_template;
+    const fieldSplits = formatoCambio || c.field_splits == null ? null : JSON.stringify(c.field_splits);
+    // Mientras el evento sea borrador el slug sigue al nombre; ya publicado no
+    // se toca para no romper enlaces compartidos.
+    let slug = c.slug;
+    if (input.nombre && input.nombre !== c.nombre && c.estado === 'borrador') {
+      const nuevo = slugify(input.nombre);
+      if (nuevo && nuevo !== c.slug) {
+        const exists = await query<any>('select 1 from entrada_eventos where slug = $1 and id <> $2', [nuevo, id]);
+        slug = exists[0] ? `${nuevo}-${String(id).slice(-4).toLowerCase()}` : nuevo;
+      }
+    }
     const rows = await query<any>(
-      'update entrada_eventos set nombre=$1, descripcion=$2, venue=$3, fecha=$4, imagen_url=$5, fee_tipo=$6, fee_valor=$7 where id=$8 returning *',
+      'update entrada_eventos set nombre=$1, descripcion=$2, venue=$3, fecha=$4, imagen_url=$5, fee_tipo=$6, fee_valor=$7, formato=$8, map_image_url=$9, field_template=$10, field_splits=$11::jsonb, slug=$12 where id=$13 returning *',
       [
         input.nombre ?? c.nombre,
         input.descripcion ?? c.descripcion,
@@ -658,6 +677,11 @@ export class PgEntradasRepository implements EntradasRepository {
         input.imagenUrl ?? c.imagen_url,
         input.feeTipo !== undefined ? input.feeTipo : c.fee_tipo,
         input.feeValor !== undefined ? input.feeValor : c.fee_valor,
+        formato,
+        mapImageUrl,
+        fieldTemplate,
+        fieldSplits,
+        slug,
         id,
       ],
     );

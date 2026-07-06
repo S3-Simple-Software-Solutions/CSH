@@ -313,6 +313,38 @@ export async function adminSetEstadoAsiento(asientoId: string, body: any, user: 
   return { asiento };
 }
 
+export async function adminSetEstadoAsientosBulk(body: any, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const estado = String(body?.estado || '').trim();
+  if (estado !== 'disponible' && estado !== 'bloqueado') throw new ApiError(400, 'Estado inválido (disponible|bloqueado)');
+  const ids: string[] = Array.isArray(body?.ids)
+    ? [...new Set(body.ids.map((id: unknown) => String(id)).filter(Boolean))] as string[]
+    : [];
+  if (ids.length === 0) throw new ApiError(400, 'Seleccioná al menos una butaca');
+  if (ids.length > 5000) throw new ApiError(400, 'Máximo 5000 butacas por operación');
+  const repo = getEntradasRepository();
+  let eventoId: string | null = null;
+  let actualizados = 0;
+  let omitidos = 0;
+  for (const id of ids) {
+    try {
+      const asiento = await repo.setEstadoAsiento(id, estado as 'disponible' | 'bloqueado');
+      eventoId = asiento.eventoId;
+      actualizados += 1;
+    } catch {
+      omitidos += 1; // vendidas o inexistentes: no interrumpen el resto
+    }
+  }
+  if (eventoId) {
+    await repo.logEvento('asiento_estado', {
+      eventoId,
+      user: actorOf(user),
+      notas: `selección múltiple: ${actualizados} butacas → ${estado}${omitidos ? ` (${omitidos} omitidas)` : ''}`,
+    });
+  }
+  return { actualizados, omitidos };
+}
+
 export async function consultaPublica(body: { email?: unknown; codigo?: unknown }) {
   const email = normalizeEmail(body.email);
   const codigo = extractCodigo(body.codigo);
@@ -361,13 +393,20 @@ export async function adminGetEvento(id: string) {
   return data;
 }
 
+export async function adminGetEventoEditable(id: string, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
+  return adminGetEvento(id);
+}
+
 function buildEventoInput(body: any): EventoInput {
   const nombre = String(body?.nombre || '').trim();
   if (nombre.length < 3) throw new ApiError(400, 'Nombre del evento muy corto');
   const fecha = String(body?.fecha || '').trim();
   if (!fecha || Number.isNaN(new Date(fecha).getTime())) throw new ApiError(400, 'Fecha invalida');
+  // Sin formato en el body => undefined: los PUT parciales (p.ej. editar solo
+  // datos básicos) no deben resetear el formato del evento.
   const rawFormato = String(body?.formato || '').trim();
-  const formato = rawFormato === 'espectaculo' ? 'espectaculo' : 'partido';
+  const formato = rawFormato === 'espectaculo' ? 'espectaculo' as const : rawFormato === 'partido' ? 'partido' as const : undefined;
   const fee = parseFee(body);
   return {
     nombre,
@@ -404,6 +443,17 @@ export async function adminActualizarEvento(id: string, body: any, user: AdminUs
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
   const evento = await getEntradasRepository().actualizarEvento(String(id), buildEventoInput(body));
   await getEntradasRepository().logEvento('evento_actualizado', { eventoId: evento.id, user: actorOf(user), notas: evento.nombre });
+  return { evento };
+}
+
+export async function adminActualizarFlyer(id: string, imagenUrl: string, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
+  const evento = await getEntradasRepository().actualizarEvento(String(id), { imagenUrl });
+  await getEntradasRepository().logEvento('evento_actualizado', {
+    eventoId: evento.id,
+    user: actorOf(user),
+    notas: `Flyer actualizado: ${evento.nombre}`,
+  });
   return { evento };
 }
 

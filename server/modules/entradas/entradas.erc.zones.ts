@@ -6,8 +6,6 @@ export const ERC_ZONE_KEYS = [
   'sol-sur',
   'lateral-este',
   'lateral-oeste',
-  'palco',
-  'socio',
 ] as const;
 
 export type ErcZoneKey = typeof ERC_ZONE_KEYS[number];
@@ -17,8 +15,6 @@ export const ERC_SECTORES = [
   { nombre: 'Sol Sur', precio: 8000, stock: 500, key: 'sol-sur', color: '#c9a961' },
   { nombre: 'Lateral Este', precio: 10000, stock: 400, key: 'lateral-este', color: '#e0b85c' },
   { nombre: 'Lateral Oeste', precio: 10000, stock: 400, key: 'lateral-oeste', color: '#d4a84b' },
-  { nombre: 'Palco', precio: 25000, stock: 50, key: 'palco', color: '#f5e6b8' },
-  { nombre: 'Socio', precio: 5000, stock: 200, key: 'socio', color: '#7a5c20' },
 ];
 
 export const GRAMILLA_ZONE_KEYS = ['gramilla-1', 'gramilla-2', 'gramilla-3', 'gramilla-4'] as const;

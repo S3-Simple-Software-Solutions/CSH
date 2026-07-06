@@ -1,8 +1,16 @@
-import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
+import { Router, raw } from 'express';
 import { requireAdmin } from '../auth/auth.middleware';
+import { PUBLIC_DIR } from '../../config/constants';
+import { IMG_EXT } from '../../core/id';
+import { ApiError } from '../../core/errors';
 import * as entradas from './entradas.service';
 
 export const entradasRouter = Router();
+
+const flyerUpload = raw({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/avif'], limit: '8mb' });
+const EVENT_FLYERS_DIR = path.join(PUBLIC_DIR, 'brand', 'events');
 
 // ---- Rutas publicas ----
 entradasRouter.get('/api/entradas/publico/eventos', async (_req, res, next) => {
@@ -110,6 +118,37 @@ entradasRouter.put('/admin/api/entradas/eventos/:id', requireAdmin, async (req, 
   }
 });
 
+entradasRouter.post('/admin/api/entradas/eventos/:id/flyer', requireAdmin, flyerUpload, async (req, res, next) => {
+  try {
+    const id = String(req.params.id);
+    const current = await entradas.adminGetEventoEditable(id, req.adminUser!);
+    const contentType = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
+    const ext = IMG_EXT[contentType];
+    if (!ext) throw new ApiError(415, 'Formato no permitido. Usá JPG, PNG, WebP o AVIF');
+    if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ApiError(400, 'Enviá el flyer como cuerpo binario');
+
+    fs.mkdirSync(EVENT_FLYERS_DIR, { recursive: true });
+    const filename = `${id}-${Date.now()}${ext}`;
+    const filePath = path.join(EVENT_FLYERS_DIR, filename);
+    fs.writeFileSync(filePath, req.body);
+
+    try {
+      const result = await entradas.adminActualizarFlyer(id, `/brand/events/${filename}`, req.adminUser!);
+      const previous = String(current.evento.imagenUrl || '').split('?')[0];
+      if (previous.startsWith('/brand/events/')) {
+        const previousPath = path.join(EVENT_FLYERS_DIR, path.basename(previous));
+        if (previousPath !== filePath) fs.rmSync(previousPath, { force: true });
+      }
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      fs.rmSync(filePath, { force: true });
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
 entradasRouter.post('/admin/api/entradas/eventos/:id/estado', requireAdmin, async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await entradas.adminSetEstado(String(req.params.id), req.body.estado, req.adminUser!)) });
@@ -189,6 +228,14 @@ entradasRouter.get('/admin/api/entradas/tipos/:id/asientos', requireAdmin, async
 entradasRouter.post('/admin/api/entradas/tipos/:id/asientos/generar', requireAdmin, async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await entradas.adminGenerarAsientos(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/asientos/estado', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminSetEstadoAsientosBulk(req.body, req.adminUser!)) });
   } catch (err) {
     next(err);
   }

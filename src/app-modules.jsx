@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, LayoutGrid, Lock, Mail, Map as MapIcon, MessageSquare, Moon, Newspaper, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
+import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, ImagePlus, LayoutGrid, Lock, Mail, Map as MapIcon, MessageSquare, Moon, Newspaper, PanelLeftClose, PanelLeftOpen, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
+import DataTable from './components/DataTable.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
 import { StadiumMap, tiposByZoneKey } from './pages/entradas/StadiumMap.jsx';
-import { StadiumSvgERC } from './pages/entradas/StadiumSvgERC.jsx';
+import { StadiumSvgERC, ZoneSeatGrid } from './pages/entradas/StadiumSvgERC.jsx';
 import { SeatAdminGrid } from './pages/entradas/SeatAdminGrid.jsx';
 import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
 import { gramillaKeysForTemplate } from './pages/entradas/stadiumFieldGeometry.js';
@@ -15,6 +16,7 @@ import AdminMensajes from './pages/admin/AdminMensajes.jsx';
 import { entradasFaq } from './data/entradasInfo.js';
 import { contacto as clubContacto } from './data/club.js';
 import QRCode from 'qrcode';
+import { uploadFile } from './utils/api.js';
 import { useEscClose } from './utils/useEscClose.js';
 import sotano1Img from './croquis/sotano-1.png';
 import sotano2Img from './croquis/sotano-2.png';
@@ -1595,10 +1597,26 @@ function UnderConstruction({ modulo }) {
 function isAdminUser(user) {
   if (!user) return false;
   return (
+    user.isSuperAdmin ||
+    user.role === 'admin' ||
     user.parkingRole === 'admin' ||
     user.couponRole === 'admin' ||
     user.couponRole === 'patrocinador' ||
     (user.eventsRole && user.eventsRole !== 'ninguno')
+  );
+}
+
+function AdminNavButton({ active, icon: Icon, label, onClick }) {
+  return (
+    <button
+      className={`side-nav-button${active ? ' active' : ''}`}
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+    >
+      <Icon size={17} />
+      <span className="side-nav-label">{label}</span>
+    </button>
   );
 }
 
@@ -1607,6 +1625,7 @@ function AdminApp() {
   const [loading, setLoading] = useState(true);
   const [route, setRoute] = useState(location.pathname);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem('csh-admin-nav-collapsed') === 'true');
   useEffect(() => {
     api('/api/session').then((data) => { setUser(data.user); setLoading(false); });
     const onPop = () => { setRoute(location.pathname); setMenuOpen(false); };
@@ -1622,36 +1641,51 @@ function AdminApp() {
     return () => removeEventListener('keydown', onKey);
   }, [menuOpen]);
   const navigate = (path) => { history.pushState(null, '', path); setRoute(path); setMenuOpen(false); };
+  const toggleNavCollapsed = () => setNavCollapsed((current) => {
+    const next = !current;
+    localStorage.setItem('csh-admin-nav-collapsed', String(next));
+    return next;
+  });
   async function logout() { await api('/admin/logout', { method: 'POST', body: '{}' }); location.href = '/admin'; }
   if (loading) return <main className="page"><p>Cargando...</p></main>;
   if (!user) return <AdminLogin />;
   // Un socio autenticado no entra al panel: se le devuelve al sitio público ya logueado.
   if (!isAdminUser(user)) { location.replace('/'); return <main className="page"><p>Redirigiendo...</p></main>; }
   return (
-    <div className={menuOpen ? 'admin-shell nav-open' : 'admin-shell'}>
+    <div className={`admin-shell${menuOpen ? ' nav-open' : ''}${navCollapsed ? ' nav-collapsed' : ''}`}>
       <button className="admin-nav-backdrop" aria-label="Cerrar menu" onClick={() => setMenuOpen(false)} />
       <aside aria-label="Menu administrativo">
             <div className="admin-nav-head">
-              <a className="side-brand" onClick={() => navigate('/admin')}><img src="/brand/logo-shield.png" alt="" /><b>Herediano</b><span>Admin</span></a>
+              <a className="side-brand" onClick={() => navigate('/admin')} title="Herediano Admin"><img src="/brand/logo-shield.png" alt="" /><b>Herediano</b><span>Admin</span></a>
+              <div className="admin-nav-head-actions">
+                <button
+                  className="admin-nav-collapse"
+                  onClick={toggleNavCollapsed}
+                  aria-label={navCollapsed ? 'Expandir menu' : 'Minimizar menu'}
+                  title={navCollapsed ? 'Expandir menu' : 'Minimizar menu'}
+                >
+                  {navCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+                </button>
               <button className="admin-nav-close" onClick={() => setMenuOpen(false)} aria-label="Cerrar menu"><X size={18} /></button>
+              </div>
             </div>
-            <button className={route === '/admin' ? 'active' : ''} onClick={() => navigate('/admin')}><Shield size={17} />Resumen</button>
-            <button className={route === '/admin/parqueo' ? 'active' : ''} onClick={() => navigate('/admin/parqueo')}><Car size={17} />Gestion de parqueo</button>
-            {user.eventsRole && user.eventsRole !== 'ninguno' && <button className={route.startsWith('/admin/entradas') ? 'active' : ''} onClick={() => navigate('/admin/entradas')}><CalendarDays size={17} />Gestion de entradas</button>}
-            <button className={route === '/admin/cuponera' ? 'active' : ''} onClick={() => navigate('/admin/cuponera')}><Ticket size={17} />Cuponera</button>
-            <button className={route === '/admin/usuarios' ? 'active' : ''} onClick={() => navigate('/admin/usuarios')}><Users size={17} />Gestion de usuarios</button>
-            <button className={route === '/admin/web' ? 'active' : ''} onClick={() => navigate('/admin/web')}><Globe size={17} />Gestion de la pagina web</button>
+            <AdminNavButton active={route === '/admin'} onClick={() => navigate('/admin')} icon={Shield} label="Resumen" />
+            <AdminNavButton active={route === '/admin/parqueo'} onClick={() => navigate('/admin/parqueo')} icon={Car} label="Gestion de parqueo" />
+            {user.eventsRole && user.eventsRole !== 'ninguno' && <AdminNavButton active={route.startsWith('/admin/entradas')} onClick={() => navigate('/admin/entradas')} icon={CalendarDays} label="Gestion de entradas" />}
+            <AdminNavButton active={route === '/admin/cuponera'} onClick={() => navigate('/admin/cuponera')} icon={Ticket} label="Cuponera" />
+            <AdminNavButton active={route === '/admin/usuarios'} onClick={() => navigate('/admin/usuarios')} icon={Users} label="Gestion de usuarios" />
             {Object.entries(WIP_MODULES).map(([path, mod]) => {
               const Icon = mod.icon;
-              return <button key={path} className={route === path ? 'active' : ''} onClick={() => navigate(path)}><Icon size={17} />{mod.title}</button>;
+              return <AdminNavButton key={path} active={route === path} onClick={() => navigate(path)} icon={Icon} label={mod.title} />;
             })}
-            {user.isSuperAdmin && <button className={route === '/admin/analytics' ? 'active' : ''} onClick={() => navigate('/admin/analytics')}><Sparkles size={17} />Analytics</button>}
-            <p className="side-section-label">Contenido del sitio</p>
-            <button className={route === '/admin/jugadores' ? 'active' : ''} onClick={() => navigate('/admin/jugadores')}><Users2 size={17} />Jugadores</button>
-            <button className={route === '/admin/noticias' ? 'active' : ''} onClick={() => navigate('/admin/noticias')}><Newspaper size={17} />Noticias</button>
-            <button className={route === '/admin/partidos' ? 'active' : ''} onClick={() => navigate('/admin/partidos')}><Trophy size={17} />Partidos</button>
-            <button className={route === '/admin/sponsors' ? 'active' : ''} onClick={() => navigate('/admin/sponsors')}><ShoppingBag size={17} />Sponsors</button>
-            <button className={route === '/admin/mensajes' ? 'active' : ''} onClick={() => navigate('/admin/mensajes')}><MessageSquare size={17} />Mensajes</button>
+            {user.isSuperAdmin && <AdminNavButton active={route === '/admin/analytics'} onClick={() => navigate('/admin/analytics')} icon={Sparkles} label="Analytics" />}
+            <p className="side-section-label">Gestion del sitio</p>
+            <AdminNavButton active={route === '/admin/web'} onClick={() => navigate('/admin/web')} icon={Globe} label="Gestion de la pagina web" />
+            <AdminNavButton active={route === '/admin/jugadores'} onClick={() => navigate('/admin/jugadores')} icon={Users2} label="Jugadores" />
+            <AdminNavButton active={route === '/admin/noticias'} onClick={() => navigate('/admin/noticias')} icon={Newspaper} label="Noticias" />
+            <AdminNavButton active={route === '/admin/partidos'} onClick={() => navigate('/admin/partidos')} icon={Trophy} label="Partidos" />
+            <AdminNavButton active={route === '/admin/sponsors'} onClick={() => navigate('/admin/sponsors')} icon={ShoppingBag} label="Sponsors" />
+            <AdminNavButton active={route === '/admin/mensajes'} onClick={() => navigate('/admin/mensajes')} icon={MessageSquare} label="Mensajes" />
       </aside>
       <section className="admin-main">
         <AdminTopBar user={user} onLogout={logout} onMenu={() => setMenuOpen(true)} />
@@ -1829,19 +1863,23 @@ function AdminUsers() {
     <main className="page">
       <p className="eyebrow">Cuentas y permisos</p><h1>Gestion de usuarios</h1>
       <UsersAnalytics users={users} />
-      <div className="table"><table>
-        <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Area</th><th>Estado</th><th></th></tr></thead>
-        <tbody>{users.map((u) => (
-          <tr key={u.id} className="clickable-row" onClick={() => setDetail(u)}>
-            <td><button className="link-cell" onClick={(e) => { e.stopPropagation(); setDetail(u); }}>{u.name}</button></td>
-            <td>{u.email}</td>
-            <td>{u.role}</td>
-            <td>{u.area}</td>
-            <td><span className={`pill ${u.status.toLowerCase()}`}>{u.status}</span></td>
-            <td className="row-actions" onClick={(e) => e.stopPropagation()}>{u.passwordManagedByEnv ? <span className="muted">Clave por entorno</span> : <button className="btn ghost" onClick={() => setTarget(u)}>Cambiar clave</button>}</td>
-          </tr>
-        ))}</tbody>
-      </table></div>
+      <DataTable
+        id="usuarios"
+        rows={users}
+        rowProps={(u) => ({ className: 'clickable-row', onClick: () => setDetail(u) })}
+        columns={[
+          { key: 'name', label: 'Nombre', render: (u) => <button className="link-cell" onClick={(e) => { e.stopPropagation(); setDetail(u); }}>{u.name}</button> },
+          { key: 'email', label: 'Correo' },
+          { key: 'role', label: 'Rol' },
+          { key: 'area', label: 'Area' },
+          { key: 'status', label: 'Estado', render: (u) => <span className={`pill ${u.status.toLowerCase()}`}>{u.status}</span> },
+          {
+            key: 'acciones', label: '', menuLabel: 'Acciones', sortable: false,
+            tdProps: () => ({ className: 'row-actions', onClick: (e) => e.stopPropagation() }),
+            render: (u) => (u.passwordManagedByEnv ? <span className="muted">Clave por entorno</span> : <button className="btn ghost" onClick={() => setTarget(u)}>Cambiar clave</button>),
+          },
+        ]}
+      />
       {detail && <UserDetailModal user={detail} onClose={() => setDetail(null)} onChangePassword={() => { setTarget(detail); setDetail(null); }} />}
       {target && <PasswordModal user={target} onClose={() => setTarget(null)} />}
     </main>
@@ -2047,7 +2085,20 @@ function AdminParking({ user }) {
       {editing
         ? <PlanoEditor floor={floor} autoEdit onClose={() => setEditing(false)} onSaved={refresh} />
         : <PlanoCroquis spaces={state.espacios} reservations={state.reservas} floor={floor} me={user} admin showFlow={showFlow} onSpace={(space, reservation) => setModal({ space, reservation })} />}
-      <section className="events"><h2>Log de eventos</h2><div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Tipo</th><th>Espacio</th><th>Placa</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>{events.map((e) => <tr key={e.id}><td>{fmtFullDate(e.timestamp)}</td><td>{e.tipo}</td><td>{e.espacioId}</td><td>{e.placa}</td><td>{e.userName}</td><td>{e.notas}</td></tr>)}</tbody></table></div></section>
+      <section className="events"><h2>Log de eventos</h2>
+        <DataTable
+          id="parqueo-log"
+          rows={events}
+          columns={[
+            { key: 'timestamp', label: 'Fecha/Hora', render: (e) => fmtFullDate(e.timestamp), sortValue: (e) => new Date(e.timestamp).getTime() },
+            { key: 'tipo', label: 'Tipo' },
+            { key: 'espacioId', label: 'Espacio' },
+            { key: 'placa', label: 'Placa' },
+            { key: 'userName', label: 'Usuario' },
+            { key: 'notas', label: 'Notas' },
+          ]}
+        />
+      </section>
       {modal && <AdminSpaceModal modal={modal} user={user} onClose={() => setModal(null)} afterAction={afterAction} />}
     </main>
   );
@@ -2190,7 +2241,19 @@ function AdminCoupons({ user }) {
           </div>
         ))}
       </section>
-      <section className="events"><h2>Actividad de cupones</h2><div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Proveedor</th><th>Cupon</th><th>Estado</th><th>Usuario</th></tr></thead><tbody>{state.eventos.map((e) => <tr key={e.id}><td>{fmtFullDate(e.timestamp)}</td><td>{e.proveedor}</td><td>{e.cuponId}</td><td>{e.estado}</td><td>{e.userName}</td></tr>)}</tbody></table></div></section>
+      <section className="events"><h2>Actividad de cupones</h2>
+        <DataTable
+          id="cupones-log"
+          rows={state.eventos}
+          columns={[
+            { key: 'timestamp', label: 'Fecha/Hora', render: (e) => fmtFullDate(e.timestamp), sortValue: (e) => new Date(e.timestamp).getTime() },
+            { key: 'proveedor', label: 'Proveedor' },
+            { key: 'cuponId', label: 'Cupon' },
+            { key: 'estado', label: 'Estado' },
+            { key: 'userName', label: 'Usuario' },
+          ]}
+        />
+      </section>
       {modal !== null && (
         <CouponModal
           cupon={modal?.id ? modal : null}
@@ -2300,6 +2363,7 @@ function PublicEntradasList() {
           {loaded && eventos.length === 0 && <div className="result empty">No hay eventos a la venta en este momento.</div>}
           {eventos.map((ev) => (
             <a key={ev.id} className="event-card" href={`/entradas/${ev.slug}`}>
+              {ev.imagenUrl && <img className="event-card-flyer" src={ev.imagenUrl} alt="" />}
               <div className="event-card-date"><b>{new Date(ev.fecha).getDate()}</b><span>{mesCorto(ev.fecha)}</span></div>
               <div className="event-card-body">
                 <h2>{ev.nombre}</h2>
@@ -2582,6 +2646,7 @@ function PublicEventDetail({ slug }) {
         <p className="eyebrow">{fmtFullDate(evento.fecha)} · {evento.venue}</p>
         <h1>{evento.nombre}</h1>
         <p className="sub">{evento.descripcion}</p>
+        {evento.imagenUrl && <img className="event-detail-flyer" src={evento.imagenUrl} alt={`Flyer promocional de ${evento.nombre}`} />}
         {banner && <div className={banner.type === 'error' ? 'error' : 'okbox'}>{banner.text}</div>}
 
         {hasMapa && (
@@ -2773,6 +2838,12 @@ function AdminEntradas({ user, route = '/admin/entradas', navigate }) {
         <AdminEventosTab
           onNew={() => navigate('/admin/entradas/nuevo')}
           onOpen={(eventId) => navigate(`/admin/entradas/${encodeURIComponent(eventId)}`)}
+          onUseTemplate={(t) => {
+            // El workspace de creación lo lee al montar y aplica la plantilla
+            // al borrador auto-creado en vez de sembrar el estadio base.
+            sessionStorage.setItem('entradas_new_event_template', JSON.stringify({ id: t.id, formato: t.formato || '' }));
+            navigate('/admin/entradas/nuevo');
+          }}
         />
       )}
       {tab === 'ventas' && canSales && <AdminVentasTab />}
@@ -2811,25 +2882,32 @@ function AdminPromotoresTab({ canManage }) {
     <>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       {canManage && <div className="actions left"><button className="btn" onClick={() => setModal({})}><Plus size={16} />Nuevo promotor</button></div>}
-      <div className="table"><table><thead><tr><th>Promotor</th><th>Código</th><th>Comisión</th><th>Órdenes</th><th>Boletos</th><th>Ventas</th><th>Comisión ₡</th><th></th></tr></thead><tbody>
-        {ranking.map((r) => (
-          <tr key={r.promotor.id}>
-            <td><b>{r.promotor.nombre}</b>{!r.promotor.activo && <span className="pill borrador" style={{ marginLeft: 6 }}>inactivo</span>}</td>
-            <td>{r.promotor.codigo}</td>
-            <td>{comisionLabel(r.promotor)}</td>
-            <td>{r.ordenes}</td>
-            <td>{r.boletos}</td>
-            <td>{money(r.ventasCrc)}</td>
-            <td>{money(r.comisionCrc)}</td>
-            <td className="row-actions">
-              <button className="link-cell" onClick={() => copiarLink(r.promotor)}>Copiar link</button>
-              {canManage && <button className="link-cell" onClick={() => setModal(r.promotor)}>Editar</button>}
-              {canManage && <button className="link-cell danger" onClick={() => del(r.promotor)}>Eliminar</button>}
-            </td>
-          </tr>
-        ))}
-        {ranking.length === 0 && <tr><td colSpan={8} className="muted">Sin promotores registrados.</td></tr>}
-      </tbody></table></div>
+      <DataTable
+        id="promotores"
+        rows={ranking}
+        rowKey={(r) => r.promotor.id}
+        empty="Sin promotores registrados."
+        columns={[
+          { key: 'nombre', label: 'Promotor', sortValue: (r) => r.promotor.nombre, render: (r) => <><b>{r.promotor.nombre}</b>{!r.promotor.activo && <span className="pill borrador" style={{ marginLeft: 6 }}>inactivo</span>}</> },
+          { key: 'codigo', label: 'Código', sortValue: (r) => r.promotor.codigo, render: (r) => r.promotor.codigo },
+          { key: 'comision', label: 'Comisión', sortValue: (r) => r.promotor.comisionValor, render: (r) => comisionLabel(r.promotor) },
+          { key: 'ordenes', label: 'Órdenes' },
+          { key: 'boletos', label: 'Boletos' },
+          { key: 'ventasCrc', label: 'Ventas', render: (r) => money(r.ventasCrc) },
+          { key: 'comisionCrc', label: 'Comisión ₡', render: (r) => money(r.comisionCrc) },
+          {
+            key: 'acciones', label: '', menuLabel: 'Acciones', sortable: false,
+            tdProps: () => ({ className: 'row-actions' }),
+            render: (r) => (
+              <>
+                <button className="link-cell" onClick={() => copiarLink(r.promotor)}>Copiar link</button>
+                {canManage && <button className="link-cell" onClick={() => setModal(r.promotor)}>Editar</button>}
+                {canManage && <button className="link-cell danger" onClick={() => del(r.promotor)}>Eliminar</button>}
+              </>
+            ),
+          },
+        ]}
+      />
       {modal && <PromotorModal promotor={modal.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
     </>
   );
@@ -2920,22 +2998,28 @@ function AdminDescuentosTab() {
       </section>
 
       <div className="actions left"><button className="btn" onClick={() => setModal({})}><Plus size={16} />Nuevo código</button></div>
-      <div className="table"><table><thead><tr><th>Código</th><th>Descuento</th><th>Evento</th><th>Usos</th><th>Estado</th><th></th></tr></thead><tbody>
-        {descuentos.map((d) => (
-          <tr key={d.id}>
-            <td><b>{d.codigo}</b></td>
-            <td>{feeLabel(d.tipo === 'monto' ? 'crc' : 'pct', d.valor)}</td>
-            <td>{d.eventoId ? (eventos.find((e) => e.id === d.eventoId)?.nombre || '—') : 'Todos'}</td>
-            <td>{d.usosActuales}{d.usosMax != null ? ` / ${d.usosMax}` : ''}</td>
-            <td><span className={`pill ${d.activo ? 'publicado' : 'borrador'}`}>{d.activo ? 'activo' : 'inactivo'}</span></td>
-            <td className="row-actions">
-              <button className="link-cell" onClick={() => setModal(d)}>Editar</button>
-              <button className="link-cell danger" onClick={() => del(d.id)}>Eliminar</button>
-            </td>
-          </tr>
-        ))}
-        {descuentos.length === 0 && <tr><td colSpan={6} className="muted">Sin códigos de descuento.</td></tr>}
-      </tbody></table></div>
+      <DataTable
+        id="descuentos"
+        rows={descuentos}
+        empty="Sin códigos de descuento."
+        columns={[
+          { key: 'codigo', label: 'Código', render: (d) => <b>{d.codigo}</b> },
+          { key: 'valor', label: 'Descuento', render: (d) => feeLabel(d.tipo === 'monto' ? 'crc' : 'pct', d.valor) },
+          { key: 'evento', label: 'Evento', sortValue: (d) => (d.eventoId ? (eventos.find((e) => e.id === d.eventoId)?.nombre || '—') : 'Todos'), render: (d) => (d.eventoId ? (eventos.find((e) => e.id === d.eventoId)?.nombre || '—') : 'Todos') },
+          { key: 'usos', label: 'Usos', sortValue: (d) => d.usosActuales, render: (d) => <>{d.usosActuales}{d.usosMax != null ? ` / ${d.usosMax}` : ''}</> },
+          { key: 'activo', label: 'Estado', sortValue: (d) => (d.activo ? 0 : 1), render: (d) => <span className={`pill ${d.activo ? 'publicado' : 'borrador'}`}>{d.activo ? 'activo' : 'inactivo'}</span> },
+          {
+            key: 'acciones', label: '', menuLabel: 'Acciones', sortable: false,
+            tdProps: () => ({ className: 'row-actions' }),
+            render: (d) => (
+              <>
+                <button className="link-cell" onClick={() => setModal(d)}>Editar</button>
+                <button className="link-cell danger" onClick={() => del(d.id)}>Eliminar</button>
+              </>
+            ),
+          },
+        ]}
+      />
       {modal && <DescuentoModal descuento={modal.id ? modal : null} eventos={eventos} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} />}
     </>
   );
@@ -2988,7 +3072,7 @@ function DescuentoModal({ descuento, eventos, onClose, onSaved }) {
   );
 }
 
-function AdminEventosTab({ onNew, onOpen }) {
+function AdminEventosTab({ onNew, onOpen, onUseTemplate }) {
   const [eventos, setEventos] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const refresh = async () => { const d = await api('/admin/api/entradas/eventos'); if (d.ok) setEventos(d.eventos); };
@@ -2999,18 +3083,20 @@ function AdminEventosTab({ onNew, onOpen }) {
         <button className="btn" onClick={onNew}><Plus size={16} />Nuevo evento</button>
         <button className={`btn ghost${showTemplates ? ' active' : ''}`} onClick={() => setShowTemplates((visible) => !visible)}><Sparkles size={16} />Templates</button>
       </div>
-      {showTemplates && <TemplatesPanel onClose={() => setShowTemplates(false)} />}
-      <div className="table"><table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>
-        {eventos.map((ev) => (
-          <tr key={ev.evento.id} className="clickable-row" onClick={() => onOpen(ev.evento.id)}>
-            <td><button className="link-cell" onClick={(e) => { e.stopPropagation(); onOpen(ev.evento.id); }}>{ev.evento.nombre}</button></td>
-            <td>{fmtFullDate(ev.evento.fecha)}</td>
-            <td><span className={`pill ${ev.evento.estado}`}>{ev.evento.estado}</span></td>
-            <td>{ev.boletosVendidos}</td>
-            <td>{money(ev.ingresosCrc)}</td>
-          </tr>
-        ))}
-      </tbody></table></div>
+      {showTemplates && <TemplatesPanel onClose={() => setShowTemplates(false)} onUse={onUseTemplate} />}
+      <DataTable
+        id="eventos"
+        rows={eventos}
+        rowKey={(ev) => ev.evento.id}
+        rowProps={(ev) => ({ className: 'clickable-row', onClick: () => onOpen(ev.evento.id) })}
+        columns={[
+          { key: 'nombre', label: 'Evento', sortValue: (ev) => ev.evento.nombre, render: (ev) => <button className="link-cell" onClick={(e) => { e.stopPropagation(); onOpen(ev.evento.id); }}>{ev.evento.nombre}</button> },
+          { key: 'fecha', label: 'Fecha', sortValue: (ev) => new Date(ev.evento.fecha).getTime(), render: (ev) => fmtFullDate(ev.evento.fecha) },
+          { key: 'estado', label: 'Estado', sortValue: (ev) => ev.evento.estado, render: (ev) => <span className={`pill ${ev.evento.estado}`}>{ev.evento.estado}</span> },
+          { key: 'boletosVendidos', label: 'Vendidos' },
+          { key: 'ingresosCrc', label: 'Ingresos', render: (ev) => money(ev.ingresosCrc) },
+        ]}
+      />
       <EntradasLogPanel eventos={eventos} refreshKey={0} />
     </>
   );
@@ -3069,26 +3155,25 @@ function EntradasLogPanel({ eventos, refreshKey }) {
         <span className="muted">{total} registros</span>
       </div>
       {error && <div className="error">{error}</div>}
-      <div className="table"><table><thead><tr><th>Fecha/Hora</th><th>Tipo</th><th>Evento</th><th>Boleto</th><th>Usuario</th><th>Notas</th></tr></thead><tbody>
-        {rows.map((row) => (
-          <tr key={row.id}>
-            <td>{fmtFullDate(row.timestamp)}</td>
-            <td><span className="pill">{entradaLogLabel(row.tipo)}</span></td>
-            <td>{eventNames[row.eventoId] || row.eventoId || 'General'}</td>
-            <td>{row.boletoId || '-'}</td>
-            <td>{row.userName || '-'}</td>
-            <td>{row.notas || '-'}</td>
-          </tr>
-        ))}
-        {!loading && rows.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>Sin registros para mostrar.</td></tr>}
-        {loading && rows.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>Cargando log...</td></tr>}
-      </tbody></table></div>
+      <DataTable
+        id="entradas-log"
+        rows={rows}
+        empty={loading ? 'Cargando log...' : 'Sin registros para mostrar.'}
+        columns={[
+          { key: 'timestamp', label: 'Fecha/Hora', render: (row) => fmtFullDate(row.timestamp), sortValue: (row) => new Date(row.timestamp).getTime() },
+          { key: 'tipo', label: 'Tipo', sortValue: (row) => entradaLogLabel(row.tipo), render: (row) => <span className="pill">{entradaLogLabel(row.tipo)}</span> },
+          { key: 'evento', label: 'Evento', sortValue: (row) => eventNames[row.eventoId] || row.eventoId || 'General', render: (row) => eventNames[row.eventoId] || row.eventoId || 'General' },
+          { key: 'boletoId', label: 'Boleto', render: (row) => row.boletoId || '-' },
+          { key: 'userName', label: 'Usuario', render: (row) => row.userName || '-' },
+          { key: 'notas', label: 'Notas', render: (row) => row.notas || '-' },
+        ]}
+      />
     </section>
   );
 }
 
 // Gestión de templates dentro de la página, sin diálogos nativos ni modales.
-function TemplatesPanel({ onClose }) {
+function TemplatesPanel({ onClose, onUse }) {
   const [templates, setTemplates] = useState([]);
   const [msg, setMsg] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -3140,38 +3225,46 @@ function TemplatesPanel({ onClose }) {
         <button className="btn ghost" onClick={onClose}>Cerrar</button>
       </header>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
-      <div className="table"><table><thead><tr><th>Template</th><th>Formato</th><th>Sectores</th><th></th></tr></thead><tbody>
-        {templates.map((t) => (
-          <tr key={t.id}>
-            <td>
-              {editingId === t.id ? (
-                <div className="template-inline-edit">
-                  <input value={editingName} onChange={(e) => setEditingName(e.target.value)} autoFocus aria-label={`Nuevo nombre de ${t.nombre}`} />
-                  <button className="btn xs" onClick={() => renombrar(t)}>Guardar</button>
-                  <button className="btn ghost xs" onClick={() => setEditingId(null)}>Cancelar</button>
-                </div>
-              ) : (
-                <><b>{t.nombre}</b>{t.descripcion && <><br /><small className="muted">{t.descripcion}</small></>}</>
-              )}
-            </td>
-            <td>{t.formato}</td>
-            <td>{t.sectores}{t.numerados > 0 ? ` (${t.numerados} num.)` : ''}</td>
-            <td className="row-actions">
-              {editingId !== t.id && <button className="link-cell" onClick={() => startRename(t)}>Renombrar</button>}
-              {deletingId === t.id ? (
-                <>
-                  <span className="muted">¿Eliminar?</span>
-                  <button className="link-cell danger" onClick={() => eliminar(t)}>Sí, eliminar</button>
-                  <button className="link-cell" onClick={() => setDeletingId(null)}>Cancelar</button>
-                </>
-              ) : (
-                <button className="link-cell danger" onClick={() => { setEditingId(null); setDeletingId(t.id); setMsg(null); }}>Eliminar</button>
-              )}
-            </td>
-          </tr>
-        ))}
-        {templates.length === 0 && <tr><td colSpan={4} className="muted">Sin templates guardados.</td></tr>}
-      </tbody></table></div>
+      <DataTable
+        id="templates"
+        rows={templates}
+        empty="Sin templates guardados."
+        columns={[
+          {
+            key: 'nombre', label: 'Template',
+            render: (t) => (editingId === t.id ? (
+              <div className="template-inline-edit">
+                <input value={editingName} onChange={(e) => setEditingName(e.target.value)} autoFocus aria-label={`Nuevo nombre de ${t.nombre}`} />
+                <button className="btn xs" onClick={() => renombrar(t)}>Guardar</button>
+                <button className="btn ghost xs" onClick={() => setEditingId(null)}>Cancelar</button>
+              </div>
+            ) : (
+              <><b>{t.nombre}</b>{t.descripcion && <><br /><small className="muted">{t.descripcion}</small></>}</>
+            )),
+          },
+          { key: 'formato', label: 'Formato' },
+          { key: 'sectores', label: 'Sectores', sortValue: (t) => t.sectores, render: (t) => <>{t.sectores}{t.numerados > 0 ? ` (${t.numerados} num.)` : ''}</> },
+          {
+            key: 'acciones', label: '', menuLabel: 'Acciones', sortable: false,
+            tdProps: () => ({ className: 'row-actions' }),
+            render: (t) => (
+              <>
+                {editingId !== t.id && <button className="link-cell" onClick={() => onUse(t)}>Usar</button>}
+                {editingId !== t.id && <button className="link-cell" onClick={() => startRename(t)}>Renombrar</button>}
+                {deletingId === t.id ? (
+                  <>
+                    <span className="muted">¿Eliminar?</span>
+                    <button className="link-cell danger" onClick={() => eliminar(t)}>Sí, eliminar</button>
+                    <button className="link-cell" onClick={() => setDeletingId(null)}>Cancelar</button>
+                  </>
+                ) : (
+                  <button className="link-cell danger" onClick={() => { setEditingId(null); setDeletingId(t.id); setMsg(null); }}>Eliminar</button>
+                )}
+              </>
+            ),
+          },
+        ]}
+      />
     </section>
   );
 }
@@ -3184,25 +3277,140 @@ function toDateTimeLocal(value) {
   return local.toISOString().slice(0, 16);
 }
 
+const EVENT_VENUES = [
+  {
+    id: 'erc',
+    name: 'Estadio Eladio Rosabal Cordero',
+  },
+];
+
+const EVENT_FLYER_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
+const EVENT_FLYER_MAX_BYTES = 8 * 1024 * 1024;
+
+// Valores placeholder del borrador auto-creado: permiten persistir el evento
+// (y activar el mapa) antes de que el admin llene nombre y fecha reales.
+const DRAFT_NOMBRE_PLACEHOLDER = 'Evento sin título';
+function defaultDraftFecha() {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  d.setHours(19, 0, 0, 0);
+  return d.toISOString();
+}
+
+function EventFlyerPicker({ imageUrl = '', file = null, onFile, onError, busy = false, compact = false }) {
+  const inputRef = useRef(null);
+  const [localPreview, setLocalPreview] = useState('');
+
+  useEffect(() => {
+    if (!file) {
+      setLocalPreview('');
+      return undefined;
+    }
+    const url = URL.createObjectURL(file);
+    setLocalPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  function choose(event) {
+    const selected = event.target.files?.[0];
+    event.target.value = '';
+    if (!selected) return;
+    if (!EVENT_FLYER_TYPES.includes(selected.type)) {
+      onError?.('El flyer debe ser JPG, PNG, WebP o AVIF.');
+      return;
+    }
+    if (selected.size > EVENT_FLYER_MAX_BYTES) {
+      onError?.('El flyer no puede superar 8 MB.');
+      return;
+    }
+    onError?.('');
+    onFile(selected);
+  }
+
+  const preview = localPreview || imageUrl;
+  return (
+    <div className={`event-flyer-picker${compact ? ' event-flyer-picker--compact' : ''}`}>
+      <div className="event-flyer-preview">
+        {preview
+          ? <img src={preview} alt="Vista previa del flyer del evento" />
+          : <div className="event-flyer-placeholder"><ImagePlus size={28} /><span>Flyer del evento</span></div>}
+      </div>
+      <div className="event-flyer-copy">
+        <b>Imagen promocional</b>
+        <span>JPG, PNG, WebP o AVIF · máximo 8 MB</span>
+        <input ref={inputRef} type="file" accept={EVENT_FLYER_TYPES.join(',')} hidden onChange={choose} />
+        <button type="button" className="btn ghost" onClick={() => inputRef.current?.click()} disabled={busy}>
+          <ImagePlus size={15} />{busy ? 'Subiendo…' : preview ? 'Reemplazar flyer' : 'Subir flyer'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function EventCreateWorkspace({ navigate }) {
   const [templates, setTemplates] = useState([]);
-  const [templateId, setTemplateId] = useState('');
+  // Plantilla elegida desde el panel de templates ("Usar"): se lee de forma
+  // síncrona para que el borrador auto-creado nazca ya con ella aplicada.
+  const [initialTemplate] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem('entradas_new_event_template');
+      if (!raw) return null;
+      sessionStorage.removeItem('entradas_new_event_template');
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  });
+  const [templateId, setTemplateId] = useState(initialTemplate?.id || '');
   const [form, setForm] = useState({
     nombre: '',
     venue: 'Estadio Eladio Rosabal Cordero',
     fecha: '',
     descripcion: '',
-    formato: 'partido',
+    formato: initialTemplate?.formato === 'espectaculo' ? 'espectaculo' : 'partido',
   });
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [createdId, setCreatedId] = useState('');
+  // Borrador auto-creado: se persiste apenas se abre la página (con nombre y
+  // fecha placeholder si aún no se llenan) para que el mapa (paso 03) esté
+  // activo desde el inicio; cada cambio del formulario lo actualiza después.
+  const [draft, setDraft] = useState(null);
+  const [usedTemplate, setUsedTemplate] = useState(false);
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
+  const [toast, setToast] = useState(null); // { text, kind: 'saving' | 'saved' | 'error' }
+  const [flyerFile, setFlyerFile] = useState(null);
+  const [flyerBusy, setFlyerBusy] = useState(false);
+  const [flyerError, setFlyerError] = useState('');
+  // Guardar la config del estadio (zonas, precios, butacas, tandas) como
+  // plantilla reutilizable; los datos del evento no forman parte.
+  const [finishing, setFinishing] = useState(false);
+  const draftRef = useRef(null);
+  const busyRef = useRef(false);
+  const flyerFileRef = useRef(null);
 
   useEffect(() => {
     api('/admin/api/entradas/templates').then((d) => {
       if (d.ok) setTemplates(d.templates);
     });
   }, []);
+
+  // Banner de guardado (arriba a la derecha); el de éxito se oculta solo.
+  useEffect(() => {
+    if (saveState === 'saving') {
+      setToast({ text: 'Guardando borrador…', kind: 'saving' });
+      return undefined;
+    }
+    if (saveState === 'saved') {
+      setToast({ text: 'Borrador guardado', kind: 'saved' });
+      const timer = setTimeout(() => setToast(null), 2400);
+      return () => clearTimeout(timer);
+    }
+    if (saveState === 'error') {
+      setToast({ text: 'No se pudo guardar el borrador', kind: 'error' });
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [saveState]);
 
   const selectedTemplate = templates.find((template) => template.id === templateId);
   const previewTipos = useMemo(() => {
@@ -3221,32 +3429,114 @@ function EventCreateWorkspace({ navigate }) {
     if (template?.formato) setForm((current) => ({ ...current, formato: template.formato }));
   }
 
-  async function submit(event) {
-    event.preventDefault();
-    setError('');
-    setCreatedId('');
-    setLoading(true);
-    const d = await api('/admin/api/entradas/eventos', { method: 'POST', body: JSON.stringify(form) });
-    if (!d.ok) {
-      setLoading(false);
-      return setError(d.error);
+  async function uploadFlyer(evento, file) {
+    setFlyerBusy(true);
+    const result = await uploadFile(`/admin/api/entradas/eventos/${evento.id}/flyer`, file);
+    setFlyerBusy(false);
+    if (!result.ok) {
+      setFlyerError(result.error || 'No se pudo subir el flyer.');
+      return evento;
     }
+    setFlyerError('');
+    flyerFileRef.current = null;
+    setFlyerFile(null);
+    draftRef.current = result.evento;
+    setDraft(result.evento);
+    return result.evento;
+  }
 
-    if (templateId) {
-      const applied = await api(`/admin/api/entradas/eventos/${d.evento.id}/aplicar-template`, {
-        method: 'POST',
-        body: JSON.stringify({ templateId }),
-      });
-      if (!applied.ok) {
-        setLoading(false);
-        setCreatedId(d.evento.id);
-        return setError(`El borrador fue creado, pero no se pudo aplicar el template: ${applied.error}`);
+  async function chooseFlyer(file) {
+    flyerFileRef.current = file;
+    setFlyerFile(file);
+    setFlyerError('');
+    if (draftRef.current) await uploadFlyer(draftRef.current, file);
+  }
+
+  // Autosave con debounce: crea el borrador de una vez al montar (el mapa no
+  // depende de que nombre/fecha estén llenos) y luego actualiza con cada cambio.
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (busyRef.current) return;
+      busyRef.current = true;
+      setSaveState('saving');
+      const payload = {
+        ...form,
+        nombre: form.nombre.trim().length >= 3 ? form.nombre : (draftRef.current?.nombre || DRAFT_NOMBRE_PLACEHOLDER),
+        fecha: form.fecha || draftRef.current?.fecha || defaultDraftFecha(),
+      };
+      if (!draftRef.current) {
+        const d = await api('/admin/api/entradas/eventos', { method: 'POST', body: JSON.stringify(payload) });
+        if (!d.ok) {
+          setSaveState('error');
+          setError(d.error);
+          busyRef.current = false;
+          return;
+        }
+        if (templateId) {
+          const applied = await api(`/admin/api/entradas/eventos/${d.evento.id}/aplicar-template`, {
+            method: 'POST',
+            body: JSON.stringify({ templateId }),
+          });
+          if (applied.ok) setUsedTemplate(true);
+          else setError(`No se pudo aplicar el template: ${applied.error}`);
+        }
+        let savedEvento = d.evento;
+        if (flyerFileRef.current) savedEvento = await uploadFlyer(savedEvento, flyerFileRef.current);
+        draftRef.current = savedEvento;
+        setDraft(savedEvento);
+        setSaveState('saved');
+      } else {
+        const d = await api(`/admin/api/entradas/eventos/${draftRef.current.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            ...payload,
+            imagenUrl: draftRef.current.imagenUrl || '',
+            feeTipo: draftRef.current.feeTipo || '',
+            feeValor: draftRef.current.feeValor || 0,
+          }),
+        });
+        if (d.ok) {
+          draftRef.current = d.evento;
+          setDraft(d.evento);
+          setSaveState('saved');
+        } else {
+          setSaveState('error');
+          setError(d.error);
+        }
       }
-    }
+      busyRef.current = false;
+    }, draftRef.current ? 900 : 250); // la primera creación es casi inmediata: activa el mapa
+    return () => clearTimeout(timer);
+  }, [form, templateId]);
 
-    setLoading(false);
-    if (!templateId) sessionStorage.setItem('entradas_auto_seed_event', d.evento.id);
-    navigate(`/admin/entradas/${encodeURIComponent(d.evento.id)}`);
+  const selectedVenue = EVENT_VENUES.find((venue) => venue.name === form.venue);
+
+  const templateNombre = `${(form.nombre.trim().length >= 3 ? form.nombre.trim() : (draft?.nombre || DRAFT_NOMBRE_PLACEHOLDER))}-plantilla`;
+
+  async function guardarPlantilla() {
+    if (!draftRef.current) return;
+    setFinishing(true);
+    setToast({ text: 'Guardando plantilla…', kind: 'saving' });
+    const d = await api(`/admin/api/entradas/eventos/${draftRef.current.id}/guardar-template`, {
+      method: 'POST',
+      body: JSON.stringify({
+        nombre: templateNombre,
+        descripcion: `Configuración del estadio guardada desde "${draftRef.current.nombre}"`,
+      }),
+    });
+    setFinishing(false);
+    if (!d.ok) {
+      setToast(null);
+      setError(`No se pudo guardar la plantilla: ${d.error}`);
+      return;
+    }
+    setError('');
+    setToast({ text: `Plantilla «${templateNombre}» guardada`, kind: 'saved' });
+    setTimeout(() => setToast(null), 2400);
+  }
+
+  function finishAndExit() {
+    navigate('/admin/entradas');
   }
 
   return (
@@ -3256,88 +3546,137 @@ function EventCreateWorkspace({ navigate }) {
           <button className="workspace-back" onClick={() => navigate('/admin/entradas')}>‹ Volver a eventos</button>
           <p className="eyebrow">Nuevo evento</p>
           <h1>Preparar evento</h1>
-          <p className="sub">Creá el borrador y continuá configurando precios, estados y el reparto de aforo directamente sobre el mapa.</p>
+          <p className="sub">Todo se configura en esta página: datos, formato y el mapa. El borrador se guarda solo.</p>
         </div>
         <div className="event-workspace-actions">
           <button className="btn ghost" onClick={() => navigate('/admin/entradas')}>Cancelar</button>
-          <button className="btn" type="submit" form="new-event-form" disabled={loading || form.nombre.trim().length < 3 || !form.fecha}>
-            {loading ? 'Creando…' : 'Crear y abrir mapa'}
+          <button className="btn" onClick={finishAndExit} disabled={!draft}>
+            {saveState === 'saving' ? 'Guardando…' : 'Guardar evento'}
           </button>
         </div>
       </header>
 
-      {error && (
-        <div className="error workspace-message">
-          {error}
-          {createdId && <button className="link-cell" onClick={() => navigate(`/admin/entradas/${encodeURIComponent(createdId)}`)}>Abrir el borrador</button>}
+      {error && <div className="error workspace-message">{error}</div>}
+      {toast && (
+        <div className={`save-toast save-toast--${toast.kind}`}>
+          {toast.kind === 'saved' ? '✓ ' : ''}{toast.text}
         </div>
       )}
 
-      <div className="event-create-grid">
-        <form id="new-event-form" className="event-create-form" onSubmit={submit}>
+      <form id="new-event-form" className="event-create-details" onSubmit={(e) => e.preventDefault()}>
+        <div className="event-create-col">
           <div className="workspace-section-heading">
-            <span>01</span>
+            <span>02</span>
             <div><h2>Datos del evento</h2><p>La información pública que verá la afición.</p></div>
           </div>
-          <label>Nombre</label>
-          <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
-          <div className="event-form-row">
-            <div><label>Lugar</label><input value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} /></div>
-            <div><label>Fecha y hora</label><input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></div>
+          <div className="event-create-details-layout">
+            <div className="event-create-details-grid">
+              <div className="event-create-field event-create-field--wide">
+                <label>Nombre</label>
+                <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus placeholder="Herediano vs ..." />
+              </div>
+              <div className="event-create-field">
+                <label>Lugar</label>
+                <select value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })}>
+                  <option value="__create_stadium__" disabled>＋ Crear nuevo estadio</option>
+                  {EVENT_VENUES.map((venue) => (
+                    <option key={venue.id} value={venue.name}>{venue.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div><label>Fecha y hora</label><input type="datetime-local" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></div>
+              <div className="event-create-field event-create-field--wide">
+                <label>Descripción</label>
+                <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Información útil para quienes compran" />
+              </div>
+              <div className="event-create-field event-create-field--wide event-create-format-field">
+                <label>Formato del evento</label>
+                <div className="evento-formato-opts event-format-selector" role="radiogroup" aria-label="Formato del evento">
+                  {[
+                    { value: 'partido', label: 'Partido', desc: 'Seis tribunas', Icon: Trophy },
+                    { value: 'espectaculo', label: 'Espectáculo', desc: 'Tribunas y gramilla', Icon: Sparkles },
+                  ].map(({ value, label, desc, Icon }) => (
+                    <label key={value} className={`evento-formato-opt${form.formato === value ? ' active' : ''}`}>
+                      <input type="radio" name="formato" aria-label={label} checked={form.formato === value} onChange={() => setForm({ ...form, formato: value })} />
+                      <span className="event-format-icon"><Icon size={18} /></span>
+                      <span className="event-format-copy">
+                        <span className="evento-formato-opt-label">{label}</span>
+                        <span className="evento-formato-opt-desc">{desc}</span>
+                      </span>
+                      <span className="event-format-check" aria-hidden="true">{form.formato === value && <Check size={15} />}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div>
+              <EventFlyerPicker
+                imageUrl={draft?.imagenUrl || ''}
+                file={flyerFile}
+                onFile={chooseFlyer}
+                onError={setFlyerError}
+                busy={flyerBusy}
+                compact
+              />
+              {flyerError && <div className="error event-flyer-error">{flyerError}</div>}
+            </div>
           </div>
-          <label>Descripción</label>
-          <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Información útil para quienes compran" />
+        </div>
+      </form>
 
-          <div className="workspace-section-heading workspace-section-heading--spaced">
-            <span>02</span>
-            <div><h2>Formato y punto de partida</h2><p>Podés comenzar limpio o reutilizar una configuración existente.</p></div>
+      <section className="event-create-map-step">
+        <div className="workspace-section-heading workspace-section-heading--spaced">
+          <span>03</span>
+          <div>
+            <h2>Configurá el mapa</h2>
+            <p>
+              {draft
+                ? 'Tocá cada zona para precio, estado, tandas y butacas. El aforo se reparte automáticamente.'
+                : 'Preparando el mapa…'}
+            </p>
           </div>
-          <div className="evento-formato-opts">
-            {[
-              { value: 'partido', label: 'Partido', desc: 'Seis tribunas del estadio' },
-              { value: 'espectaculo', label: 'Espectáculo', desc: 'Tribunas y zonas en gramilla' },
-            ].map(({ value, label, desc }) => (
-              <label key={value} className={`evento-formato-opt${form.formato === value ? ' active' : ''}`}>
-                <input type="radio" name="formato" checked={form.formato === value} onChange={() => setForm({ ...form, formato: value })} />
-                <span className="evento-formato-opt-label">{label}</span>
-                <span className="evento-formato-opt-desc">{desc}</span>
-              </label>
-            ))}
+        </div>
+        <div className="event-create-map-options event-create-map-options--single">
+          <div className="event-create-map-option">
+            <label>Plantilla del estadio</label>
+            <select value={templateId} disabled={!!draft} onChange={(e) => chooseTemplate(e.target.value)}>
+              <option value="">Plantilla base — Estadio Eladio Rosabal Cordero</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.nombre} · {template.sectores} sectores
+                </option>
+              ))}
+            </select>
+            {selectedTemplate?.descripcion && <p className="muted template-description">{selectedTemplate.descripcion}</p>}
+            {draft && <p className="muted template-description">La plantilla quedó definida al crear el borrador. Ajustá las zonas directamente en el mapa.</p>}
           </div>
-
-          <div className="template-start-options">
-            <button type="button" className={`template-start-option${!templateId ? ' active' : ''}`} onClick={() => setTemplateId('')}>
-              <b>Desde cero</b><span>El mapa crea el aforo base y vos ajustás cada zona.</span>
+        </div>
+        {selectedVenue?.id === 'erc' && (
+          draft
+            ? <VenueMapConfig key={`${draft.id}:${draft.formato}:${draft.venue}`} evento={draft} autoSeed />
+            : (
+              <div className="event-create-map-preview">
+                <StadiumSvgERC
+                  tiposByKey={previewTipos}
+                  venue={form.venue}
+                  fieldTemplate={form.formato === 'espectaculo' ? '3' : null}
+                  fieldSplits={form.formato === 'espectaculo' ? SPLITS_POR_TEMPLATE[3] : null}
+                  interactive={false}
+                />
+              </div>
+            )
+        )}
+        {draft && (
+          <div style={{ marginTop: 18, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button className="btn ghost" onClick={guardarPlantilla} disabled={finishing} title={`Se guarda como «${templateNombre}»`}>
+              {finishing ? 'Guardando plantilla…' : 'Guardar el estadio como plantilla'}
             </button>
-            {templates.map((template) => (
-              <button type="button" key={template.id} className={`template-start-option${templateId === template.id ? ' active' : ''}`} onClick={() => chooseTemplate(template.id)}>
-                <b>{template.nombre}</b><span>{template.sectores} sectores · precios y preventa</span>
-              </button>
-            ))}
+            <button className="btn" onClick={finishAndExit}>
+              Guardar evento
+            </button>
           </div>
-          {selectedTemplate?.descripcion && <p className="muted template-description">{selectedTemplate.descripcion}</p>}
-
-          <button className="btn event-create-submit" disabled={loading || form.nombre.trim().length < 3 || !form.fecha}>
-            {loading ? 'Creando evento…' : 'Crear y configurar en el mapa'}
-          </button>
-        </form>
-
-        <aside className="event-create-preview">
-          <div className="event-create-preview-copy">
-            <span className="pill borrador">Vista previa</span>
-            <h2>{form.nombre.trim() || 'Tu evento'}</h2>
-            <p>{form.fecha ? fmtFullDate(form.fecha) : 'Definí la fecha para completar el encabezado'}</p>
-          </div>
-          <StadiumSvgERC
-            tiposByKey={previewTipos}
-            venue={form.venue}
-            fieldTemplate={form.formato === 'espectaculo' ? '3' : null}
-            fieldSplits={form.formato === 'espectaculo' ? SPLITS_POR_TEMPLATE[3] : null}
-            interactive={false}
-          />
-          <p className="event-create-preview-note">Después de crear el borrador, este mapa se convierte en el configurador del evento.</p>
-        </aside>
-      </div>
+        )}
+      </section>
     </main>
   );
 }
@@ -3350,6 +3689,8 @@ function EventBasicsPanel({ evento, onCancel, onSaved }) {
     descripcion: evento.descripcion || '',
   });
   const [loading, setLoading] = useState(false);
+  const [flyerFile, setFlyerFile] = useState(null);
+  const [flyerError, setFlyerError] = useState('');
   const [error, setError] = useState('');
 
   async function submit(event) {
@@ -3366,9 +3707,21 @@ function EventBasicsPanel({ evento, onCancel, onSaved }) {
         feeValor: evento.feeValor || 0,
       }),
     });
+    if (!d.ok) {
+      setLoading(false);
+      return setError(d.error);
+    }
+    let updated = d.evento;
+    if (flyerFile) {
+      const upload = await uploadFile(`/admin/api/entradas/eventos/${evento.id}/flyer`, flyerFile);
+      if (!upload.ok) {
+        setLoading(false);
+        return setFlyerError(upload.error || 'No se pudo subir el flyer.');
+      }
+      updated = upload.evento;
+    }
     setLoading(false);
-    if (!d.ok) return setError(d.error);
-    onSaved(d.evento);
+    onSaved(updated);
   }
 
   return (
@@ -3377,6 +3730,15 @@ function EventBasicsPanel({ evento, onCancel, onSaved }) {
         <p className="eyebrow">Datos del evento</p>
         <h2>Editar información</h2>
         <p>Los cambios se reflejan en la venta pública.</p>
+        <EventFlyerPicker
+          imageUrl={evento.imagenUrl}
+          file={flyerFile}
+          onFile={(file) => { setFlyerFile(file); setFlyerError(''); }}
+          onError={setFlyerError}
+          busy={loading}
+          compact
+        />
+        {flyerError && <div className="error event-flyer-error">{flyerError}</div>}
       </div>
       <div className="workspace-inline-fields">
         <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
@@ -3834,12 +4196,17 @@ function EventWizardModal({ onClose, onDone }) {
             <div><span>Capacidad</span><b>{capacidad}</b></div>
             <div><span>Numerados</span><b>{numerados.length}</b></div>
           </section>
-          <div className="table"><table><thead><tr><th>Sector</th><th>Precio</th><th>Cupo</th><th>Butacas</th></tr></thead><tbody>
-            {tipos.map((t) => (
-              <tr key={t.id}><td>{t.nombre}</td><td>{money(t.precioCrc)}</td><td>{t.stockTotal}</td><td>{t.numerado ? 'Numerado' : 'General'}</td></tr>
-            ))}
-            {tipos.length === 0 && <tr><td colSpan={4} className="muted">Sin sectores — el evento no se puede vender así.</td></tr>}
-          </tbody></table></div>
+          <DataTable
+            id="wizard-sectores"
+            rows={tipos}
+            empty="Sin sectores — el evento no se puede vender así."
+            columns={[
+              { key: 'nombre', label: 'Sector' },
+              { key: 'precioCrc', label: 'Precio', render: (t) => money(t.precioCrc) },
+              { key: 'stockTotal', label: 'Cupo' },
+              { key: 'numerado', label: 'Butacas', sortValue: (t) => (t.numerado ? 0 : 1), render: (t) => (t.numerado ? 'Numerado' : 'General') },
+            ]}
+          />
           {msg && <div className="okbox">{msg}</div>}
           {error && <div className="error">{error}</div>}
           <div className="modal-actions" style={{ flexWrap: 'wrap' }}>
@@ -3870,7 +4237,7 @@ function WizardTandaRow({ tipo }) {
 // El mapa del estadio ES la interfaz de sectores: entra con todo el venue
 // activo (aforo fijo repartido) y cada ajuste se hace tocando una zona.
 
-const VENUE_AFORO_DEFAULT = 3000;
+const VENUE_AFORO_DEFAULT = 3500;
 
 // Reparte un aforo fijo entre las zonas, proporcional a sus tamaños relativos
 // del catálogo; el residuo se ajusta en la zona más grande para sumar exacto.
@@ -3941,8 +4308,13 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
   const [tandasFor, setTandasFor] = useState(null);
-  const [asientosFor, setAsientosFor] = useState(null);
+  const [showButacas, setShowButacas] = useState(false);
+  const [seatsByZoneKey, setSeatsByZoneKey] = useState({});
+  const [seatSel, setSeatSel] = useState(() => new Set()); // ids de butacas seleccionadas en el mapa
   const seededRef = useRef(false);
+
+  // ESC limpia la selección múltiple de butacas.
+  useEscClose(() => setSeatSel((prev) => (prev.size > 0 ? new Set() : prev)));
 
   const esEspectaculo = (ev?.formato ?? evento.formato) === 'espectaculo';
   const fieldTemplate = ev?.fieldTemplate ?? (esEspectaculo ? '2' : null);
@@ -3963,6 +4335,19 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     setTipos(d.tipos);
     onChanged?.();
     return d.tipos;
+  };
+
+  const loadSeats = async (currentTipos) => {
+    const numerados = (currentTipos || []).filter((t) => t.numerado);
+    if (numerados.length === 0) return;
+    const results = {};
+    await Promise.all(numerados.map(async (t) => {
+      const key = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
+      if (!key) return;
+      const d = await api(`/admin/api/entradas/tipos/${t.id}/asientos`);
+      if (d.ok && d.asientos?.length > 0) results[key] = d.asientos;
+    }));
+    setSeatsByZoneKey(results);
   };
 
   // Crea las zonas del catálogo que falten, con el aforo fijo repartido.
@@ -4013,6 +4398,31 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     return updated;
   }
 
+  // Genera la grilla de butacas de cada tribuna recién sembrada, para que
+  // los asientos numerados existan sin pasos manuales del admin.
+  async function generarButacasDefault(current) {
+    const tribunas = (current || []).filter((t) => {
+      const key = t.mapa?.points?.key ?? nombreToZoneKey(t.nombre);
+      return key && !key.startsWith('gramilla') && !t.numerado && t.stockTotal > 0;
+    });
+    if (tribunas.length === 0) return current;
+    setBusy(true);
+    let total = 0;
+    for (const t of tribunas) {
+      const filas = Math.min(100, Math.max(Math.round(Math.sqrt(t.stockTotal / 8)) || 1, Math.ceil(t.stockTotal / 100)));
+      const porFila = Math.min(100, Math.max(1, Math.round(t.stockTotal / filas)));
+      const d = await api(`/admin/api/entradas/tipos/${t.id}/asientos/generar`, {
+        method: 'POST',
+        body: JSON.stringify({ filas, porFila }),
+      });
+      if (d.ok) total += filas * porFila;
+    }
+    setBusy(false);
+    const updated = await refresh();
+    setMsg({ type: 'ok', text: `Venue listo: ${tribunas.length} zonas con ${total.toLocaleString('es-CR')} butacas numeradas generadas.` });
+    return updated;
+  }
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -4020,11 +4430,14 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
       if (!alive) return;
       if (autoSeed && !seededRef.current && current.length === 0) {
         seededRef.current = true;
-        await seedFaltantes(current);
+        const seeded = await seedFaltantes(current, false);
+        const conButacas = await generarButacasDefault(seeded);
+        await loadSeats(conButacas);
       } else if (current.length > 0) {
         const distribucion = calcularDistribucionAforo(current, catalogo);
         const necesitaAjuste = distribucion.some(({ tipo, cupo }) => tipo.stockTotal !== cupo);
-        if (necesitaAjuste) await redistribuirAforo(current, false);
+        const final = necesitaAjuste ? await redistribuirAforo(current, false) : current;
+        await loadSeats(final);
       }
     })();
     return () => { alive = false; };
@@ -4032,10 +4445,59 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
 
   const allByKey = useMemo(() => zonasByKeyAdmin(tipos || []), [tipos]);
 
+  // ── Selección de butacas individuales sobre el mapa ──
+  function toggleSeat(a) {
+    if (a.estado === 'vendido') return;
+    setSeatSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(a.id)) next.delete(a.id);
+      else next.add(a.id);
+      return next;
+    });
+  }
+
+  function boxSelectSeats(hits, additive) {
+    setSeatSel((prev) => {
+      const next = additive ? new Set(prev) : new Set();
+      for (const a of hits) if (a.estado !== 'vendido') next.add(a.id);
+      return next;
+    });
+  }
+
+  const seatSelPorZona = useMemo(() => {
+    if (seatSel.size === 0) return [];
+    const counts = new Map();
+    for (const [key, list] of Object.entries(seatsByZoneKey)) {
+      const n = list.filter((a) => seatSel.has(a.id)).length;
+      if (n > 0) counts.set(key, n);
+    }
+    return [...counts.entries()];
+  }, [seatSel, seatsByZoneKey]);
+
+  async function setEstadoButacasSel(estado) {
+    const ids = [...seatSel];
+    if (ids.length === 0) return;
+    setBusy(true);
+    const d = await api('/admin/api/entradas/asientos/estado', {
+      method: 'POST',
+      body: JSON.stringify({ ids, estado }),
+    });
+    setBusy(false);
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setSeatSel(new Set());
+    const updated = await refresh();
+    await loadSeats(updated);
+    setMsg({
+      type: 'ok',
+      text: `${d.actualizados} butacas ${estado === 'bloqueado' ? 'bloqueadas' : 'habilitadas'}${d.omitidos ? ` · ${d.omitidos} omitidas` : ''}.`,
+    });
+  }
+
   function selectZone(key) {
     setSelectedKey(key);
     setMsg(null);
     setTandasFor(null);
+    setShowButacas(false);
     const t = allByKey[key];
     setForm(t ? { nombre: t.nombre, precioCrc: String(t.precioCrc), stockTotal: String(t.stockTotal) } : null);
   }
@@ -4169,12 +4631,49 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
             venue={ev?.venue || evento.venue}
             fieldTemplate={esEspectaculo ? fieldTemplate : null}
             fieldSplits={esEspectaculo ? ev?.fieldSplits : null}
+            seatsByZoneKey={seatsByZoneKey}
+            selectedSeatIds={seatSel}
+            onSeatClick={toggleSeat}
+            onSeatBoxSelect={boxSelectSeats}
             showInactive
             showZoneDetails
           />
+          {selectedKey && seatsByZoneKey[selectedKey]?.length > 0 && (
+            <div className="zone-seat-expand">
+              <div className="zone-seat-expand-head">
+                <b>{metaSel?.label ?? selectedKey}</b>
+                <span className="muted">Tocá o arrastrá para seleccionar butacas</span>
+                <span className="zone-seat-legend">
+                  <i style={{ background: '#6de06d' }} /> disponible
+                  <i style={{ background: '#888' }} /> bloqueada
+                  <i style={{ background: '#e05555' }} /> vendida
+                </span>
+              </div>
+              <ZoneSeatGrid
+                asientos={seatsByZoneKey[selectedKey]}
+                selectedSeatIds={seatSel}
+                onSeatClick={toggleSeat}
+                onBoxSelect={boxSelectSeats}
+              />
+            </div>
+          )}
         </div>
 
         <div className="venue-map-inspector">
+          {seatSel.size > 0 && (
+            <div className="stadium-panel stadium-panel--sidebar" style={{ textAlign: 'left' }}>
+              <h3 className="stadium-panel-name">{seatSel.size.toLocaleString('es-CR')} butaca{seatSel.size === 1 ? '' : 's'} seleccionada{seatSel.size === 1 ? '' : 's'}</h3>
+              <p className="stadium-panel-hint">
+                {seatSelPorZona.map(([key, n]) => `${(ERC_ZONE_META[key] ?? GRAMILLA_ZONE_META[key])?.label ?? key}: ${n}`).join(' · ')}
+              </p>
+              <p className="stadium-panel-hint">Tocá butacas para marcar o desmarcar; arrastrá sobre el mapa para seleccionar en bloque (Shift suma a la selección).</p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button className="btn" onClick={() => setEstadoButacasSel('bloqueado')} disabled={busy}>Bloquear</button>
+                <button className="btn ghost" onClick={() => setEstadoButacasSel('disponible')} disabled={busy}>Habilitar</button>
+                <button className="btn ghost" onClick={() => setSeatSel(new Set())} disabled={busy}>Limpiar</button>
+              </div>
+            </div>
+          )}
           {tandasFor && (
             <div className="stadium-panel stadium-panel--sidebar stadium-panel--tool">
               <button className="workspace-back" onClick={() => { setTandasFor(null); refresh(); }}>‹ Volver a {tandasFor.nombre}</button>
@@ -4194,7 +4693,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
               <button className="btn" onClick={() => agregarZona(selectedKey)} disabled={busy}><Plus size={15} />Agregar al mapa</button>
             </div>
           )}
-          {!tandasFor && seleccionado && form && (
+          {!tandasFor && !showButacas && seleccionado && form && (
             <div className="stadium-panel stadium-panel--sidebar" style={{ textAlign: 'left' }}>
               <h3 className="stadium-panel-name">{metaSel?.label ?? seleccionado.nombre}</h3>
               <div className="zone-status-selector" aria-label="Estado de venta">
@@ -4237,13 +4736,18 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button className="btn" onClick={guardarSector} disabled={busy || !form.precioCrc}>Guardar precio</button>
                 <button className="btn ghost" onClick={() => setTandasFor(seleccionado)}>Tandas</button>
-                <button className="btn ghost" onClick={() => setAsientosFor(seleccionado)}>{seleccionado.numerado ? 'Butacas ✓' : 'Butacas'}</button>
+                <button className="btn ghost" onClick={() => setShowButacas(true)}>{seleccionado.numerado ? 'Butacas ✓' : 'Butacas'}</button>
               </div>
+            </div>
+          )}
+          {!tandasFor && showButacas && seleccionado && (
+            <div className="stadium-panel stadium-panel--sidebar stadium-panel--tool">
+              <button className="workspace-back" onClick={async () => { setShowButacas(false); const updated = await refresh(); await loadSeats(updated); }}>‹ Volver a {metaSel?.label ?? seleccionado.nombre}</button>
+              <SeatAdminGrid tipo={seleccionado} onChanged={async () => { const updated = await refresh(); await loadSeats(updated); }} />
             </div>
           )}
         </div>
       </div>
-      {asientosFor && <AsientosModal tipo={asientosFor} onClose={() => { setAsientosFor(null); refresh(); }} />}
     </>
   );
 }
@@ -4390,9 +4894,18 @@ function AdminVentasTab() {
         <div><span>Boletos vendidos</span><b>{totalVendidos}</b></div>
         <div><span>Ingresos validados</span><b>{totalUsados}</b></div>
       </section>
-      <div className="table"><table><thead><tr><th>Evento</th><th>Estado</th><th>Vendidos</th><th>Ingresados</th><th>Ingresos</th></tr></thead><tbody>
-        {eventos.map((e) => <tr key={e.evento.id}><td>{e.evento.nombre}</td><td><span className={`pill ${e.evento.estado}`}>{e.evento.estado}</span></td><td>{e.boletosVendidos}</td><td>{e.boletosUsados}</td><td>{money(e.ingresosCrc)}</td></tr>)}
-      </tbody></table></div>
+      <DataTable
+        id="ventas-eventos"
+        rows={eventos}
+        rowKey={(e) => e.evento.id}
+        columns={[
+          { key: 'nombre', label: 'Evento', sortValue: (e) => e.evento.nombre, render: (e) => e.evento.nombre },
+          { key: 'estado', label: 'Estado', sortValue: (e) => e.evento.estado, render: (e) => <span className={`pill ${e.evento.estado}`}>{e.evento.estado}</span> },
+          { key: 'boletosVendidos', label: 'Vendidos' },
+          { key: 'boletosUsados', label: 'Ingresados' },
+          { key: 'ingresosCrc', label: 'Ingresos', render: (e) => money(e.ingresosCrc) },
+        ]}
+      />
     </>
   );
 }
@@ -4556,21 +5069,28 @@ function EventDetalleContenido({ evento, data }) {
 
       <section className="analytics-card" style={{ marginTop: '1rem' }}>
         <h3><BarChart3 size={16} /> Ocupación por sector</h3>
-        <div className="table"><table><thead><tr><th>Sector</th><th>Ocupación</th><th>Vendidos</th><th>Cupo</th><th>Ingresos</th></tr></thead><tbody>
-          {sectores.map((s) => (
-            <tr key={s.nombre}>
-              <td>{s.nombre}</td>
-              <td style={{ minWidth: 160 }}>
-                <div className="occ-bar"><div className="occ-fill" style={{ width: `${Math.min(100, s.pct)}%` }} /></div>
-                <small className="muted">{s.pct}%</small>
-              </td>
-              <td>{s.vendido}</td>
-              <td>{s.stock}</td>
-              <td>{money(s.ingresos)}</td>
-            </tr>
-          ))}
-          {sectores.length === 0 && <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: '1.5rem' }}>Sin sectores</td></tr>}
-        </tbody></table></div>
+        <DataTable
+          id="ocupacion-sectores"
+          rows={sectores}
+          rowKey={(s) => s.nombre}
+          empty="Sin sectores"
+          columns={[
+            { key: 'nombre', label: 'Sector' },
+            {
+              key: 'pct', label: 'Ocupación',
+              tdProps: () => ({ style: { minWidth: 160 } }),
+              render: (s) => (
+                <>
+                  <div className="occ-bar"><div className="occ-fill" style={{ width: `${Math.min(100, s.pct)}%` }} /></div>
+                  <small className="muted">{s.pct}%</small>
+                </>
+              ),
+            },
+            { key: 'vendido', label: 'Vendidos' },
+            { key: 'stock', label: 'Cupo' },
+            { key: 'ingresos', label: 'Ingresos', render: (s) => money(s.ingresos) },
+          ]}
+        />
       </section>
     </div>
   );
