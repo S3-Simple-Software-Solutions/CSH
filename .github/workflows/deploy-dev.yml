@@ -67,6 +67,11 @@ jobs:
           printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
 
+          # Falla temprano si faltan los secrets de Stripe: evita desplegar un
+          # checkout roto que respondería 500 al primer pago.
+          : "${HEREDIANO_STRIPE_SECRET_KEY:?falta el secret de Stripe}"
+          : "${HEREDIANO_STRIPE_WEBHOOK_SECRET:?falta el webhook secret de dev}"
+
           # Entorno compartido del servicio dev. Igual que produccion pero con
           # PORT=1421 y la URL publica del entorno dev.
           {
