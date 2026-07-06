@@ -5,17 +5,28 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import { api, uploadFile } from '../../utils/api.js';
 import { useEscClose } from '../../utils/useEscClose.js';
+import DataTable from '../../components/DataTable.jsx';
 
-function SortableRow({ sponsor, onEdit }) {
+// El orden de las filas es manual (drag) y se persiste como dato, por eso la
+// tabla no ofrece "ordenar por columna"; sí permite ocultar/mover columnas.
+const SPONSOR_COLUMNS = [
+  { key: 'drag', label: '', menuLabel: 'Arrastrar', sortable: false },
+  { key: 'logo', label: 'Logo', render: (s) => (s.logoPath ? <img src={s.logoPath} alt={s.nombre} className="thumb-logo" /> : <div className="thumb-placeholder" />) },
+  { key: 'nombre', label: 'Nombre', render: (s) => <strong>{s.nombre}</strong> },
+  { key: 'tipo', label: 'Tipo', render: (s) => (s.esApparel ? <span className="pill ok">Apparel</span> : <span className="pill">Patrocinador</span>) },
+  { key: 'activo', label: 'Activo', render: (s) => <span className={`pill${s.activo ? ' ok' : ''}`}>{s.activo ? 'Activo' : 'Inactivo'}</span> },
+];
+
+function SortableRow({ sponsor, columns, onEdit }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sponsor.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   return (
     <tr ref={setNodeRef} style={style} className="clickable-row" onClick={() => onEdit(sponsor)}>
-      <td onClick={(e) => e.stopPropagation()}><button className="icon-text ghost drag-handle" {...attributes} {...listeners} title="Arrastrar"><GripVertical size={15} /></button></td>
-      <td>{sponsor.logoPath ? <img src={sponsor.logoPath} alt={sponsor.nombre} className="thumb-logo" /> : <div className="thumb-placeholder" />}</td>
-      <td><strong>{sponsor.nombre}</strong></td>
-      <td>{sponsor.esApparel ? <span className="pill ok">Apparel</span> : <span className="pill">Patrocinador</span>}</td>
-      <td><span className={`pill${sponsor.activo ? ' ok' : ''}`}>{sponsor.activo ? 'Activo' : 'Inactivo'}</span></td>
+      {columns.map((c) => (c.key === 'drag' ? (
+        <td key="drag" onClick={(e) => e.stopPropagation()}><button className="icon-text ghost drag-handle" {...attributes} {...listeners} title="Arrastrar"><GripVertical size={15} /></button></td>
+      ) : (
+        <td key={c.key}>{c.render(sponsor)}</td>
+      )))}
     </tr>
   );
 }
@@ -143,20 +154,23 @@ export default function AdminSponsors() {
       <div className="toolbar" style={{ marginBottom: '1rem' }}>
         <button className="btn" onClick={() => setModal({})}><Plus size={15} />Nuevo sponsor</button>
       </div>
-      <div className="table">
-        <table>
-          <thead><tr><th></th><th>Logo</th><th>Nombre</th><th>Tipo</th><th>Activo</th></tr></thead>
+      <DataTable
+        id="sponsors"
+        rows={sponsors}
+        columns={SPONSOR_COLUMNS}
+        sortable={false}
+        renderBody={(cols, rows) => (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={sponsors.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={rows.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <tbody>
-                {sponsors.map((s) => (
-                  <SortableRow key={s.id} sponsor={s} onEdit={(sp) => setModal(sp)} />
+                {rows.map((s) => (
+                  <SortableRow key={s.id} sponsor={s} columns={cols} onEdit={(sp) => setModal(sp)} />
                 ))}
               </tbody>
             </SortableContext>
           </DndContext>
-        </table>
-      </div>
+        )}
+      />
       {modal !== null && <SponsorModal sponsor={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
       {delTarget && <ConfirmModal title="Eliminar sponsor" text={`¿Eliminar a ${delTarget.nombre}? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>

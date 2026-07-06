@@ -4,10 +4,20 @@ import { escapeHtml } from '../../core/http';
 import { makeMailTransport, emailShell, commonMailAttachments, fmtMailDate, MailAttachment } from '../../core/mailer';
 import { Boleto, Evento } from './entradas.types';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isValidEmailAddress(value: string): boolean {
+  if (!value || value.length > 254) return false;
+  for (const char of value) {
+    if (char === ' ' || char === '\t' || char === '\r' || char === '\n') return false;
+  }
+  const at = value.indexOf('@');
+  if (at <= 0 || at !== value.lastIndexOf('@')) return false;
+  const domain = value.slice(at + 1);
+  const dot = domain.lastIndexOf('.');
+  return dot > 0 && dot < domain.length - 1;
+}
 
 export async function sendEntradasEmail({ to, evento, boletos }: { to: string; evento: Evento; boletos: Boleto[] }): Promise<void> {
-  if (!to || !EMAIL_RE.test(to)) throw new Error('Correo invalido');
+  if (!isValidEmailAddress(to)) throw new Error('Correo invalido');
 
   const qrAttachments: MailAttachment[] = [];
   const cards: string[] = [];
@@ -20,6 +30,7 @@ export async function sendEntradasEmail({ to, evento, boletos }: { to: string; e
       `<div style="margin:0 0 16px;padding:16px;border:1px solid rgba(201,169,97,.45);border-radius:6px;text-align:center">
         <img src="cid:${cid}" width="200" alt="QR ${escapeHtml(b.codigo)}" style="display:inline-block;background:#fff;border:8px solid #fff;border-radius:6px">
         <p style="margin:12px 0 2px;color:#c9a961;font-weight:800;font-size:16px;letter-spacing:.05em">${escapeHtml(b.tipoNombre || 'Entrada')}</p>
+        ${b.asientoLabel ? `<p style="margin:0 0 2px;color:#f7f1df;font-size:14px;font-weight:700">${escapeHtml(b.asientoLabel)}</p>` : ''}
         <p style="margin:0;color:#f7f1df;font-size:13px">Codigo <b>${escapeHtml(b.codigo)}</b></p>
       </div>`,
     );

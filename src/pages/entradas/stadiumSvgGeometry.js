@@ -26,15 +26,19 @@ export const ERC_ZONE_PATHS_V2 = {
     'M 818 162 L 908 178 L 918 358 L 908 518 L 818 518 L 818 162 Z',
   ],
   'lateral-oeste': [
-    'M 182 162 L 92 178 L 82 278 L 182 262 L 182 162 Z',
+    'M 182 162 L 92 178 L 82 358 L 92 518 L 182 518 L 182 162 Z',
   ],
-  'socio': [
-    'M 82 438 L 182 422 L 182 518 L 92 518 L 82 438 Z',
-  ],
-  'palco': [
-    'M 82 278 L 182 262 L 192 422 L 82 438 Z',
-    'M 818 262 L 908 278 L 918 438 L 818 422 Z',
-  ],
+};
+
+/**
+ * Rectángulos de referencia para renderizar dots de butacas por zona.
+ * axis 'h' = horizontal (filas→y, nums→x); 'v' = vertical (filas→x, nums→y).
+ */
+export const ZONE_SEAT_BOUNDS = {
+  'sol-norte':     { x1: 210, y1: 85,  x2: 790, y2: 148, axis: 'h' },
+  'sol-sur':       { x1: 210, y1: 528, x2: 790, y2: 638, axis: 'h' },
+  'lateral-este':  { x1: 822, y1: 178, x2: 898, y2: 504, axis: 'v' },
+  'lateral-oeste': { x1: 102, y1: 178, x2: 178, y2: 504, axis: 'v' },
 };
 
 /** Líneas decorativas de gradas (coords normalizadas por zona). */
@@ -42,7 +46,5 @@ export const ZONE_SEAT_LINES = {
   'sol-norte': [110, 125, 140],
   'sol-sur': [560, 595, 630],
   'lateral-este': [220, 300, 380, 460],
-  'lateral-oeste': [200, 230],
-  'socio': [460, 490],
-  'palco': [320, 360],
+  'lateral-oeste': [220, 300, 380, 460],
 };

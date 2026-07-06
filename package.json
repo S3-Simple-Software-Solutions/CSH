@@ -34,6 +34,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
     "lucide-react": "^1.17.0",
     "nodemailer": "^8.0.11",
     "pg": "^8.21.0",
@@ -41,6 +42,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0",
+    "stripe": "^22.3.0",
+    "twilio": "^6.0.2",
     "vite": "^8.0.16"
   },
   "devDependencies": {
