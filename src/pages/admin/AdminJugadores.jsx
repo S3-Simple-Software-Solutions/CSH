@@ -5,25 +5,37 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import { api, uploadFile } from '../../utils/api.js';
 import { useEscClose } from '../../utils/useEscClose.js';
+import DataTable from '../../components/DataTable.jsx';
 
 const CATEGORIAS = ['Porteros', 'Defensas', 'Mediocampistas', 'Mediocampistas Ofensivos', 'Delanteros', 'Staff'];
 const MAX_DESTACADOS = 5;
 
-function SortableRow({ jugador, onEdit, onToggleDestacado, onToggleActivo, destacadosCount }) {
+// El orden de las filas es manual (drag) y se persiste como dato, por eso la
+// tabla no ofrece "ordenar por columna"; sí permite ocultar/mover columnas.
+const JUGADOR_COLUMNS = [
+  { key: 'drag', label: '', menuLabel: 'Arrastrar' },
+  { key: 'foto', label: 'Foto', render: (j) => (j.fotoPath ? <img src={j.fotoPath} alt={j.nombre} className="thumb" /> : <div className="thumb-placeholder" />) },
+  { key: 'nombre', label: 'Nombre', render: (j) => <strong>{j.nombre}</strong> },
+  { key: 'dorsal', label: '#', menuLabel: 'Dorsal', tdProps: () => ({ className: 'muted' }), render: (j) => j.dorsal ?? '—' },
+  { key: 'posicion', label: 'Posición', tdProps: () => ({ className: 'muted' }), render: (j) => j.posicion ?? '—' },
+  { key: 'categoria', label: 'Categoría', render: (j) => <span className="pill">{j.categoria}</span> },
+  { key: 'nacionalidad', label: 'NAC', tdProps: () => ({ className: 'muted' }) },
+  { key: 'destacado', label: '★', menuLabel: 'Destacado' },
+  { key: 'activo', label: 'Activo' },
+];
+
+function SortableRow({ jugador, columns, onEdit, onToggleDestacado, onToggleActivo, destacadosCount }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: jugador.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   const canDestacado = jugador.destacado || destacadosCount < MAX_DESTACADOS;
   const stop = (e) => e.stopPropagation();
-  return (
-    <tr ref={setNodeRef} style={style} className="clickable-row" onClick={() => onEdit(jugador)}>
-      <td onClick={stop}><button className="icon-text ghost drag-handle" {...attributes} {...listeners} title="Arrastrar"><GripVertical size={15} /></button></td>
-      <td>{jugador.fotoPath ? <img src={jugador.fotoPath} alt={jugador.nombre} className="thumb" /> : <div className="thumb-placeholder" />}</td>
-      <td><strong>{jugador.nombre}</strong></td>
-      <td className="muted">{jugador.dorsal ?? '—'}</td>
-      <td className="muted">{jugador.posicion ?? '—'}</td>
-      <td><span className="pill">{jugador.categoria}</span></td>
-      <td className="muted">{jugador.nacionalidad}</td>
-      <td onClick={stop}>
+  // Celdas interactivas que necesitan handlers del row (drag, toggles).
+  const special = {
+    drag: (
+      <td key="drag" onClick={stop}><button className="icon-text ghost drag-handle" {...attributes} {...listeners} title="Arrastrar"><GripVertical size={15} /></button></td>
+    ),
+    destacado: (
+      <td key="destacado" onClick={stop}>
         <button
           className={`btn ghost tight${jugador.destacado ? ' active' : ''}`}
           onClick={() => onToggleDestacado(jugador)}
@@ -33,11 +45,20 @@ function SortableRow({ jugador, onEdit, onToggleDestacado, onToggleActivo, desta
           <Star size={14} />
         </button>
       </td>
-      <td onClick={stop}>
+    ),
+    activo: (
+      <td key="activo" onClick={stop}>
         <button className={`btn ghost tight${!jugador.activo ? ' danger' : ''}`} onClick={() => onToggleActivo(jugador)} title={jugador.activo ? 'Desactivar' : 'Activar'}>
           {jugador.activo ? '✓' : <UserX size={14} />}
         </button>
       </td>
+    ),
+  };
+  return (
+    <tr ref={setNodeRef} style={style} className="clickable-row" onClick={() => onEdit(jugador)}>
+      {columns.map((c) => special[c.key] ?? (
+        <td key={c.key} {...(c.tdProps ? c.tdProps(jugador) : {})}>{c.render ? c.render(jugador) : jugador[c.key]}</td>
+      ))}
     </tr>
   );
 }
@@ -187,22 +208,25 @@ export default function AdminJugadores() {
         <button className="btn" onClick={() => setModal({})}><Plus size={15} />Nuevo jugador</button>
         <span className="muted" style={{ marginLeft: '1rem' }}>{destacadosCount}/{MAX_DESTACADOS} destacados</span>
       </div>
-      <div className="table">
-        <table>
-          <thead><tr><th></th><th>Foto</th><th>Nombre</th><th>#</th><th>Posición</th><th>Categoría</th><th>NAC</th><th>★</th><th>Activo</th></tr></thead>
+      <DataTable
+        id="jugadores"
+        rows={jugadores}
+        columns={JUGADOR_COLUMNS}
+        sortable={false}
+        renderBody={(cols, rows) => (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={jugadores.map((j) => j.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={rows.map((j) => j.id)} strategy={verticalListSortingStrategy}>
               <tbody>
-                {jugadores.map((j) => (
-                  <SortableRow key={j.id} jugador={j} destacadosCount={destacadosCount}
+                {rows.map((j) => (
+                  <SortableRow key={j.id} jugador={j} columns={cols} destacadosCount={destacadosCount}
                     onEdit={(jug) => setModal(jug)}
                     onToggleDestacado={toggleDestacado} onToggleActivo={toggleActivo} />
                 ))}
               </tbody>
             </SortableContext>
           </DndContext>
-        </table>
-      </div>
+        )}
+      />
       {modal !== null && <JugadorModal jugador={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
       {delTarget && <ConfirmModal title="Eliminar jugador" text={`¿Eliminar a ${delTarget.nombre}? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>

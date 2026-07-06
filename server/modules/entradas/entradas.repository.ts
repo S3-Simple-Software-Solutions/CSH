@@ -1,8 +1,17 @@
 import {
+  Asiento,
+  AsientoPublico,
   Boleto,
   CompraResultado,
+  Descuento,
+  DescuentoInput,
+  EntradaConfig,
+  EntradaConfigInput,
   Evento,
   EventoInput,
+  EventTemplate,
+  EventTemplatePayload,
+  GenerarAsientosInput,
   IniciarOrdenInput,
   IniciarOrdenResult,
   ListLogOptions,
@@ -10,6 +19,12 @@ import {
   MapaBatchInput,
   MapaEventoInput,
   MapaTipoInput,
+  Promotor,
+  PromotorInput,
+  PromotorRanking,
+  ReservaAsientos,
+  Tanda,
+  TandaInput,
   OrdenPublica,
   PagoEntrada,
   TicketType,
@@ -37,7 +52,7 @@ export interface EntradasRepository {
   getOrdenPublica(ref: string): Promise<OrdenPublica | null>;
   getBoletoByCodigo(codigo: string): Promise<Boleto | null>;
   getOrdenBoletos(ordenId: string): Promise<Boleto[]>;
-  getOrden(ordenId: string): Promise<{ id: string; eventoId: string; compradorEmail: string; compradorNombre: string } | null>;
+  getOrden(ordenId: string): Promise<{ id: string; eventoId: string; compradorEmail: string; compradorNombre: string; compradorTelefono: string | null; notifWhatsapp: boolean } | null>;
 
   // Admin
   adminListEventos(): Promise<VentasEvento[]>;
@@ -53,6 +68,42 @@ export interface EntradasRepository {
   emitirCortesia(eventoId: string, tipoId: string, comprador: { nombre: string; email: string }, actor: { id: string; name: string }): Promise<CompraResultado>;
   listLog(opts: ListLogOptions): Promise<{ total: number; eventos: EntradaLog[] }>;
   logEvento(tipo: string, input: LogEntradaInput): Promise<void>;
+
+  // Asientos numerados (P2)
+  getAsientosPublico(slug: string): Promise<AsientoPublico[]>;
+  reservarAsientos(slug: string, asientoIds: string[]): Promise<ReservaAsientos>;
+  listAsientosTipo(tipoId: string): Promise<Asiento[]>;
+  generarAsientos(tipoId: string, input: GenerarAsientosInput): Promise<{ tipo: TicketType; total: number }>;
+  setEstadoAsiento(asientoId: string, estado: 'disponible' | 'bloqueado'): Promise<Asiento>;
+
+  // Tandas / preventa (P1)
+  listTandas(tipoId: string): Promise<Tanda[]>;
+  crearTanda(tipoId: string, input: TandaInput): Promise<Tanda>;
+  actualizarTanda(id: string, input: TandaInput): Promise<Tanda>;
+  eliminarTanda(id: string): Promise<void>;
+
+  // Templates de evento
+  listTemplates(): Promise<EventTemplate[]>;
+  getTemplate(id: string): Promise<EventTemplate | null>;
+  crearTemplate(nombre: string, descripcion: string, payload: EventTemplatePayload): Promise<EventTemplate>;
+  actualizarTemplate(id: string, nombre: string, descripcion: string): Promise<EventTemplate>;
+  eliminarTemplate(id: string): Promise<void>;
+
+  // Promotores / RRPP (P1)
+  listPromotores(): Promise<Promotor[]>;
+  crearPromotor(input: PromotorInput): Promise<Promotor>;
+  actualizarPromotor(id: string, input: PromotorInput): Promise<Promotor>;
+  eliminarPromotor(id: string): Promise<void>;
+  rankingPromotores(): Promise<PromotorRanking[]>;
+
+  // Fee + descuentos (P1)
+  getConfig(): Promise<EntradaConfig>;
+  setConfig(input: EntradaConfigInput): Promise<EntradaConfig>;
+  listDescuentos(eventoId?: string): Promise<Descuento[]>;
+  getDescuentoByCodigo(codigo: string): Promise<Descuento | null>;
+  crearDescuento(input: DescuentoInput): Promise<Descuento>;
+  actualizarDescuento(id: string, input: DescuentoInput): Promise<Descuento>;
+  eliminarDescuento(id: string): Promise<void>;
 
   // Mapa
   getMapaEvento(eventoId: string): Promise<{ evento: Evento; tipos: TicketType[] } | null>;

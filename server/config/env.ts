@@ -40,6 +40,11 @@ export const env = {
   AGENTS_BASE_URL: process.env.AGENTS_BASE_URL || 'http://127.0.0.1:3400',
   AGENTS_API_KEY: process.env.AGENTS_API_KEY || '',
   ANALYTICS_MODEL: process.env.ANALYTICS_MODEL || 'claude-sonnet-4-6',
+  // WhatsApp (Twilio). Sandbox: número +14155238886, sin aprobación de plantillas.
+  WHATSAPP_ENABLED: bool(process.env.WHATSAPP_ENABLED),
+  TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
+  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
+  TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || 'whatsapp:+14155238886',
   // Pagos: pasarela seleccionable (hoy solo 'stripe'). La tarjeta nunca toca
   // este servidor; se cobra con Stripe Checkout (página hospedada).
   PAYMENTS_PROVIDER: process.env.HEREDIANO_PAYMENTS_PROVIDER || 'stripe',

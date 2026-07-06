@@ -30,3 +30,114 @@ export function qrData(codigo: string, eventoId: string, tipoId: string, email: 
 export function extractCodigo(input: unknown): string {
   return String(input || '').trim().split('|')[0].trim().toUpperCase();
 }
+
+// Normaliza códigos ingresados por el usuario (descuento / promotor): sin espacios,
+// mayúsculas, solo alfanumérico y guiones.
+export function normalizeCodigo(input: unknown): string {
+  return String(input || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+}
+
+// ── Cálculo de totales del checkout ─────────────────────────────────
+// Regla fijada: el cargo por servicio se calcula sobre (subtotal − descuento).
+
+export type FeeTipo = 'pct' | 'crc' | 'ninguno';
+export type DescuentoTipo = 'pct' | 'monto';
+
+export interface FeeConfig {
+  tipo: FeeTipo;
+  valor: number;
+}
+
+export interface DescuentoAplicado {
+  tipo: DescuentoTipo;
+  valor: number;
+}
+
+export interface Totales {
+  subtotal: number;
+  descuento: number;
+  fee: number;
+  total: number;
+}
+
+export function calcularDescuento(subtotal: number, desc: DescuentoAplicado | null): number {
+  if (!desc || subtotal <= 0 || desc.valor <= 0) return 0;
+  const bruto = desc.tipo === 'pct' ? Math.round((subtotal * desc.valor) / 100) : Math.round(desc.valor);
+  return Math.max(0, Math.min(bruto, subtotal)); // el descuento nunca supera el subtotal
+}
+
+export function calcularFee(base: number, fee: FeeConfig | null): number {
+  if (!fee || fee.tipo === 'ninguno' || fee.valor <= 0 || base <= 0) return 0;
+  return fee.tipo === 'pct' ? Math.round((base * fee.valor) / 100) : Math.round(fee.valor);
+}
+
+export function calcularTotales(subtotal: number, fee: FeeConfig | null, desc: DescuentoAplicado | null): Totales {
+  const s = Math.max(0, Math.round(subtotal));
+  const descuento = calcularDescuento(s, desc);
+  const base = s - descuento;
+  const feeCrc = calcularFee(base, fee);
+  return { subtotal: s, descuento, fee: feeCrc, total: Math.max(0, base + feeCrc) };
+}
+
+// ── Preventa / tandas de precio ─────────────────────────────────────
+// La tanda activa es la primera (por orden) vigente por fecha y con cupo
+// disponible. Si ninguna aplica, el tipo vende a su precio base.
+
+export interface TandaLike {
+  nombre: string;
+  precioCrc: number;
+  ventaDesde: string | null;
+  ventaHasta: string | null;
+  cupo: number | null;
+  vendidos: number;
+  orden: number;
+}
+
+// ── Templates: offsets de tandas ────────────────────────────────────
+// Un template no puede guardar fechas absolutas de preventa: se convierten a
+// "días antes del evento" al serializar y se recalculan al aplicar.
+
+const DIA_MS = 86400000;
+
+export function fechaToDiasAntes(fechaEvento: string, fecha: string | null): number | null {
+  if (!fecha) return null;
+  const evento = new Date(fechaEvento).getTime();
+  const f = new Date(fecha).getTime();
+  if (!isFinite(evento) || !isFinite(f)) return null;
+  return Math.round((evento - f) / DIA_MS);
+}
+
+export function diasAntesToFecha(fechaEvento: string, dias: number | null): string | null {
+  if (dias == null) return null;
+  const evento = new Date(fechaEvento).getTime();
+  if (!isFinite(evento)) return null;
+  return new Date(evento - dias * DIA_MS).toISOString();
+}
+
+// ── Asientos numerados ──────────────────────────────────────────────
+// Etiqueta de fila estilo hoja de cálculo: 0 → A, 25 → Z, 26 → AA.
+
+export function filaLabel(index: number): string {
+  let n = Math.max(0, Math.floor(index));
+  let label = '';
+  do {
+    label = String.fromCharCode(65 + (n % 26)) + label;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return label;
+}
+
+export function asientoLabel(fila: string, numero: number): string {
+  return `Fila ${fila} · Asiento ${numero}`;
+}
+
+export function tandaActiva<T extends TandaLike>(tandas: T[], now: Date = new Date()): T | null {
+  const candidatas = [...tandas].sort((a, b) => a.orden - b.orden);
+  for (const t of candidatas) {
+    if (t.ventaDesde && new Date(t.ventaDesde) > now) continue;
+    if (t.ventaHasta && new Date(t.ventaHasta) < now) continue;
+    if (t.cupo != null && t.vendidos >= t.cupo) continue;
+    return t;
+  }
+  return null;
+}

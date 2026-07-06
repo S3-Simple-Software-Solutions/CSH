@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Trash2, Plus } from 'lucide-react';
 import { api, uploadFile } from '../../utils/api.js';
 import { useEscClose } from '../../utils/useEscClose.js';
+import DataTable from '../../components/DataTable.jsx';
 
 const DEFAULT_CATEGORIAS = ['Noticias', 'Refuerzos', 'Comunicados', 'Crónicas', 'Cantera', 'Femenino', 'Entradas'];
 
@@ -142,22 +143,18 @@ export default function AdminNoticias() {
       <div className="toolbar" style={{ marginBottom: '1rem' }}>
         <button className="btn" onClick={() => setModal({})}><Plus size={15} />Nueva noticia</button>
       </div>
-      <div className="table">
-        <table>
-          <thead><tr><th>Portada</th><th>Título</th><th>Categoría</th><th>Fecha</th><th>Estado</th></tr></thead>
-          <tbody>
-            {noticias.map((n) => (
-              <tr key={n.id} className="clickable-row" onClick={() => setModal(n)}>
-                <td>{n.imagenPath ? <img src={n.imagenPath} alt={n.titulo} className="thumb" /> : <div className="thumb-placeholder" />}</td>
-                <td><strong>{n.titulo}</strong><br /><small className="muted">{n.fuente}</small></td>
-                <td><span className="pill">{n.categoria}</span></td>
-                <td className="muted">{new Date(n.fecha).toLocaleDateString('es-CR')}</td>
-                <td><span className={`pill ${n.estado}`}>{n.estado === 'publicado' ? 'Publicado' : 'Borrador'}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        id="noticias"
+        rows={noticias}
+        rowProps={(n) => ({ className: 'clickable-row', onClick: () => setModal(n) })}
+        columns={[
+          { key: 'portada', label: 'Portada', sortable: false, render: (n) => (n.imagenPath ? <img src={n.imagenPath} alt={n.titulo} className="thumb" /> : <div className="thumb-placeholder" />) },
+          { key: 'titulo', label: 'Título', render: (n) => <><strong>{n.titulo}</strong><br /><small className="muted">{n.fuente}</small></> },
+          { key: 'categoria', label: 'Categoría', render: (n) => <span className="pill">{n.categoria}</span> },
+          { key: 'fecha', label: 'Fecha', sortValue: (n) => new Date(n.fecha).getTime(), tdProps: () => ({ className: 'muted' }), render: (n) => new Date(n.fecha).toLocaleDateString('es-CR') },
+          { key: 'estado', label: 'Estado', render: (n) => <span className={`pill ${n.estado}`}>{n.estado === 'publicado' ? 'Publicado' : 'Borrador'}</span> },
+        ]}
+      />
       {modal !== null && <NoticiaModal noticia={modal?.id ? modal : null} categorias={categorias} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
       {delTarget && <ConfirmModal title="Eliminar noticia" text={`¿Eliminar "${delTarget.titulo}"? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>

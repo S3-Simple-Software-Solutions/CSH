@@ -3,6 +3,7 @@ import { Trash2, Plus } from 'lucide-react';
 import { api } from '../../utils/api.js';
 import { escudoFor } from '../../data/escudos.js';
 import { useEscClose } from '../../utils/useEscClose.js';
+import DataTable from '../../components/DataTable.jsx';
 
 const ESTADOS = ['programado', 'jugado', 'cancelado', 'pospuesto'];
 
@@ -141,35 +142,34 @@ export default function AdminPartidos() {
       <div className="toolbar" style={{ marginBottom: '1rem' }}>
         <button className="btn" onClick={() => setModal({})}><Plus size={15} />Nuevo partido</button>
       </div>
-      <div className="table">
-        <table>
-          <thead><tr><th>Tipo</th><th>Competición</th><th>Partido</th><th>Fecha</th><th>Marcador</th><th>Estado</th></tr></thead>
-          <tbody>
-            {partidos.map((p) => (
-              <tr key={p.id} className="clickable-row" onClick={() => setModal(p)}>
-                <td><span className={`pill${p.tipo === 'proximo' ? '' : ' ok'}`}>{p.tipo === 'proximo' ? 'Próximo' : 'Resultado'}</span></td>
-                <td className="muted">{p.competicion}</td>
-                <td>
-                  <span className="partido-cell">
-                    <span className="partido-team">
-                      <img src={escudoFor(p.equipoLocal)} alt="" className="escudo-mini" />
-                      <strong>{p.equipoLocal}</strong>
-                    </span>
-                    <span className="muted">vs</span>
-                    <span className="partido-team">
-                      <img src={escudoFor(p.equipoVisita)} alt="" className="escudo-mini" />
-                      <strong>{p.equipoVisita}</strong>
-                    </span>
-                  </span>
-                </td>
-                <td className="muted">{new Date(p.fecha).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                <td className="muted">{p.golesLocal != null ? `${p.golesLocal} - ${p.golesVisita}` : '—'}</td>
-                <td><span className="pill">{p.estado}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        id="partidos"
+        rows={partidos}
+        rowProps={(p) => ({ className: 'clickable-row', onClick: () => setModal(p) })}
+        columns={[
+          { key: 'tipo', label: 'Tipo', render: (p) => <span className={`pill${p.tipo === 'proximo' ? '' : ' ok'}`}>{p.tipo === 'proximo' ? 'Próximo' : 'Resultado'}</span> },
+          { key: 'competicion', label: 'Competición', tdProps: () => ({ className: 'muted' }) },
+          {
+            key: 'partido', label: 'Partido', sortValue: (p) => `${p.equipoLocal} vs ${p.equipoVisita}`,
+            render: (p) => (
+              <span className="partido-cell">
+                <span className="partido-team">
+                  <img src={escudoFor(p.equipoLocal)} alt="" className="escudo-mini" />
+                  <strong>{p.equipoLocal}</strong>
+                </span>
+                <span className="muted">vs</span>
+                <span className="partido-team">
+                  <img src={escudoFor(p.equipoVisita)} alt="" className="escudo-mini" />
+                  <strong>{p.equipoVisita}</strong>
+                </span>
+              </span>
+            ),
+          },
+          { key: 'fecha', label: 'Fecha', sortValue: (p) => new Date(p.fecha).getTime(), tdProps: () => ({ className: 'muted' }), render: (p) => new Date(p.fecha).toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+          { key: 'marcador', label: 'Marcador', sortable: false, tdProps: () => ({ className: 'muted' }), render: (p) => (p.golesLocal != null ? `${p.golesLocal} - ${p.golesVisita}` : '—') },
+          { key: 'estado', label: 'Estado', render: (p) => <span className="pill">{p.estado}</span> },
+        ]}
+      />
       {modal !== null && <PartidoModal partido={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
       {delTarget && <ConfirmModal title="Eliminar partido" text={`¿Eliminar ${delTarget.equipoLocal} vs ${delTarget.equipoVisita}? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>
