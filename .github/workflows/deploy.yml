@@ -68,6 +68,11 @@ jobs:
         shell: bash
         env:
           ALL_SECRETS: ${{ secrets.ALL_SECRETS }}
+          # Pagos: secrets individuales (igual que deploy-dev.yml). En prod el
+          # webhook secret es el de SU propio endpoint de Stripe (URL de prod),
+          # distinto al de dev; la secret key (sk_test) se comparte.
+          HEREDIANO_STRIPE_SECRET_KEY: ${{ secrets.HEREDIANO_STRIPE_SECRET_KEY }}
+          HEREDIANO_STRIPE_WEBHOOK_SECRET: ${{ secrets.HEREDIANO_STRIPE_WEBHOOK_SECRET_PROD }}
         run: |
           set -euo pipefail
 
@@ -113,6 +118,8 @@ jobs:
             echo "HEREDIANO_APP_URL=$(get HEREDIANO_APP_URL)"
             echo "HEREDIANO_SMTP_USER=$(get HEREDIANO_SMTP_USER)"
             echo "HEREDIANO_SMTP_PASS=$(get HEREDIANO_SMTP_PASS)"
+            echo "HEREDIANO_STRIPE_SECRET_KEY=${HEREDIANO_STRIPE_SECRET_KEY}"
+            echo "HEREDIANO_STRIPE_WEBHOOK_SECRET=${HEREDIANO_STRIPE_WEBHOOK_SECRET}"
           } > /tmp/app.env
 
       - name: Deploy version via SSH
