@@ -98,6 +98,11 @@ jobs:
           printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
 
+          # Falla temprano si faltan los secrets de Stripe: evita desplegar un
+          # checkout roto que respondería 500 al primer pago.
+          : "${HEREDIANO_STRIPE_SECRET_KEY:?falta el secret de Stripe}"
+          : "${HEREDIANO_STRIPE_WEBHOOK_SECRET:?falta el webhook secret de prod}"
+
           # Shared runtime environment. Systemd reads this file for every
           # release, so rollbacks do not need to copy secrets into old builds.
           {
