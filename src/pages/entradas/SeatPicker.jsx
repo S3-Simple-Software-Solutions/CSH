@@ -67,12 +67,26 @@ function buildBowlLayout(asientos, orientation) {
   }
   const filas = [...filaMap.keys()].sort(filaSort);
 
-  // Ancho de referencia (fila más ancha, ya con abanico) para normalizar la curva.
+  // Escaleras (pasillos verticales): parten las butacas en bloques cuando el
+  // sector es ancho, como los vomitorios de una tribuna real. Se ubican por
+  // número de asiento (misma columna en todas las filas) para que suban rectas.
+  const maxNum = Math.max(1, ...asientos.map((a) => a.numero));
+  const AISLE_GAP_COLS = 1.15;   // ancho del pasillo en unidades de columna
+  const BLOCK = 11;              // butacas objetivo por bloque
+  const aisleAfter = [];
+  if (maxNum >= BLOCK * 2 - 2) {
+    const blocks = Math.max(2, Math.round(maxNum / BLOCK));
+    for (let k = 1; k < blocks; k++) aisleAfter.push(Math.round((k * maxNum) / blocks));
+  }
+  const effCol = (num) => (num - 1) + AISLE_GAP_COLS * aisleAfter.filter((t) => t < num).length;
+
+  // Ancho de referencia (fila más ancha, con abanico y pasillos) para la curva.
   let uRef = 1;
   filas.forEach((fila, fi) => {
-    const n = filaMap.get(fila).length;
     const spacing = CELL * (1 + fi * FAN);
-    uRef = Math.max(uRef, ((n - 1) / 2) * spacing);
+    const effs = filaMap.get(fila).map((a) => effCol(a.numero));
+    const center = (Math.min(...effs) + Math.max(...effs)) / 2;
+    uRef = Math.max(uRef, Math.max(...effs.map((e) => Math.abs(e - center))) * spacing);
   });
 
   // Butacas en coords canónicas (u lateral, v profundidad desde la cancha).
@@ -80,19 +94,30 @@ function buildBowlLayout(asientos, orientation) {
   const rowEnds = [];
   filas.forEach((fila, fi) => {
     const cols = [...filaMap.get(fila)].sort((x, y) => x.numero - y.numero);
-    const n = cols.length;
     const spacing = CELL * (1 + fi * FAN);
     const vbase = FRONT + fi * ROWGAP;
+    const effs = cols.map((a) => effCol(a.numero));
+    const center = (Math.min(...effs) + Math.max(...effs)) / 2;
     let uMin = Infinity;
     let uMax = -Infinity;
-    cols.forEach((a, j) => {
-      const u = (j - (n - 1) / 2) * spacing;
+    cols.forEach((a) => {
+      const u = (effCol(a.numero) - center) * spacing;
       const v = vbase + CURVE * (u / uRef) * (u / uRef);
       raw.push({ a, u, v });
       uMin = Math.min(uMin, u);
       uMax = Math.max(uMax, u);
     });
-    rowEnds.push({ fila, vbase, uMin, uMax });
+    rowEnds.push({ fila, vbase, uMin, uMax, spacing, center });
+  });
+
+  // Geometría canónica de cada escalera: centro y ancho por fila (fanea).
+  const aislesCanon = aisleAfter.map((t) => {
+    const aisleCenterEff = (effCol(t) + effCol(t + 1)) / 2;
+    return rowEnds.map(({ vbase, spacing, center }) => ({
+      vbase,
+      uc: (aisleCenterEff - center) * spacing,
+      uw: AISLE_GAP_COLS * spacing * 0.8,
+    }));
   });
 
   // Proyección canónica → pantalla (ejes alineados, dd/ld son unitarios de eje).
@@ -172,7 +197,25 @@ function buildBowlLayout(asientos, orientation) {
     };
   });
 
-  return { seats: outSeats, labels: outLabels, steps: outSteps, nSteps, band, width, height, seatRot: O.rot };
+  // Escaleras: polígono del pasillo (fanea) + peldaños (uno por escalón).
+  const outAisles = aislesCanon.map((perRow) => {
+    const first = perRow[0];
+    const last = perRow[perRow.length - 1];
+    const corners = [
+      proj(first.uc - first.uw / 2, first.vbase - STEP_HALF),
+      proj(first.uc + first.uw / 2, first.vbase - STEP_HALF),
+      proj(last.uc + last.uw / 2, last.vbase + STEP_HALF),
+      proj(last.uc - last.uw / 2, last.vbase + STEP_HALF),
+    ].map(shift);
+    const treads = perRow.map(({ uc, uw, vbase }) => {
+      const p1 = shift(proj(uc - uw / 2, vbase - STEP_HALF));
+      const p2 = shift(proj(uc + uw / 2, vbase - STEP_HALF));
+      return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+    });
+    return { points: corners.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '), treads };
+  });
+
+  return { seats: outSeats, labels: outLabels, steps: outSteps, nSteps, aisles: outAisles, band, width, height, seatRot: O.rot };
 }
 
 function seatVisual(estado, selected, accent) {
@@ -222,7 +265,7 @@ export function SeatCanvas({
   }, [onZoomChange]);
 
   if (!asientos || asientos.length === 0) return null;
-  const { seats, labels, steps, nSteps, band, width, height, seatRot } = layout;
+  const { seats, labels, steps, nSteps, aisles, band, width, height, seatRot } = layout;
 
   function svgCoords(clientX, clientY) {
     const svg = svgRef.current;
@@ -350,6 +393,18 @@ export function SeatCanvas({
                 </g>
               );
             })}
+          </g>
+
+          {/* Escaleras (pasillos): franja del pasillo + peldaños */}
+          <g className="sp-aisles" pointerEvents="none">
+            {aisles.map((al, i) => (
+              <g key={`aisle-${i}`}>
+                <polygon points={al.points} fill="rgba(255,255,255,0.05)" />
+                {al.treads.map((t, j) => (
+                  <line key={j} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke="rgba(255,255,255,0.26)" strokeWidth="1.3" strokeLinecap="round" />
+                ))}
+              </g>
+            ))}
           </g>
 
           {/* Banda de cancha del lado que corresponde a la tribuna */}
