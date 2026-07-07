@@ -7,6 +7,7 @@ import {
   GRAMILLA_ZONE_META,
   isErcVectorLayout,
   nombreToZoneKey,
+  orientationForZone,
 } from './stadiumErc.js';
 import { gramillaKeysForTemplate } from './stadiumFieldGeometry.js';
 
@@ -208,6 +209,7 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
               selectedIds={selectedSeatIds}
               onSeatToggle={onSeatClick}
               onBoxSelect={onSeatBoxSelect}
+              orientation={orientationForZone(selectedKey)}
               accentColor={(ERC_ZONE_META[selectedKey] ?? GRAMILLA_ZONE_META[selectedKey])?.color}
             />
           </div>

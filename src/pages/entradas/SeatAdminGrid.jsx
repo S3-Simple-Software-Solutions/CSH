@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../utils/api.js';
 import { SeatCanvas } from './SeatPicker.jsx';
+import { nombreToZoneKey, orientationForZone } from './stadiumErc.js';
 
 // Grilla admin de butacas de un sector: generar/regenerar la grilla y
 // bloquear/desbloquear butacas con click. Compartida por el modal de sectores,
@@ -75,12 +76,12 @@ export function SeatAdminGrid({ tipo, onChanged }) {
           </div>
           <SeatCanvas
             asientos={asientos}
+            orientation={orientationForZone(tipo.mapa?.points?.key ?? nombreToZoneKey(tipo.nombre))}
             selectedIds={null}
             onSeatClick={toggleBloqueo}
             clickableStates={['disponible', 'bloqueado']}
             zoom={zoom}
             onZoomChange={setZoom}
-            showFieldArc
           />
           <p className="seatpicker-hint">Click en una butaca para bloquear ↔ habilitar. Las vendidas no se pueden tocar.</p>
         </div>
