@@ -4,8 +4,8 @@ import AdminTopBar from './layout/AdminTopBar.jsx';
 import DataTable from './components/DataTable.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
 import { StadiumMap, tiposByZoneKey, usesVectorMap } from './pages/entradas/StadiumMap.jsx';
-import { StadiumSvgERC, ZoneSeatGrid } from './pages/entradas/StadiumSvgERC.jsx';
-import { SeatPickerPanel } from './pages/entradas/SeatPicker.jsx';
+import { StadiumSvgERC } from './pages/entradas/StadiumSvgERC.jsx';
+import { SeatPickerPanel, SeatAdminPanel } from './pages/entradas/SeatPicker.jsx';
 import { SeatAdminGrid } from './pages/entradas/SeatAdminGrid.jsx';
 import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
 import { gramillaKeysForTemplate } from './pages/entradas/stadiumFieldGeometry.js';
@@ -4654,20 +4654,13 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
           />
           {selectedKey && seatsByZoneKey[selectedKey]?.length > 0 && (
             <div className="zone-seat-expand">
-              <div className="zone-seat-expand-head">
-                <b>{metaSel?.label ?? selectedKey}</b>
-                <span className="muted">Tocá o arrastrá para seleccionar butacas</span>
-                <span className="zone-seat-legend">
-                  <i style={{ background: '#6de06d' }} /> disponible
-                  <i style={{ background: '#888' }} /> bloqueada
-                  <i style={{ background: '#e05555' }} /> vendida
-                </span>
-              </div>
-              <ZoneSeatGrid
+              <SeatAdminPanel
+                titulo={metaSel?.label ?? selectedKey}
                 asientos={seatsByZoneKey[selectedKey]}
-                selectedSeatIds={seatSel}
-                onSeatClick={toggleSeat}
+                selectedIds={seatSel}
+                onSeatToggle={toggleSeat}
                 onBoxSelect={boxSelectSeats}
+                accentColor={metaSel?.color}
               />
             </div>
           )}

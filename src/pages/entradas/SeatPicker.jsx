@@ -1,14 +1,20 @@
 /**
  * SeatPicker — selector de butacas estilo ticketera profesional.
  *
- * Reemplaza la grilla plana de círculos por butacas con forma de asiento,
- * filas curvadas hacia la cancha, zoom (botones / ctrl+rueda / pinch),
- * tooltip flotante, leyenda, bandeja de seleccionados y auto-elección de
- * butacas contiguas. Mantiene los mismos gestos del sistema anterior:
+ * Butacas con forma de asiento, filas curvadas hacia la cancha, banda de
+ * campo como referencia, pasillo central en filas largas, zoom (botones /
+ * ctrl+rueda / pinch), tooltip flotante, leyenda, bandeja de seleccionadas
+ * y auto-elección de contiguas. Mantiene los gestos del sistema anterior:
  * click marca/desmarca y el arrastre selecciona en caja (Shift/Ctrl suma).
  *
  * Solo frontend: consume los mismos asientos {id, fila, numero, estado}
  * y los mismos handlers que usaba ZoneSeatGrid/SeatGrid.
+ *
+ * Exporta:
+ *  - SeatCanvas        lienzo SVG puro (render + gestos)
+ *  - SeatPickerPanel   panel público (precio, zoom, leyenda, bandeja, auto)
+ *  - SeatAdminPanel    panel admin (stats por estado + selección en bloque)
+ *  - pickBestSeats     heurística de mejores butacas contiguas
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -26,10 +32,12 @@ function hexToRgba(hex, alpha) {
 
 const BASE_CELL = 30;          // px lógicos por butaca (antes de zoom)
 const CURVE_DEPTH = 0.55;      // curvatura de fila (× CELL) hacia los extremos
+const AISLE_MIN_COLS = 12;     // a partir de cuántas butacas por fila se abre pasillo
+const AISLE_W = 0.8;           // ancho del pasillo central (× CELL)
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.4;
 
-/** Layout: posiciones lógicas de cada butaca con curvatura de estadio. */
+/** Layout: posiciones lógicas de cada butaca con curvatura y pasillo central. */
 function buildLayout(asientos) {
   const filaMap = new Map();
   for (const a of asientos) {
@@ -38,14 +46,16 @@ function buildLayout(asientos) {
   }
   const filas = [...filaMap.keys()].sort(filaSort);
   const maxCols = Math.max(1, ...filas.map((f) => filaMap.get(f).length));
+  const hasAisle = maxCols >= AISLE_MIN_COLS;
 
   const CELL = BASE_CELL;
-  const LABEL_W = 38;
-  const TOP_PAD = 44;          // espacio para el arco "CANCHA"
-  const BOTTOM_PAD = 14;
+  const LABEL_W = 40;
+  const TOP_PAD = 58;          // espacio para la banda de cancha
+  const BOTTOM_PAD = 16;
   const curveMax = CELL * CURVE_DEPTH;
+  const aislePx = hasAisle ? CELL * AISLE_W : 0;
 
-  const width = LABEL_W * 2 + maxCols * CELL;
+  const width = LABEL_W * 2 + maxCols * CELL + aislePx;
   const height = TOP_PAD + filas.length * CELL + curveMax + BOTTOM_PAD;
 
   const seats = [];
@@ -54,17 +64,18 @@ function buildLayout(asientos) {
     const cols = [...filaMap.get(fila)].sort((x, y) => x.numero - y.numero);
     const nCols = cols.length;
     const rowY = TOP_PAD + (fi + 0.5) * CELL;
+    const rowAisle = nCols >= AISLE_MIN_COLS ? aislePx : 0;
+    const rowW = nCols * CELL + rowAisle;
+    const x0 = LABEL_W + (width - LABEL_W * 2 - rowW) / 2;
+    const aisleAfter = Math.ceil(nCols / 2); // pasillo tras la mitad de la fila
     let edgeDy = 0;
     cols.forEach((a, ci) => {
       // Curvatura: el centro de la fila queda más cerca de la cancha (arriba).
       const t = nCols > 1 ? (2 * ci) / (nCols - 1) - 1 : 0; // -1..1
       const dy = curveMax * t * t;
       edgeDy = Math.max(edgeDy, dy);
-      seats.push({
-        a,
-        cx: LABEL_W + (maxCols - nCols) * CELL / 2 + (ci + 0.5) * CELL,
-        cy: rowY + dy,
-      });
+      const gap = rowAisle > 0 && ci >= aisleAfter ? rowAisle : 0;
+      seats.push({ a, cx: x0 + gap + (ci + 0.5) * CELL, cy: rowY + dy });
     });
     rowLabels.push({ fila, y: rowY + edgeDy });
   });
@@ -83,7 +94,7 @@ function seatVisual(estado, selected, accent) {
 /**
  * Lienzo SVG de butacas: render + gestos (click, marquee, ctrl+rueda, pinch).
  * `clickableStates` define qué estados admiten click además de las seleccionadas
- * (público: ['disponible']; admin: ['disponible','bloqueado']).
+ * (público: ['disponible']; admin: disponible/bloqueado/reservado).
  */
 export function SeatCanvas({
   asientos,
@@ -233,31 +244,44 @@ export function SeatCanvas({
               <rect width="6" height="6" fill="#2e2e2e" />
               <line x1="0" y1="0" x2="0" y2="6" stroke="#4a4a4a" strokeWidth="2.2" />
             </pattern>
-            <linearGradient id="sp-arc-fade" x1="0" y1="0" x2="1" y2="0">
+            <linearGradient id="sp-field-band" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgba(68,158,88,.55)" />
+              <stop offset="100%" stopColor="rgba(42,110,58,.12)" />
+            </linearGradient>
+            <linearGradient id="sp-band-edge" x1="0" y1="0" x2="1" y2="0">
               <stop offset="0%" stopColor={hexToRgba(accentColor, 0)} />
-              <stop offset="50%" stopColor={hexToRgba(accentColor, 0.75)} />
+              <stop offset="50%" stopColor={hexToRgba(accentColor, 0.8)} />
               <stop offset="100%" stopColor={hexToRgba(accentColor, 0)} />
             </linearGradient>
+            <filter id="sp-sel-shadow" x="-40%" y="-40%" width="180%" height="180%">
+              <feDropShadow dx="0" dy="1.4" stdDeviation="2.2" floodColor="#c9a961" floodOpacity="0.55" />
+            </filter>
           </defs>
 
-          {/* Referencia de orientación: la fila A es la más cercana a la cancha */}
+          {/* Banda de cancha: referencia de orientación (fila A = más cercana) */}
           {showFieldArc && (
             <g pointerEvents="none">
               <path
-                d={`M ${LABEL_W} 30 Q ${width / 2} 6 ${width - LABEL_W} 30`}
-                fill="none"
-                stroke="url(#sp-arc-fade)"
-                strokeWidth="2.5"
+                d={`M ${LABEL_W - 6} 34 Q ${width / 2} 6 ${width - LABEL_W + 6} 34 L ${width - LABEL_W + 6} 44 Q ${width / 2} 17 ${LABEL_W - 6} 44 Z`}
+                fill="url(#sp-field-band)"
               />
-              <text x={width / 2} y="20" textAnchor="middle" className="sp-field-label">{fieldLabel}</text>
+              <path
+                d={`M ${LABEL_W - 6} 44 Q ${width / 2} 17 ${width - LABEL_W + 6} 44`}
+                fill="none"
+                stroke="url(#sp-band-edge)"
+                strokeWidth="2"
+              />
+              <text x={width / 2} y="27" textAnchor="middle" className="sp-field-label">{fieldLabel}</text>
             </g>
           )}
 
-          {/* Etiquetas de fila a ambos lados */}
+          {/* Etiquetas de fila en cápsulas, a ambos lados */}
           {rowLabels.map(({ fila, y }) => (
             <g key={`rl-${fila}`} pointerEvents="none">
-              <text x={LABEL_W - 14} y={y + 3.5} textAnchor="end" className="sp-row-label">{fila}</text>
-              <text x={width - LABEL_W + 14} y={y + 3.5} textAnchor="start" className="sp-row-label">{fila}</text>
+              <rect x={6} y={y - 8.5} width={LABEL_W - 18} height={17} rx={8.5} className="sp-row-pill" />
+              <text x={6 + (LABEL_W - 18) / 2} y={y + 3.4} textAnchor="middle" className="sp-row-label">{fila}</text>
+              <rect x={width - LABEL_W + 12} y={y - 8.5} width={LABEL_W - 18} height={17} rx={8.5} className="sp-row-pill" />
+              <text x={width - LABEL_W + 12 + (LABEL_W - 18) / 2} y={y + 3.4} textAnchor="middle" className="sp-row-label">{fila}</text>
             </g>
           ))}
 
@@ -270,6 +294,7 @@ export function SeatCanvas({
               <g
                 key={a.id}
                 className={`sp-seat ${v.cls}${clickable ? ' sp-seat--clickable' : ''}`}
+                filter={selected ? 'url(#sp-sel-shadow)' : undefined}
                 onClick={clickable ? (e) => { e.stopPropagation(); onSeatClick(a); } : undefined}
                 onMouseEnter={(e) => setHover({ a, ...localCoords(e.clientX, e.clientY) })}
                 onMouseMove={(e) => setHover({ a, ...localCoords(e.clientX, e.clientY) })}
@@ -367,8 +392,19 @@ export function pickBestSeats(asientos, n, excludeIds = null) {
 
 const ZOOM_STEP = 1.25;
 
+function ZoomControls({ zoom, setZoom }) {
+  return (
+    <div className="seatpicker-zoom" role="group" aria-label="Zoom">
+      <button type="button" onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z / ZOOM_STEP))} aria-label="Alejar">−</button>
+      <span>{Math.round(zoom * 100)}%</span>
+      <button type="button" onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * ZOOM_STEP))} aria-label="Acercar">+</button>
+      <button type="button" className="seatpicker-zoom-reset" onClick={() => setZoom(1)} aria-label="Restablecer zoom" title="Restablecer">⤢</button>
+    </div>
+  );
+}
+
 /**
- * Panel completo del selector: encabezado con precio, controles de zoom,
+ * Panel público del selector: encabezado con zona/precio/ocupación, zoom,
  * lienzo, leyenda, auto-elección y bandeja de butacas seleccionadas.
  */
 export function SeatPickerPanel({
@@ -392,6 +428,7 @@ export function SeatPickerPanel({
   const precio = tipo ? (tipo.precioVigente ?? tipo.precioCrc ?? 0) : 0;
   const accent = accentColor ?? tipo?.mapa?.color ?? '#c9a961';
   const libres = asientos.filter((a) => a.estado === 'disponible').length;
+  const pctLibre = asientos.length > 0 ? Math.round((libres / asientos.length) * 100) : 0;
 
   function autoPick() {
     const room = maxSeats - propios.length;
@@ -403,20 +440,29 @@ export function SeatPickerPanel({
     else picks.forEach((a) => onSeatToggle(a));
   }
 
+  function vaciar() {
+    propios.forEach((a) => onSeatToggle(a));
+  }
+
   return (
     <div className={`seatpicker${compact ? ' seatpicker--compact' : ''}`}>
       <div className="seatpicker-head">
         <div className="seatpicker-title">
-          {tipo && <b>{tipo.nombre}</b>}
-          <span className="seatpicker-price">₡{Number(precio).toLocaleString('es-CR')} / butaca</span>
-          <span className="seatpicker-avail">{libres.toLocaleString('es-CR')} libres</span>
+          {tipo && (
+            <span className="seatpicker-zone">
+              <i className="seatpicker-zone-dot" style={{ background: accent }} />
+              <b>{tipo.nombre}</b>
+            </span>
+          )}
+          <span className="seatpicker-price" style={{ borderColor: hexToRgba(accent, 0.5) }}>
+            ₡{Number(precio).toLocaleString('es-CR')} <small>/ butaca</small>
+          </span>
+          <span className="seatpicker-occupancy" title={`${libres.toLocaleString('es-CR')} de ${asientos.length.toLocaleString('es-CR')} libres`}>
+            <i><b style={{ width: `${pctLibre}%`, background: accent }} /></i>
+            {pctLibre}% libre
+          </span>
         </div>
-        <div className="seatpicker-zoom" role="group" aria-label="Zoom">
-          <button type="button" onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z / ZOOM_STEP))} aria-label="Alejar">−</button>
-          <span>{Math.round(zoom * 100)}%</span>
-          <button type="button" onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * ZOOM_STEP))} aria-label="Acercar">+</button>
-          <button type="button" className="seatpicker-zoom-reset" onClick={() => setZoom(1)} aria-label="Restablecer zoom">⤢</button>
-        </div>
+        <ZoomControls zoom={zoom} setZoom={setZoom} />
       </div>
 
       <SeatCanvas
@@ -432,8 +478,9 @@ export function SeatPickerPanel({
 
       <div className="seatpicker-foot">
         <div className="seatpicker-legend" aria-hidden="true">
-          <span><i className="sp-lg sp-lg--libre" style={{ borderColor: accent, background: hexToRgba(accent, 0.16) }} /> Disponible</span>
+          <span><i className="sp-lg" style={{ borderColor: accent, background: hexToRgba(accent, 0.16) }} /> Disponible</span>
           <span><i className="sp-lg sp-lg--sel" /> Tu selección</span>
+          <span><i className="sp-lg sp-lg--reservada" /> En proceso</span>
           <span><i className="sp-lg sp-lg--vendida" /> Vendida</span>
           <span><i className="sp-lg sp-lg--bloq" /> No disponible</span>
         </div>
@@ -467,11 +514,65 @@ export function SeatPickerPanel({
               ))}
           </div>
           <div className="seatpicker-tray-total">
+            <button type="button" className="seatpicker-tray-clear" onClick={vaciar}>Vaciar</button>
             <span>{propios.length} de {maxSeats} máx.</span>
             <b>₡{(propios.length * precio).toLocaleString('es-CR')}</b>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Panel admin del selector: estadísticas por estado + lienzo con selección
+ * en bloque (click y arrastre alimentan una selección externa; las acciones
+ * de bloquear/habilitar viven donde el flujo admin las tenga).
+ */
+export function SeatAdminPanel({
+  titulo = null,
+  asientos,
+  selectedIds,
+  onSeatToggle,
+  onBoxSelect,
+  accentColor = '#c9a961',
+  hint = 'Tocá o arrastrá para seleccionar butacas · Shift suma a la selección',
+}) {
+  const [zoom, setZoom] = useState(1);
+  const selSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds || []);
+  const stats = useMemo(
+    () => asientos.reduce((s, a) => ({ ...s, [a.estado]: (s[a.estado] || 0) + 1 }), {}),
+    [asientos],
+  );
+  return (
+    <div className="seatpicker seatpicker--admin">
+      <div className="seatpicker-head">
+        <div className="seatpicker-title">
+          {titulo && (
+            <span className="seatpicker-zone">
+              <i className="seatpicker-zone-dot" style={{ background: accentColor }} />
+              <b>{titulo}</b>
+            </span>
+          )}
+          <span className="sp-stat sp-stat--libre">{stats.disponible || 0} disp.</span>
+          <span className="sp-stat sp-stat--vendida">{stats.vendido || 0} vend.</span>
+          <span className="sp-stat sp-stat--bloq">{stats.bloqueado || 0} bloq.</span>
+          {(stats.reservado || 0) > 0 && <span className="sp-stat sp-stat--reservada">{stats.reservado} reserv.</span>}
+        </div>
+        <ZoomControls zoom={zoom} setZoom={setZoom} />
+      </div>
+      <SeatCanvas
+        asientos={asientos}
+        accentColor={accentColor}
+        selectedIds={selSet}
+        onSeatClick={onSeatToggle}
+        onBoxSelect={onBoxSelect}
+        clickableStates={['disponible', 'bloqueado', 'reservado']}
+        zoom={zoom}
+        onZoomChange={setZoom}
+        showFieldArc
+      />
+      <p className="seatpicker-hint">{hint}</p>
     </div>
   );
 }
