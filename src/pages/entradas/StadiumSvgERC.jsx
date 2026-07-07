@@ -34,30 +34,76 @@ function zoneStateText(tipo) {
 }
 
 function FieldMarkings() {
+  // Área de juego, inset respecto al borde del césped (172..828 / 198..522).
+  const X1 = 180, X2 = 820, Y1 = 206, Y2 = 514;
+  const CX = 500, CY = 360;
+  const LINE = 'rgba(255,255,255,0.72)';
+  const W = 2.2;
+  // Proporciones reglamentarias (relativas al largo/alto del campo).
+  const PA_D = 100, PA_H = 184;   // área penal (grande)
+  const GA_D = 34, GA_H = 84;     // área de meta (chica)
+  const SPOT = 66;                // penal a ~11 m de la línea de meta
+  const R = 56;                   // radio del círculo central y arcos penales
+  const ARC_DY = 45;              // semicuerda del arco penal en el frente del área
+  const paTop = CY - PA_H / 2, paBot = CY + PA_H / 2;
+  const gaTop = CY - GA_H / 2;
+  const GOAL_H = 34, GOAL_D = 7;  // porterías
   return (
     <g className="stadium-field-marks" pointerEvents="none">
-      {/* Rayas de césped sutiles */}
-      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-        <rect
-          key={`stripe-${i}`}
-          x={172 + i * 82}
-          y={198}
-          width={41}
-          height={324}
-          fill={i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent'}
-        />
-      ))}
-      <line x1="500" y1="198" x2="500" y2="522" stroke="rgba(255,255,255,0.55)" strokeWidth="2.5" />
-      <circle cx="500" cy="360" r="58" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2" />
-      <circle cx="500" cy="360" r="3" fill="rgba(255,255,255,0.7)" />
-      <rect x="172" y="292" width="118" height="140" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
-      <rect x="710" y="292" width="118" height="140" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
-      <circle cx="286" cy="360" r="42" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2" />
-      <circle cx="714" cy="360" r="42" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2" />
-      <path d="M 172 248 L 172 268 A 42 42 0 0 0 214 310" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-      <path d="M 828 248 L 828 268 A 42 42 0 0 1 786 310" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-      <path d="M 172 472 L 172 452 A 42 42 0 0 1 214 410" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-      <path d="M 828 472 L 828 452 A 42 42 0 0 0 786 410" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
+      <defs>
+        <clipPath id="erc-field-clip"><path d={FIELD_PATH} /></clipPath>
+      </defs>
+
+      {/* Rayas de césped (patrón de corte), recortadas a la forma del campo */}
+      <g clipPath="url(#erc-field-clip)">
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <rect
+            key={`stripe-${i}`}
+            x={172 + i * 82}
+            y={198}
+            width={82}
+            height={324}
+            fill={i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
+          />
+        ))}
+      </g>
+
+      <g fill="none" stroke={LINE} strokeWidth={W} strokeLinejoin="round">
+        {/* Perímetro (líneas de banda y de meta) */}
+        <rect x={X1} y={Y1} width={X2 - X1} height={Y2 - Y1} />
+        {/* Línea de medio campo */}
+        <line x1={CX} y1={Y1} x2={CX} y2={Y2} />
+        {/* Círculo central */}
+        <circle cx={CX} cy={CY} r={R} />
+
+        {/* Áreas penales */}
+        <rect x={X1} y={paTop} width={PA_D} height={PA_H} />
+        <rect x={X2 - PA_D} y={paTop} width={PA_D} height={PA_H} />
+        {/* Áreas de meta */}
+        <rect x={X1} y={gaTop} width={GA_D} height={GA_H} />
+        <rect x={X2 - GA_D} y={gaTop} width={GA_D} height={GA_H} />
+
+        {/* Arcos del área penal (solo la parte fuera del área) */}
+        <path d={`M ${X1 + PA_D} ${CY - ARC_DY} A ${R} ${R} 0 0 1 ${X1 + PA_D} ${CY + ARC_DY}`} />
+        <path d={`M ${X2 - PA_D} ${CY - ARC_DY} A ${R} ${R} 0 0 0 ${X2 - PA_D} ${CY + ARC_DY}`} />
+
+        {/* Arcos de esquina */}
+        <path d={`M ${X1 + 9} ${Y1} A 9 9 0 0 1 ${X1} ${Y1 + 9}`} />
+        <path d={`M ${X2 - 9} ${Y1} A 9 9 0 0 0 ${X2} ${Y1 + 9}`} />
+        <path d={`M ${X2 - 9} ${Y2} A 9 9 0 0 1 ${X2} ${Y2 - 9}`} />
+        <path d={`M ${X1 + 9} ${Y2} A 9 9 0 0 0 ${X1} ${Y2 - 9}`} />
+
+        {/* Porterías */}
+        <rect x={X1 - GOAL_D} y={CY - GOAL_H / 2} width={GOAL_D} height={GOAL_H} strokeWidth={W * 0.8} />
+        <rect x={X2} y={CY - GOAL_H / 2} width={GOAL_D} height={GOAL_H} strokeWidth={W * 0.8} />
+      </g>
+
+      {/* Puntos: central y penales */}
+      <g fill="rgba(255,255,255,0.82)">
+        <circle cx={CX} cy={CY} r="2.8" />
+        <circle cx={X1 + SPOT} cy={CY} r="2.4" />
+        <circle cx={X2 - SPOT} cy={CY} r="2.4" />
+      </g>
     </g>
   );
 }
