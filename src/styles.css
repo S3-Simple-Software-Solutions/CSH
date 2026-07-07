@@ -2280,3 +2280,33 @@ th.dt-sorted { color: var(--gold-bright); }
 .seatpicker-hint { font-size: .74rem; color: var(--muted); margin: 2px 0 0; text-align: center; }
 .seatpicker-tray-clear { border: none; background: none; color: var(--muted); font-size: .72rem; cursor: pointer; text-decoration: underline; padding: 0; }
 .seatpicker-tray-clear:hover { color: var(--gold); }
+
+/* ── Lista de sectores como acordeón (elegir sector → butacas) ─────── */
+.sector-list--accordion { gap: 8px; }
+.sector-card { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; transition: border-color .15s ease, box-shadow .15s ease; }
+.sector-card.expanded { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(201,169,97,.25); }
+.sector-card.agotado { opacity: .55; }
+.sector-card-head { width: 100%; display: flex; align-items: center; gap: 14px; padding: 13px 16px; background: none; border: none; text-align: left; cursor: pointer; color: var(--paper); font: inherit; }
+.sector-card-head:hover:not(:disabled) { background: rgba(201,169,97,.05); }
+.sector-card-head:disabled { cursor: not-allowed; }
+.sector-card-head--static { cursor: default; }
+.sector-card-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.sector-card-name { font-size: 16px; font-weight: 700; color: var(--paper); }
+.sector-card-meta { display: inline-flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.sector-card-meta s { color: var(--muted); font-size: .8rem; }
+.sector-card-price { color: var(--gold); font-weight: 700; font-size: .95rem; }
+.sector-card-tanda { font-style: normal; font-size: .68rem; }
+.sector-card-right { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.sector-card-avail { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+.sector-card-avail.agotado { color: #c98; }
+.sector-card-badge { display: inline-flex; align-items: center; gap: 4px; background: var(--gold); color: #181205; border-radius: 999px; padding: 3px 10px; font-size: .74rem; font-weight: 700; white-space: nowrap; }
+.sector-card-chevron { color: var(--muted); font-size: 14px; transition: transform .18s ease; flex-shrink: 0; }
+.sector-card-chevron.open { transform: rotate(180deg); color: var(--gold); }
+.sector-card-body { padding: 4px 14px 14px; border-top: 1px solid var(--line); animation: sector-card-in .2s ease; }
+@keyframes sector-card-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.sector-card-head--static .stepper { flex-shrink: 0; }
+
+@media (max-width: 560px) {
+  .sector-card-head { flex-wrap: wrap; gap: 8px 12px; }
+  .sector-card-right { order: 3; width: 100%; justify-content: space-between; }
+}

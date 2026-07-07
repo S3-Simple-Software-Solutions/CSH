@@ -2522,6 +2522,7 @@ function PublicEventDetail({ slug }) {
   const [done, setDone] = useState(null);
   const [banner, setBanner] = useState(null); // { type, text }
   const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'mapa'
+  const [expandedSector, setExpandedSector] = useState(null); // tipoId del sector abierto en la lista
   const loadAsientos = () => api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}/asientos`).then((d) => { if (d.ok) setAsientos(d.asientos); });
   useEffect(() => {
     api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}`).then((d) => {
@@ -2530,6 +2531,9 @@ function PublicEventDetail({ slug }) {
         // Si hay zonas con mapa, mostrar mapa por defecto
         if (d.tipos?.some((t) => t.mapa) || isErcVectorLayout(d.evento)) setViewMode('mapa');
         if (d.tipos?.some((t) => t.numerado)) loadAsientos();
+        // Si hay un único sector numerado, abrilo por defecto en la lista.
+        const nums = (d.tipos || []).filter((t) => t.numerado && t.disponibles > 0);
+        if (nums.length === 1) setExpandedSector(nums[0].id);
       } else {
         setError(d.error);
       }
@@ -2673,29 +2677,60 @@ function PublicEventDetail({ slug }) {
             />
           )
           : (
-            <section className="sector-list">
-              {tipos.map((t) => (
-                <div key={t.id} className={`sector ${t.disponibles === 0 ? 'agotado' : ''}`}>
-                  <div className="sector-info">
-                    <b>{t.nombre}</b>
-                    <span>
-                      {t.tandaNombre && t.precioVigente !== t.precioCrc && <s className="muted" style={{ marginRight: 6 }}>{money(t.precioCrc)}</s>}
-                      {money(t.precioVigente ?? t.precioCrc)}
-                      {t.tandaNombre && <em className="pill publicado" style={{ marginLeft: 6, fontStyle: 'normal', fontSize: '.7rem' }}>{t.tandaNombre}</em>}
-                    </span>
+            <section className="sector-list sector-list--accordion">
+              {tipos.map((t) => {
+                const precio = t.precioVigente ?? t.precioCrc;
+                const agotado = t.disponibles === 0;
+                const sel = t.numerado ? (seats[t.id]?.length || 0) : (qty[t.id] || 0);
+                const expanded = expandedSector === t.id;
+                const Meta = (
+                  <span className="sector-card-meta">
+                    {t.tandaNombre && t.precioVigente !== t.precioCrc && <s className="muted">{money(t.precioCrc)}</s>}
+                    <span className="sector-card-price">{money(precio)}</span>
+                    {t.tandaNombre && <em className="pill publicado sector-card-tanda">{t.tandaNombre}</em>}
+                  </span>
+                );
+                const Right = (
+                  <span className="sector-card-right">
+                    {sel > 0 && <span className="sector-card-badge">{sel} · {money(sel * precio)}</span>}
+                    <span className={`sector-card-avail${agotado ? ' agotado' : ''}`}>{agotado ? 'Agotado' : `${t.disponibles.toLocaleString('es-CR')} disp.`}</span>
+                  </span>
+                );
+                return (
+                  <div key={t.id} className={`sector-card${agotado ? ' agotado' : ''}${expanded ? ' expanded' : ''}`}>
+                    {t.numerado ? (
+                      <button
+                        type="button"
+                        className="sector-card-head"
+                        onClick={() => !agotado && setExpandedSector(expanded ? null : t.id)}
+                        disabled={agotado}
+                        aria-expanded={expanded}
+                      >
+                        <span className="sector-card-main"><b className="sector-card-name">{t.nombre}</b>{Meta}</span>
+                        {Right}
+                        {!agotado && <span className={`sector-card-chevron${expanded ? ' open' : ''}`} aria-hidden="true">▾</span>}
+                      </button>
+                    ) : (
+                      <div className="sector-card-head sector-card-head--static">
+                        <span className="sector-card-main"><b className="sector-card-name">{t.nombre}</b>{Meta}</span>
+                        {Right}
+                        {!agotado && (
+                          <div className="stepper">
+                            <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
+                            <span>{qty[t.id] || 0}</span>
+                            <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {t.numerado && expanded && !agotado && (
+                      <div className="sector-card-body">
+                        <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} onBoxSelect={boxSelectSeats} />
+                      </div>
+                    )}
                   </div>
-                  <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
-                  {t.numerado ? (
-                    <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} onBoxSelect={boxSelectSeats} />
-                  ) : (
-                    <div className="stepper">
-                      <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
-                      <span>{qty[t.id] || 0}</span>
-                      <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) + 1, Math.min(10, t.disponibles))} disabled={(qty[t.id] || 0) >= Math.min(10, t.disponibles)}>+</button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </section>
           )
         }
