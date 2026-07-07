@@ -1647,7 +1647,7 @@ function AdminApp() {
     localStorage.setItem('csh-admin-nav-collapsed', String(next));
     return next;
   });
-  async function logout() { await api('/admin/logout', { method: 'POST', body: '{}' }); location.href = '/admin'; }
+  async function logout() { await api('/admin/logout', { method: 'POST', body: '{}' }); location.href = '/'; }
   if (loading) return <main className="page"><p>Cargando...</p></main>;
   if (!user) return <AdminLogin />;
   // Un socio autenticado no entra al panel: se le devuelve al sitio público ya logueado.
