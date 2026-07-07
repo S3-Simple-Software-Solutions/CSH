@@ -41,7 +41,6 @@ export const externalLinks = {
   tienda: 'https://solocrackscr.com/categoria-producto/productossolocracks/productos-oficiales/',
   entradas: 'https://www.passline.com/sitio/11954967-herediano',
   citaSocios: 'https://clubsportherediano.setmore.com',
-  credito: 'https://www.ratlabcr.com',
 };
 
 // Navegación principal unificada. Los `to` internos usan react-router.

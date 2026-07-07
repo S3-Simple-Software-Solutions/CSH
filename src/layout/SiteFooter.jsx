@@ -47,7 +47,6 @@ export default function SiteFooter() {
       </div>
       <div className="site-foot-legal">
         <span>© {new Date().getFullYear()} {club.nombre}. Todos los derechos reservados.</span>
-        <a href={externalLinks.credito} target="_blank" rel="noreferrer">Diseño: RatLab Studio</a>
       </div>
     </footer>
   );
