@@ -101,7 +101,7 @@ La app sirve las páginas públicas del club (`/`, `/noticias`, `/plantilla`, et
 
 ### Assets `/brand/*` confirmados (descargar todos)
 ```
-/brand/logo-shield.png            /brand/credit-ratlab.png
+/brand/logo-shield.png
 /brand/banner-wordmark.jpg        /brand/camiseta.jpg
 /brand/texture-zigzag-gold.png    /brand/partner-solocracks.png
 /brand/hero/champions-bw.jpg
