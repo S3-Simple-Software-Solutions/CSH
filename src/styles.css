@@ -2183,3 +2183,75 @@ th.dt-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 th.dt-sortable:hover { color: var(--gold-bright); }
 th.dt-sorted { color: var(--gold-bright); }
 .dt-sort-icon { vertical-align: -1px; margin-left: 4px; }
+
+/* ── SeatPicker: selector de butacas estilo ticketera ─────────────── */
+.seatpicker { display: flex; flex-direction: column; gap: 10px; }
+.seatpicker-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.seatpicker-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.seatpicker-title b { font-size: .95rem; color: var(--paper); }
+.seatpicker-price { color: var(--gold); font-weight: 600; font-size: .85rem; }
+.seatpicker-avail { color: var(--muted); font-size: .78rem; }
+.seatpicker-zoom { display: inline-flex; align-items: center; gap: 6px; }
+.seatpicker-zoom button { width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface-2, rgba(255,255,255,.04)); color: var(--paper); font-size: 15px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+.seatpicker-zoom button:hover { border-color: var(--gold); color: var(--gold); }
+.seatpicker-zoom span { font-size: .72rem; color: var(--muted); min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
+.seatpicker-zoom-reset { font-size: 13px !important; }
+
+.sp-canvas-wrap { position: relative; }
+.sp-canvas-scroll { overflow: auto; max-height: 420px; border-radius: 10px; border: 1px solid var(--line); background: radial-gradient(ellipse 90% 60% at 50% -10%, rgba(201,169,97,.09), transparent 60%), var(--field, #11130c); }
+.sp-canvas { touch-action: none; user-select: none; -webkit-user-select: none; }
+.sp-field-label { font-size: 10px; letter-spacing: .34em; fill: var(--gold, #c9a961); font-weight: 700; opacity: .85; }
+.sp-row-label { font-size: 10px; fill: rgba(150,150,150,.75); font-weight: 600; }
+.sp-seat { transition: opacity .15s ease; }
+.sp-seat--clickable { cursor: pointer; }
+.sp-seat--clickable:hover rect { filter: brightness(1.35); }
+.sp-seat--vendido { opacity: .8; }
+.sp-seat--bloqueado { opacity: .75; }
+.sp-seat--selected rect { transform-box: fill-box; transform-origin: center; animation: sp-pop .18s ease; }
+@keyframes sp-pop { 0% { transform: scale(.7); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+.sp-seat-num { font-size: 8.6px; font-weight: 700; }
+.sp-seat-x { font-size: 12px; fill: #8a7570; font-weight: 700; }
+.sp-marquee { fill: rgba(201,169,97,.1); stroke: var(--gold, #c9a961); stroke-width: 1.5; stroke-dasharray: 7 5; }
+
+.sp-tooltip { position: absolute; z-index: 30; pointer-events: none; background: rgba(12,10,6,.94); border: 1px solid rgba(201,169,97,.45); border-radius: 8px; padding: 7px 11px; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 8px 22px rgba(0,0,0,.5); }
+.sp-tooltip b { font-size: .78rem; color: #f7f1df; white-space: nowrap; }
+.sp-tooltip-estado { font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; }
+.sp-tooltip-estado--disponible { color: #9fd49f; }
+.sp-tooltip-estado--vendido { color: #e08a8a; }
+.sp-tooltip-estado--reservado { color: #e8c987; }
+.sp-tooltip-estado--bloqueado { color: #999; }
+
+.seatpicker-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.seatpicker-legend { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: .72rem; color: var(--muted); }
+.seatpicker-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sp-lg { display: inline-block; width: 13px; height: 11px; border-radius: 3px 3px 4px 4px; border: 1.4px solid transparent; }
+.sp-lg--sel { background: var(--gold, #c9a961); border-color: #fff; }
+.sp-lg--vendida { background: #3c3230; border-color: #2a2422; }
+.sp-lg--bloq { background: repeating-linear-gradient(45deg, #2e2e2e 0 2px, #4a4a4a 2px 4px); border-color: #4a4a4a; }
+.seatpicker-auto { display: inline-flex; align-items: center; gap: 8px; }
+.seatpicker-auto label { margin: 0; font-size: 10px; }
+.seatpicker-auto select { width: auto; padding: 5px 8px; margin: 0; font-size: .82rem; }
+.seatpicker-auto .btn { padding: 7px 13px; font-size: .78rem; }
+
+.seatpicker-tray { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid rgba(201,169,97,.35); background: rgba(201,169,97,.07); border-radius: 10px; padding: 9px 12px; animation: stadium-panel-in .22s ease; }
+.seatpicker-tray-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.seatpicker-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--gold); background: var(--gold); color: #181205; border-radius: 999px; padding: 3px 10px; font-size: .76rem; font-weight: 700; cursor: pointer; transition: background .15s ease, color .15s ease; }
+.seatpicker-chip span { font-weight: 400; opacity: .75; }
+.seatpicker-chip:hover { background: transparent; color: var(--gold); }
+.seatpicker-tray-total { display: flex; align-items: baseline; gap: 10px; margin-left: auto; }
+.seatpicker-tray-total span { font-size: .72rem; color: var(--muted); }
+.seatpicker-tray-total b { color: var(--gold); font-size: 1rem; }
+
+.seatpicker--compact .sp-canvas-scroll { max-height: 320px; }
+.seatpicker--admin .sp-canvas-scroll { max-height: 360px; }
+
+[data-theme='light'] .sp-canvas-scroll { background: radial-gradient(ellipse 90% 60% at 50% -10%, rgba(138,109,36,.08), transparent 60%), #efe9da; }
+[data-theme='light'] .sp-row-label { fill: rgba(90,80,60,.7); }
+[data-theme='light'] .sp-tooltip { background: rgba(250,246,236,.97); border-color: rgba(138,109,36,.4); }
+[data-theme='light'] .sp-tooltip b { color: #2a2417; }
+
+@media (max-width: 720px) {
+  .sp-canvas-scroll { max-height: 340px; }
+  .seatpicker-foot { flex-direction: column; align-items: stretch; }
+  .seatpicker-auto { justify-content: flex-end; }
+}
