@@ -351,6 +351,22 @@ export function SeatCanvas({
   const backH = CELL * 0.16;
   const showNums = CELL * zoom >= 19;
 
+  // "CANCHA" repetido a lo largo de la banda (uno cada ~180u) para que siempre
+  // se vea al scrollear, tanto en bandas horizontales como verticales.
+  const fieldLabels = (() => {
+    if (!showField) return [];
+    const SPACING = 180;
+    const len = band.vertical ? band.h : band.w;
+    const count = Math.max(1, Math.round(len / SPACING));
+    return Array.from({ length: count }, (_, i) => {
+      const t = (i + 0.5) / count;
+      return {
+        cx: band.vertical ? band.x + band.w / 2 : band.x + t * band.w,
+        cy: band.vertical ? band.y + t * band.h : band.y + band.h / 2,
+      };
+    });
+  })();
+
   return (
     <div className="sp-canvas-wrap" ref={wrapRef}>
       <div className="sp-canvas-scroll">
@@ -407,20 +423,25 @@ export function SeatCanvas({
             ))}
           </g>
 
-          {/* Banda de cancha del lado que corresponde a la tribuna */}
+          {/* Banda de cancha del lado que corresponde a la tribuna. El texto se
+              repite a lo largo de la banda para que "CANCHA" siempre quede a la
+              vista aunque el sector sea ancho y se scrollee. */}
           {showField && (
             <g pointerEvents="none">
               <rect x={band.x} y={band.y} width={band.w} height={band.h} rx="6" fill="url(#sp-field-band)" stroke={hexToRgba(accentColor, 0.4)} strokeWidth="1" />
-              <text
-                x={band.x + band.w / 2}
-                y={band.y + band.h / 2}
-                textAnchor="middle"
-                dominantBaseline="central"
-                className="sp-field-label"
-                transform={band.vertical ? `rotate(-90 ${band.x + band.w / 2} ${band.y + band.h / 2})` : undefined}
-              >
-                {fieldLabel}
-              </text>
+              {fieldLabels.map((f, i) => (
+                <text
+                  key={i}
+                  x={f.cx}
+                  y={f.cy}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  className="sp-field-label"
+                  transform={band.vertical ? `rotate(-90 ${f.cx} ${f.cy})` : undefined}
+                >
+                  {fieldLabel}
+                </text>
+              ))}
             </g>
           )}
 
