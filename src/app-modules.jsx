@@ -7,7 +7,7 @@ import { StadiumMap, tiposByZoneKey, usesVectorMap } from './pages/entradas/Stad
 import { StadiumSvgERC } from './pages/entradas/StadiumSvgERC.jsx';
 import { SeatPickerPanel, SeatAdminPanel } from './pages/entradas/SeatPicker.jsx';
 import { SeatAdminGrid } from './pages/entradas/SeatAdminGrid.jsx';
-import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
+import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey, orientationForZone } from './pages/entradas/stadiumErc.js';
 import { gramillaKeysForTemplate } from './pages/entradas/stadiumFieldGeometry.js';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
@@ -2493,6 +2493,7 @@ function BoletoLookup() {
 // anterior — onToggle(tipoId, asientoId) — con zoom, tooltip, auto-elección
 // y bandeja de seleccionadas. onBoxSelect habilita la selección por arrastre.
 function SeatGrid({ tipo, asientos, selected, onToggle, onBoxSelect = null }) {
+  const zoneKey = tipo.mapa?.points?.key ?? nombreToZoneKey(tipo.nombre);
   return (
     <div className="seat-grid" style={{ margin: '10px 0 4px' }}>
       <SeatPickerPanel
@@ -2501,6 +2502,7 @@ function SeatGrid({ tipo, asientos, selected, onToggle, onBoxSelect = null }) {
         selectedIds={selected}
         onSeatToggle={(a) => onToggle(tipo.id, a.id)}
         onBoxSelect={onBoxSelect}
+        orientation={orientationForZone(zoneKey)}
         accentColor={tipo.mapa?.color}
         compact
       />
@@ -4660,6 +4662,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
                 selectedIds={seatSel}
                 onSeatToggle={toggleSeat}
                 onBoxSelect={boxSelectSeats}
+                orientation={orientationForZone(selectedKey)}
                 accentColor={metaSel?.color}
               />
             </div>

@@ -1,20 +1,21 @@
 /**
- * SeatPicker — selector de butacas estilo ticketera profesional.
+ * SeatPicker — selector de butacas estilo estadio (bowl orientado por tribuna).
  *
- * Butacas con forma de asiento, filas curvadas hacia la cancha, banda de
- * campo como referencia, pasillo central en filas largas, zoom (botones /
- * ctrl+rueda / pinch), tooltip flotante, leyenda, bandeja de seleccionadas
- * y auto-elección de contiguas. Mantiene los gestos del sistema anterior:
- * click marca/desmarca y el arrastre selecciona en caja (Shift/Ctrl suma).
+ * A diferencia de una grilla de cine (filas planas mirando una pantalla), cada
+ * tribuna se dibuja como un segmento del tazón del estadio: la cancha queda del
+ * lado que corresponde a la grada, las filas se abren en abanico hacia atrás y
+ * curvan cóncavas hacia la cancha, y las butacas apuntan su respaldo hacia
+ * afuera (uno se sienta mirando la cancha).
+ *
+ * `orientation` define de qué lado está la cancha:
+ *   field-bottom (Sol Norte) · field-top (Sol Sur) ·
+ *   field-left (Lateral Este) · field-right (Lateral Oeste)
+ *
+ * Gestos preservados: click marca/desmarca, arrastre selecciona en caja
+ * (Shift/Ctrl suma), zoom con botones / ctrl+rueda / pinch.
  *
  * Solo frontend: consume los mismos asientos {id, fila, numero, estado}
- * y los mismos handlers que usaba ZoneSeatGrid/SeatGrid.
- *
- * Exporta:
- *  - SeatCanvas        lienzo SVG puro (render + gestos)
- *  - SeatPickerPanel   panel público (precio, zoom, leyenda, bandeja, auto)
- *  - SeatAdminPanel    panel admin (stats por estado + selección en bloque)
- *  - pickBestSeats     heurística de mejores butacas contiguas
+ * y los mismos handlers que el sistema anterior.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -30,57 +31,117 @@ function hexToRgba(hex, alpha) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
-const BASE_CELL = 30;          // px lógicos por butaca (antes de zoom)
-const CURVE_DEPTH = 0.55;      // curvatura de fila (× CELL) hacia los extremos
-const AISLE_MIN_COLS = 12;     // a partir de cuántas butacas por fila se abre pasillo
-const AISLE_W = 0.8;           // ancho del pasillo central (× CELL)
+const CELL = 30;        // spacing lateral base (fila del frente)
+const ROWGAP = 30;      // profundidad entre filas
+const FAN = 0.07;       // cuánto se ensancha cada fila hacia atrás
+const CURVE = 20;       // profundidad extra en los extremos (curva cóncava)
+const FRONT = 34;       // separación cancha → fila A
+const BANDW = 24;       // grosor de la banda de cancha
+const LABEL = 30;       // espacio para etiquetas de fila
+const PAD = 16;
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.4;
 
-/** Layout: posiciones lógicas de cada butaca con curvatura y pasillo central. */
-function buildLayout(asientos) {
+// Vectores unitarios por orientación: dd = hacia el fondo (aumenta la fila),
+// ld = a lo largo de la fila. La cancha queda en -dd. rot = giro del respaldo.
+const ORIENT = {
+  'field-bottom': { dd: [0, -1], ld: [1, 0], rot: 0, vertical: false },
+  'field-top': { dd: [0, 1], ld: [1, 0], rot: 180, vertical: false },
+  'field-left': { dd: [1, 0], ld: [0, 1], rot: 90, vertical: true },
+  'field-right': { dd: [-1, 0], ld: [0, 1], rot: -90, vertical: true },
+};
+
+/**
+ * Construye el layout del bowl para una orientación. Devuelve las butacas ya
+ * en coordenadas de pantalla, más la banda de cancha y las etiquetas de fila.
+ */
+function buildBowlLayout(asientos, orientation) {
+  const O = ORIENT[orientation] || ORIENT['field-bottom'];
+  const [ddx, ddy] = O.dd;
+  const [ldx, ldy] = O.ld;
+
   const filaMap = new Map();
   for (const a of asientos) {
     if (!filaMap.has(a.fila)) filaMap.set(a.fila, []);
     filaMap.get(a.fila).push(a);
   }
   const filas = [...filaMap.keys()].sort(filaSort);
-  const maxCols = Math.max(1, ...filas.map((f) => filaMap.get(f).length));
-  const hasAisle = maxCols >= AISLE_MIN_COLS;
 
-  const CELL = BASE_CELL;
-  const LABEL_W = 40;
-  const TOP_PAD = 58;          // espacio para la banda de cancha
-  const BOTTOM_PAD = 16;
-  const curveMax = CELL * CURVE_DEPTH;
-  const aislePx = hasAisle ? CELL * AISLE_W : 0;
-
-  const width = LABEL_W * 2 + maxCols * CELL + aislePx;
-  const height = TOP_PAD + filas.length * CELL + curveMax + BOTTOM_PAD;
-
-  const seats = [];
-  const rowLabels = [];
+  // Ancho de referencia (fila más ancha, ya con abanico) para normalizar la curva.
+  let uRef = 1;
   filas.forEach((fila, fi) => {
-    const cols = [...filaMap.get(fila)].sort((x, y) => x.numero - y.numero);
-    const nCols = cols.length;
-    const rowY = TOP_PAD + (fi + 0.5) * CELL;
-    const rowAisle = nCols >= AISLE_MIN_COLS ? aislePx : 0;
-    const rowW = nCols * CELL + rowAisle;
-    const x0 = LABEL_W + (width - LABEL_W * 2 - rowW) / 2;
-    const aisleAfter = Math.ceil(nCols / 2); // pasillo tras la mitad de la fila
-    let edgeDy = 0;
-    cols.forEach((a, ci) => {
-      // Curvatura: el centro de la fila queda más cerca de la cancha (arriba).
-      const t = nCols > 1 ? (2 * ci) / (nCols - 1) - 1 : 0; // -1..1
-      const dy = curveMax * t * t;
-      edgeDy = Math.max(edgeDy, dy);
-      const gap = rowAisle > 0 && ci >= aisleAfter ? rowAisle : 0;
-      seats.push({ a, cx: x0 + gap + (ci + 0.5) * CELL, cy: rowY + dy });
-    });
-    rowLabels.push({ fila, y: rowY + edgeDy });
+    const n = filaMap.get(fila).length;
+    const spacing = CELL * (1 + fi * FAN);
+    uRef = Math.max(uRef, ((n - 1) / 2) * spacing);
   });
 
-  return { seats, rowLabels, width, height, CELL, LABEL_W, maxCols, filas, filaMap };
+  // Butacas en coords canónicas (u lateral, v profundidad desde la cancha).
+  const raw = [];
+  const rowEnds = [];
+  filas.forEach((fila, fi) => {
+    const cols = [...filaMap.get(fila)].sort((x, y) => x.numero - y.numero);
+    const n = cols.length;
+    const spacing = CELL * (1 + fi * FAN);
+    const vbase = FRONT + fi * ROWGAP;
+    let uMin = Infinity;
+    let uMax = -Infinity;
+    cols.forEach((a, j) => {
+      const u = (j - (n - 1) / 2) * spacing;
+      const v = vbase + CURVE * (u / uRef) * (u / uRef);
+      raw.push({ a, u, v });
+      uMin = Math.min(uMin, u);
+      uMax = Math.max(uMax, u);
+    });
+    rowEnds.push({ fila, vbase, uMin, uMax });
+  });
+
+  // Proyección canónica → pantalla (ejes alineados, dd/ld son unitarios de eje).
+  const proj = (u, v) => ({ x: ddx * v + ldx * u, y: ddy * v + ldy * u });
+  const seats = raw.map(({ a, u, v }) => ({ a, ...proj(u, v) }));
+
+  // Banda de cancha: en v=0, extendida hacia -dd un grosor BANDW.
+  const allU = raw.map((r) => r.u);
+  const Uband = Math.max(...allU.map(Math.abs)) + CELL * 0.5;
+  const bandCorners = [
+    proj(-Uband, 0), proj(Uband, 0),
+    proj(-Uband, -BANDW), proj(Uband, -BANDW),
+  ];
+
+  // Etiquetas de fila: en ambos extremos, apenas más allá de la última butaca.
+  const labels = [];
+  for (const { fila, vbase, uMin, uMax } of rowEnds) {
+    labels.push({ fila, ...proj(uMin - LABEL * 0.55, vbase) });
+    labels.push({ fila, ...proj(uMax + LABEL * 0.55, vbase) });
+  }
+
+  // Bounding box con margen de butaca + padding.
+  const seatHalf = CELL * 0.5;
+  const xs = [...seats.map((s) => s.x), ...bandCorners.map((c) => c.x), ...labels.map((l) => l.x)];
+  const ys = [...seats.map((s) => s.y), ...bandCorners.map((c) => c.y), ...labels.map((l) => l.y)];
+  const minX = Math.min(...xs) - seatHalf;
+  const minY = Math.min(...ys) - seatHalf;
+  const maxX = Math.max(...xs) + seatHalf;
+  const maxY = Math.max(...ys) + seatHalf;
+  const offX = PAD - minX;
+  const offY = PAD - minY;
+  const width = maxX - minX + PAD * 2;
+  const height = maxY - minY + PAD * 2;
+
+  const shift = (p) => ({ x: p.x + offX, y: p.y + offY });
+  const outSeats = seats.map((s) => ({ a: s.a, ...shift(s) }));
+  const outLabels = labels.map((l) => ({ fila: l.fila, ...shift(l) }));
+  const bc = bandCorners.map(shift);
+  const bx = Math.min(...bc.map((c) => c.x));
+  const by = Math.min(...bc.map((c) => c.y));
+  const band = {
+    x: bx,
+    y: by,
+    w: Math.max(...bc.map((c) => c.x)) - bx,
+    h: Math.max(...bc.map((c) => c.y)) - by,
+    vertical: O.vertical,
+  };
+
+  return { seats: outSeats, labels: outLabels, band, width, height, seatRot: O.rot };
 }
 
 function seatVisual(estado, selected, accent) {
@@ -93,31 +154,29 @@ function seatVisual(estado, selected, accent) {
 
 /**
  * Lienzo SVG de butacas: render + gestos (click, marquee, ctrl+rueda, pinch).
- * `clickableStates` define qué estados admiten click además de las seleccionadas
- * (público: ['disponible']; admin: disponible/bloqueado/reservado).
+ * `clickableStates` define qué estados admiten click además de las seleccionadas.
  */
 export function SeatCanvas({
   asientos,
   accentColor = '#c9a961',
-  selectedIds = null,          // Set de ids seleccionadas
-  onSeatClick = null,          // (asiento) =>
-  onBoxSelect = null,          // (hits[], additive) =>
+  orientation = 'field-bottom',
+  selectedIds = null,
+  onSeatClick = null,
+  onBoxSelect = null,
   clickableStates = ['disponible'],
   zoom = 1,
   onZoomChange = null,
-  showFieldArc = true,
+  showField = true,
   fieldLabel = 'CANCHA',
 }) {
   const svgRef = useRef(null);
   const wrapRef = useRef(null);
   const pinchRef = useRef(null);
   const [marquee, setMarquee] = useState(null);
-  const [hover, setHover] = useState(null); // { a, x, y } coords locales del wrap
+  const [hover, setHover] = useState(null);
 
-  const layout = useMemo(() => buildLayout(asientos || []), [asientos]);
+  const layout = useMemo(() => buildBowlLayout(asientos || [], orientation), [asientos, orientation]);
 
-  // ctrl+rueda (y pinch de trackpad, que llega como wheel con ctrlKey) = zoom.
-  // Listener nativo porque React registra onWheel como passive.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el || !onZoomChange) return;
@@ -132,7 +191,7 @@ export function SeatCanvas({
   }, [onZoomChange]);
 
   if (!asientos || asientos.length === 0) return null;
-  const { seats, rowLabels, width, height, CELL, LABEL_W } = layout;
+  const { seats, labels, band, width, height, seatRot } = layout;
 
   function svgCoords(clientX, clientY) {
     const svg = svgRef.current;
@@ -142,13 +201,11 @@ export function SeatCanvas({
     const p = pt.matrixTransform(svg.getScreenCTM().inverse());
     return { x: p.x, y: p.y };
   }
-
   function localCoords(clientX, clientY) {
     const r = wrapRef.current.getBoundingClientRect();
     return { x: clientX - r.left, y: clientY - r.top };
   }
 
-  // Pinch con dos punteros táctiles.
   function handlePointerDown(e) {
     if (e.pointerType === 'touch') {
       const p = pinchRef.current;
@@ -165,7 +222,6 @@ export function SeatCanvas({
     }
     startMarquee(e);
   }
-
   function handlePointerMove(e) {
     const p = pinchRef.current;
     if (p?.pinching && p.pointers.has(e.pointerId)) {
@@ -177,7 +233,6 @@ export function SeatCanvas({
       }
     }
   }
-
   function handlePointerUp(e) {
     const p = pinchRef.current;
     if (p) {
@@ -193,10 +248,8 @@ export function SeatCanvas({
     const startClient = { x: e.clientX, y: e.clientY };
     let moved = false;
     const rectFrom = (cur) => ({
-      x1: Math.min(start.x, cur.x),
-      y1: Math.min(start.y, cur.y),
-      x2: Math.max(start.x, cur.x),
-      y2: Math.max(start.y, cur.y),
+      x1: Math.min(start.x, cur.x), y1: Math.min(start.y, cur.y),
+      x2: Math.max(start.x, cur.x), y2: Math.max(start.y, cur.y),
     });
     const onMove = (ev) => {
       if (pinchRef.current?.pinching) { setMarquee(null); return; }
@@ -211,7 +264,7 @@ export function SeatCanvas({
       if (!moved || pinchRef.current?.pinching) return;
       const rect = rectFrom(svgCoords(ev.clientX, ev.clientY));
       const hits = seats
-        .filter(({ cx, cy }) => cx >= rect.x1 && cx <= rect.x2 && cy >= rect.y1 && cy <= rect.y2)
+        .filter(({ x, y }) => x >= rect.x1 && x <= rect.x2 && y >= rect.y1 && y <= rect.y2)
         .map(({ a }) => a);
       onBoxSelect(hits, ev.shiftKey || ev.ctrlKey);
     };
@@ -219,8 +272,8 @@ export function SeatCanvas({
     window.addEventListener('pointerup', onUp);
   }
 
-  const seatW = CELL * 0.74;
-  const seatH = CELL * 0.6;
+  const seatW = CELL * 0.72;
+  const seatH = CELL * 0.58;
   const backH = CELL * 0.16;
   const showNums = CELL * zoom >= 19;
 
@@ -230,7 +283,7 @@ export function SeatCanvas({
         <svg
           ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
-          style={{ width: width * zoom, height: height * zoom, display: 'block' }}
+          style={{ width: width * zoom, height: height * zoom, display: 'block', margin: '0 auto' }}
           className="sp-canvas"
           role="img"
           aria-label="Mapa de butacas"
@@ -245,48 +298,40 @@ export function SeatCanvas({
               <line x1="0" y1="0" x2="0" y2="6" stroke="#4a4a4a" strokeWidth="2.2" />
             </pattern>
             <linearGradient id="sp-field-band" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(68,158,88,.55)" />
-              <stop offset="100%" stopColor="rgba(42,110,58,.12)" />
-            </linearGradient>
-            <linearGradient id="sp-band-edge" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor={hexToRgba(accentColor, 0)} />
-              <stop offset="50%" stopColor={hexToRgba(accentColor, 0.8)} />
-              <stop offset="100%" stopColor={hexToRgba(accentColor, 0)} />
+              <stop offset="0%" stopColor="rgba(68,158,88,.6)" />
+              <stop offset="100%" stopColor="rgba(42,110,58,.18)" />
             </linearGradient>
             <filter id="sp-sel-shadow" x="-40%" y="-40%" width="180%" height="180%">
               <feDropShadow dx="0" dy="1.4" stdDeviation="2.2" floodColor="#c9a961" floodOpacity="0.55" />
             </filter>
           </defs>
 
-          {/* Banda de cancha: referencia de orientación (fila A = más cercana) */}
-          {showFieldArc && (
+          {/* Banda de cancha del lado que corresponde a la tribuna */}
+          {showField && (
             <g pointerEvents="none">
-              <path
-                d={`M ${LABEL_W - 6} 34 Q ${width / 2} 6 ${width - LABEL_W + 6} 34 L ${width - LABEL_W + 6} 44 Q ${width / 2} 17 ${LABEL_W - 6} 44 Z`}
-                fill="url(#sp-field-band)"
-              />
-              <path
-                d={`M ${LABEL_W - 6} 44 Q ${width / 2} 17 ${width - LABEL_W + 6} 44`}
-                fill="none"
-                stroke="url(#sp-band-edge)"
-                strokeWidth="2"
-              />
-              <text x={width / 2} y="27" textAnchor="middle" className="sp-field-label">{fieldLabel}</text>
+              <rect x={band.x} y={band.y} width={band.w} height={band.h} rx="6" fill="url(#sp-field-band)" stroke={hexToRgba(accentColor, 0.4)} strokeWidth="1" />
+              <text
+                x={band.x + band.w / 2}
+                y={band.y + band.h / 2}
+                textAnchor="middle"
+                dominantBaseline="central"
+                className="sp-field-label"
+                transform={band.vertical ? `rotate(-90 ${band.x + band.w / 2} ${band.y + band.h / 2})` : undefined}
+              >
+                {fieldLabel}
+              </text>
             </g>
           )}
 
-          {/* Etiquetas de fila en cápsulas, a ambos lados */}
-          {rowLabels.map(({ fila, y }) => (
-            <g key={`rl-${fila}`} pointerEvents="none">
-              <rect x={6} y={y - 8.5} width={LABEL_W - 18} height={17} rx={8.5} className="sp-row-pill" />
-              <text x={6 + (LABEL_W - 18) / 2} y={y + 3.4} textAnchor="middle" className="sp-row-label">{fila}</text>
-              <rect x={width - LABEL_W + 12} y={y - 8.5} width={LABEL_W - 18} height={17} rx={8.5} className="sp-row-pill" />
-              <text x={width - LABEL_W + 12 + (LABEL_W - 18) / 2} y={y + 3.4} textAnchor="middle" className="sp-row-label">{fila}</text>
-            </g>
+          {/* Etiquetas de fila */}
+          {labels.map((l, i) => (
+            <text key={`${l.fila}-${i}`} x={l.x} y={l.y + 3.4} textAnchor="middle" className="sp-row-label" pointerEvents="none">
+              {l.fila}
+            </text>
           ))}
 
           {/* Butacas */}
-          {seats.map(({ a, cx, cy }) => {
+          {seats.map(({ a, x, y }) => {
             const selected = selectedIds?.has(a.id);
             const clickable = !!onSeatClick && (selected || clickableStates.includes(a.estado));
             const v = seatVisual(a.estado, selected, accentColor);
@@ -294,42 +339,31 @@ export function SeatCanvas({
               <g
                 key={a.id}
                 className={`sp-seat ${v.cls}${clickable ? ' sp-seat--clickable' : ''}`}
+                transform={seatRot ? `rotate(${seatRot} ${x} ${y})` : undefined}
                 filter={selected ? 'url(#sp-sel-shadow)' : undefined}
                 onClick={clickable ? (e) => { e.stopPropagation(); onSeatClick(a); } : undefined}
                 onMouseEnter={(e) => setHover({ a, ...localCoords(e.clientX, e.clientY) })}
                 onMouseMove={(e) => setHover({ a, ...localCoords(e.clientX, e.clientY) })}
                 onMouseLeave={() => setHover(null)}
               >
-                {/* respaldo */}
                 <rect
-                  x={cx - seatW / 2}
-                  y={cy - seatH / 2 - backH + 1.5}
-                  width={seatW}
-                  height={backH}
-                  rx={backH / 2}
+                  x={x - seatW / 2} y={y - seatH / 2 - backH + 1.5}
+                  width={seatW} height={backH} rx={backH / 2}
                   fill={v.fill === 'url(#sp-hatch)' ? '#3a3a3a' : v.fill}
-                  stroke={v.stroke}
-                  strokeWidth={v.strokeWidth * 0.8}
-                  opacity={0.9}
+                  stroke={v.stroke} strokeWidth={v.strokeWidth * 0.8} opacity={0.9}
                 />
-                {/* cojín */}
                 <rect
-                  x={cx - seatW / 2}
-                  y={cy - seatH / 2 + 2.5}
-                  width={seatW}
-                  height={seatH}
-                  rx={3.4}
-                  fill={v.fill}
-                  stroke={v.stroke}
-                  strokeWidth={v.strokeWidth}
+                  x={x - seatW / 2} y={y - seatH / 2 + 2.5}
+                  width={seatW} height={seatH} rx={3.4}
+                  fill={v.fill} stroke={v.stroke} strokeWidth={v.strokeWidth}
                 />
                 {a.estado === 'vendido' && !selected && (
-                  <text x={cx} y={cy + 5.4} textAnchor="middle" className="sp-seat-x" pointerEvents="none">×</text>
+                  <text x={x} y={y + 5.4} textAnchor="middle" className="sp-seat-x" pointerEvents="none"
+                    transform={seatRot ? `rotate(${-seatRot} ${x} ${y})` : undefined}>×</text>
                 )}
                 {showNums && a.estado !== 'vendido' && (
-                  <text x={cx} y={cy + 5.2} textAnchor="middle" pointerEvents="none" className="sp-seat-num" fill={v.num}>
-                    {a.numero}
-                  </text>
+                  <text x={x} y={y + 5.2} textAnchor="middle" pointerEvents="none" className="sp-seat-num" fill={v.num}
+                    transform={seatRot ? `rotate(${-seatRot} ${x} ${y})` : undefined}>{a.numero}</text>
                 )}
                 <title>{`Fila ${a.fila} · Asiento ${a.numero} · ${a.estado}`}</title>
               </g>
@@ -338,12 +372,9 @@ export function SeatCanvas({
 
           {marquee && (
             <rect
-              x={marquee.x1}
-              y={marquee.y1}
-              width={marquee.x2 - marquee.x1}
-              height={marquee.y2 - marquee.y1}
-              className="sp-marquee"
-              pointerEvents="none"
+              x={marquee.x1} y={marquee.y1}
+              width={marquee.x2 - marquee.x1} height={marquee.y2 - marquee.y1}
+              className="sp-marquee" pointerEvents="none"
             />
           )}
         </svg>
@@ -373,7 +404,6 @@ export function pickBestSeats(asientos, n, excludeIds = null) {
   for (const fila of filas) {
     const libres = filaMap.get(fila).sort((x, y) => x.numero - y.numero);
     const maxNum = Math.max(...libres.map((a) => a.numero));
-    // Ventanas de n consecutivas dentro de la fila; gana la más centrada.
     let best = null;
     for (let i = 0; i <= libres.length - n; i++) {
       const run = libres.slice(i, i + n);
@@ -385,7 +415,6 @@ export function pickBestSeats(asientos, n, excludeIds = null) {
     }
     if (best) return best.run;
   }
-  // Sin n contiguas: junta las más cercanas a la cancha que haya.
   const all = filas.flatMap((f) => filaMap.get(f).sort((x, y) => x.numero - y.numero));
   return all.slice(0, n);
 }
@@ -403,16 +432,14 @@ function ZoomControls({ zoom, setZoom }) {
   );
 }
 
-/**
- * Panel público del selector: encabezado con zona/precio/ocupación, zoom,
- * lienzo, leyenda, auto-elección y bandeja de butacas seleccionadas.
- */
+/** Panel público del selector: encabezado, zoom, lienzo, leyenda, auto y bandeja. */
 export function SeatPickerPanel({
   tipo,
   asientos,
-  selectedIds,               // Set o array de ids seleccionadas (de este sector)
-  onSeatToggle,              // (asiento) =>
-  onBoxSelect = null,        // (hits[], additive) => — opcional
+  selectedIds,
+  onSeatToggle,
+  onBoxSelect = null,
+  orientation = 'field-bottom',
   maxSeats = 10,
   accentColor = null,
   fieldLabel = 'CANCHA',
@@ -439,10 +466,7 @@ export function SeatPickerPanel({
     if (onBoxSelect) onBoxSelect(picks, true);
     else picks.forEach((a) => onSeatToggle(a));
   }
-
-  function vaciar() {
-    propios.forEach((a) => onSeatToggle(a));
-  }
+  function vaciar() { propios.forEach((a) => onSeatToggle(a)); }
 
   return (
     <div className={`seatpicker${compact ? ' seatpicker--compact' : ''}`}>
@@ -468,6 +492,7 @@ export function SeatPickerPanel({
       <SeatCanvas
         asientos={asientos}
         accentColor={accent}
+        orientation={orientation}
         selectedIds={selSet}
         onSeatClick={onSeatToggle}
         onBoxSelect={onBoxSelect}
@@ -502,13 +527,7 @@ export function SeatPickerPanel({
               .slice()
               .sort((x, y) => filaSort(x.fila, y.fila) || x.numero - y.numero)
               .map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className="seatpicker-chip"
-                  onClick={() => onSeatToggle(a)}
-                  title={`Quitar fila ${a.fila} asiento ${a.numero}`}
-                >
+                <button key={a.id} type="button" className="seatpicker-chip" onClick={() => onSeatToggle(a)} title={`Quitar fila ${a.fila} asiento ${a.numero}`}>
                   {a.fila}-{a.numero} <span aria-hidden="true">×</span>
                 </button>
               ))}
@@ -524,17 +543,14 @@ export function SeatPickerPanel({
   );
 }
 
-/**
- * Panel admin del selector: estadísticas por estado + lienzo con selección
- * en bloque (click y arrastre alimentan una selección externa; las acciones
- * de bloquear/habilitar viven donde el flujo admin las tenga).
- */
+/** Panel admin: estadísticas por estado + lienzo con selección en bloque. */
 export function SeatAdminPanel({
   titulo = null,
   asientos,
   selectedIds,
   onSeatToggle,
   onBoxSelect,
+  orientation = 'field-bottom',
   accentColor = '#c9a961',
   hint = 'Tocá o arrastrá para seleccionar butacas · Shift suma a la selección',
 }) {
@@ -564,13 +580,13 @@ export function SeatAdminPanel({
       <SeatCanvas
         asientos={asientos}
         accentColor={accentColor}
+        orientation={orientation}
         selectedIds={selSet}
         onSeatClick={onSeatToggle}
         onBoxSelect={onBoxSelect}
         clickableStates={['disponible', 'bloqueado', 'reservado']}
         zoom={zoom}
         onZoomChange={setZoom}
-        showFieldArc
       />
       <p className="seatpicker-hint">{hint}</p>
     </div>
