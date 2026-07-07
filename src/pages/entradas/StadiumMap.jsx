@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { StadiumSvgERC } from './StadiumSvgERC.jsx';
+import { StadiumSvgERC, ZoneSeatGrid } from './StadiumSvgERC.jsx';
 import {
   ERC_ZONE_KEYS,
   ERC_ZONE_META,
@@ -55,7 +55,10 @@ function ZonePanel({ tipo, zoneKey, qty, onUpdate, onClose, compact }) {
         {agotado ? 'Agotado' : `${tipo.disponibles.toLocaleString('es-CR')} disponibles`}
       </p>
       {!agotado && tipo.numerado && (
-        <p className="stadium-panel-hint">Sector numerado: elegí tus butacas en la grilla bajo el mapa.</p>
+        <>
+          <p className="stadium-panel-hint">Sector numerado: tocá las butacas en el mapa o en la grilla bajo él (arrastrá para elegir en bloque).</p>
+          {qty > 0 && <p className="stadium-panel-avail">{qty} butaca{qty === 1 ? '' : 's'} seleccionada{qty === 1 ? '' : 's'}</p>}
+        </>
       )}
       {!agotado && !tipo.numerado && (
         <div className="stepper">
@@ -131,13 +134,25 @@ function MapLegendChips({ tiposByKey, selectedKey, hoveredKey, onSelect, gramill
 }
 
 /** Mapa vectorial ERC (2D desde arriba). Soporta partidos y espectáculos. */
-function ErcVectorMap({ evento, tipos, qty, onUpdate }) {
+function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {}, onSeatClick = null, onSeatBoxSelect = null }) {
   const [hoveredKey, setHoveredKey] = useState(null);
   const [panelTipo, setPanelTipo] = useState(null);
   const tiposMap = useMemo(() => tiposByZoneKey(tipos), [tipos]);
   const selectedKey = panelTipo
     ? (panelTipo.mapa?.points?.key ?? nombreToZoneKey(panelTipo.nombre))
     : null;
+
+  // Butacas numeradas agrupadas por zona (mismo croquis que usa el admin).
+  const seatsByZoneKey = useMemo(() => {
+    const map = {};
+    for (const [key, t] of Object.entries(tiposMap)) {
+      if (!t.numerado) continue;
+      const list = asientos.filter((a) => a.tipoId === t.id);
+      if (list.length) map[key] = list;
+    }
+    return map;
+  }, [tiposMap, asientos]);
+  const selectedSeatIds = useMemo(() => new Set(Object.values(seats).flat()), [seats]);
 
   const fieldTemplate = evento?.fieldTemplate ?? null;
   const fieldSplits = evento?.fieldSplits ?? null;
@@ -174,11 +189,35 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate }) {
             selectedKey={selectedKey}
             onZoneClick={handleZoneClick}
             onZoneHover={setHoveredKey}
+            showZoneDetails
+            seatsByZoneKey={seatsByZoneKey}
+            selectedSeatIds={selectedSeatIds}
+            onSeatClick={onSeatClick}
+            onSeatBoxSelect={onSeatBoxSelect}
           />
           {hoveredTipo && !panelTipo && (
             <MapTooltip tipo={hoveredTipo} zoneKey={hoveredKey} meta={hoveredMeta} />
           )}
         </div>
+        {selectedKey && seatsByZoneKey[selectedKey]?.length > 0 && (
+          <div className="zone-seat-expand">
+            <div className="zone-seat-expand-head">
+              <b>{(ERC_ZONE_META[selectedKey] ?? GRAMILLA_ZONE_META[selectedKey])?.label ?? selectedKey}</b>
+              <span className="muted">Tocá o arrastrá para elegir tus butacas</span>
+              <span className="zone-seat-legend">
+                <i style={{ background: '#6de06d' }} /> disponible
+                <i style={{ background: '#888' }} /> no disponible
+                <i style={{ background: '#e05555' }} /> vendida
+              </span>
+            </div>
+            <ZoneSeatGrid
+              asientos={seatsByZoneKey[selectedKey]}
+              selectedSeatIds={selectedSeatIds}
+              onSeatClick={onSeatClick}
+              onBoxSelect={onSeatBoxSelect}
+            />
+          </div>
+        )}
         <MapLegendChips
           tiposByKey={tiposMap}
           selectedKey={selectedKey}
@@ -193,7 +232,7 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate }) {
             <ZonePanel
               tipo={panelTipo}
               zoneKey={selectedKey}
-              qty={qty[panelTipo.id] ?? 0}
+              qty={panelTipo.numerado ? (seats[panelTipo.id]?.length ?? 0) : (qty[panelTipo.id] ?? 0)}
               onUpdate={onUpdate}
               onClose={() => setPanelTipo(null)}
               compact
@@ -271,12 +310,31 @@ function PhotoOverlayMap({ evento, tipos, qty, onUpdate }) {
 }
 
 /**
+ * El croquis vectorial aplica cuando el evento lo declara (vector:erc-v1) o
+ * cuando sus sectores ya están mapeados a zonas ERC (eventos viejos con foto).
+ */
+export function usesVectorMap(evento, tipos = []) {
+  return isErcVectorLayout(evento) || tipos.some((t) => t.estado !== 'inactivo' && t.mapa?.shape === 'zone');
+}
+
+/**
  * StadiumMap — mapa interactivo de zonas GA.
  * Usa SVG vectorial ERC cuando el evento tiene layout vector:erc-v1.
  */
-export function StadiumMap({ evento, tipos, qty, onUpdate }) {
-  if (isErcVectorLayout(evento)) {
-    return <ErcVectorMap evento={evento} tipos={tipos} qty={qty} onUpdate={onUpdate} />;
+export function StadiumMap({ evento, tipos, qty, onUpdate, asientos, seats, onSeatClick, onSeatBoxSelect }) {
+  if (usesVectorMap(evento, tipos)) {
+    return (
+      <ErcVectorMap
+        evento={evento}
+        tipos={tipos}
+        qty={qty}
+        onUpdate={onUpdate}
+        asientos={asientos}
+        seats={seats}
+        onSeatClick={onSeatClick}
+        onSeatBoxSelect={onSeatBoxSelect}
+      />
+    );
   }
   return <PhotoOverlayMap evento={evento} tipos={tipos} qty={qty} onUpdate={onUpdate} />;
 }
