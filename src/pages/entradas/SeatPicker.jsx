@@ -114,10 +114,25 @@ function buildBowlLayout(asientos, orientation) {
     labels.push({ fila, ...proj(uMax + LABEL * 0.55, vbase) });
   }
 
+  // Gradas: un escalón (tarima) por fila detrás de las butacas. En abanico
+  // (más ancho hacia atrás) y con el labio del escalón del lado de la cancha.
+  const STEP_HALF = ROWGAP * 0.46;
+  const steps = rowEnds.map(({ vbase, uMin, uMax }, fi) => {
+    const uHalf = Math.max(Math.abs(uMin), Math.abs(uMax)) + CELL * 0.3;
+    return {
+      fi,
+      a: proj(-uHalf, vbase - STEP_HALF),      // esquina frente-izq
+      b: proj(uHalf, vbase + STEP_HALF),       // esquina fondo-der
+      lipA: proj(-uHalf, vbase - STEP_HALF),   // labio (lado de la cancha)
+      lipB: proj(uHalf, vbase - STEP_HALF),
+    };
+  });
+
   // Bounding box con margen de butaca + padding.
   const seatHalf = CELL * 0.5;
-  const xs = [...seats.map((s) => s.x), ...bandCorners.map((c) => c.x), ...labels.map((l) => l.x)];
-  const ys = [...seats.map((s) => s.y), ...bandCorners.map((c) => c.y), ...labels.map((l) => l.y)];
+  const stepPts = steps.flatMap((s) => [s.a, s.b]);
+  const xs = [...seats.map((s) => s.x), ...bandCorners.map((c) => c.x), ...labels.map((l) => l.x), ...stepPts.map((p) => p.x)];
+  const ys = [...seats.map((s) => s.y), ...bandCorners.map((c) => c.y), ...labels.map((l) => l.y), ...stepPts.map((p) => p.y)];
   const minX = Math.min(...xs) - seatHalf;
   const minY = Math.min(...ys) - seatHalf;
   const maxX = Math.max(...xs) + seatHalf;
@@ -141,7 +156,23 @@ function buildBowlLayout(asientos, orientation) {
     vertical: O.vertical,
   };
 
-  return { seats: outSeats, labels: outLabels, band, width, height, seatRot: O.rot };
+  const nSteps = steps.length;
+  const outSteps = steps.map((s) => {
+    const a = shift(s.a);
+    const b = shift(s.b);
+    const la = shift(s.lipA);
+    const lb = shift(s.lipB);
+    return {
+      fi: s.fi,
+      x: Math.min(a.x, b.x),
+      y: Math.min(a.y, b.y),
+      w: Math.abs(b.x - a.x),
+      h: Math.abs(b.y - a.y),
+      lip: { x1: la.x, y1: la.y, x2: lb.x, y2: lb.y },
+    };
+  });
+
+  return { seats: outSeats, labels: outLabels, steps: outSteps, nSteps, band, width, height, seatRot: O.rot };
 }
 
 function seatVisual(estado, selected, accent) {
@@ -191,7 +222,7 @@ export function SeatCanvas({
   }, [onZoomChange]);
 
   if (!asientos || asientos.length === 0) return null;
-  const { seats, labels, band, width, height, seatRot } = layout;
+  const { seats, labels, steps, nSteps, band, width, height, seatRot } = layout;
 
   function svgCoords(clientX, clientY) {
     const svg = svgRef.current;
@@ -305,6 +336,21 @@ export function SeatCanvas({
               <feDropShadow dx="0" dy="1.4" stdDeviation="2.2" floodColor="#c9a961" floodOpacity="0.55" />
             </filter>
           </defs>
+
+          {/* Gradas: escalones (tarimas) detrás de las butacas — más claros al
+              frente (cerca de la cancha), más oscuros hacia el fondo */}
+          <g className="sp-steps" pointerEvents="none">
+            {steps.map((s) => {
+              const t = nSteps > 1 ? s.fi / (nSteps - 1) : 0;
+              const fill = 0.075 - 0.055 * t;      // opacidad decreciente hacia atrás
+              return (
+                <g key={`step-${s.fi}`}>
+                  <rect x={s.x} y={s.y} width={s.w} height={s.h} rx="4" fill={`rgba(255,255,255,${fill.toFixed(3)})`} />
+                  <line x1={s.lip.x1} y1={s.lip.y1} x2={s.lip.x2} y2={s.lip.y2} stroke={hexToRgba(accentColor, 0.22)} strokeWidth="1" />
+                </g>
+              );
+            })}
+          </g>
 
           {/* Banda de cancha del lado que corresponde a la tribuna */}
           {showField && (
