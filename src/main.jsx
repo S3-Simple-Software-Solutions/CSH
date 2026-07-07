@@ -5,6 +5,7 @@ import './styles.css';
 import './site.css';
 
 import { PublicParking, PublicCoupons, PublicEntradas, AdminApp, applyTheme, THEME_KEY } from './app-modules.jsx';
+import { ConfirmProvider } from './utils/confirm.jsx';
 import PublicLayout from './layout/PublicLayout.jsx';
 import ServiceLayout from './layout/ServiceLayout.jsx';
 
@@ -73,7 +74,7 @@ const router = createBrowserRouter([
       { path: '/entradas/*', element: <PublicEntradas /> },
     ],
   },
-  { path: '/admin/*', element: <AdminApp /> },
+  { path: '/admin/*', element: <ConfirmProvider><AdminApp /></ConfirmProvider> },
 ]);
 
 applyTheme(localStorage.getItem(THEME_KEY) || 'dark');

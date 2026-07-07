@@ -19,6 +19,7 @@ import { contacto as clubContacto } from './data/club.js';
 import QRCode from 'qrcode';
 import { uploadFile } from './utils/api.js';
 import { useEscClose } from './utils/useEscClose.js';
+import { useConfirm } from './utils/confirm.jsx';
 import sotano1Img from './croquis/sotano-1.png';
 import sotano2Img from './croquis/sotano-2.png';
 import './styles.css';
@@ -3848,6 +3849,7 @@ function TemplateSavePanel({ evento, tipos, onCancel, onSaved }) {
 }
 
 function EventWorkspace({ eventId, navigate }) {
+  const confirm = useConfirm();
   const [autoSeed] = useState(() => sessionStorage.getItem('entradas_auto_seed_event') === eventId);
   const [evento, setEvento] = useState(null);
   const [tipos, setTipos] = useState([]);
@@ -3881,7 +3883,21 @@ function EventWorkspace({ eventId, navigate }) {
   }, [eventId]);
 
   async function toggleEstado() {
-    const estado = evento.estado === 'publicado' ? 'finalizado' : 'publicado';
+    const publicar = evento.estado !== 'publicado';
+    const estado = publicar ? 'publicado' : 'finalizado';
+    const ok = await confirm(publicar
+      ? {
+        title: 'Publicar evento',
+        message: `«${evento.nombre}» quedará visible al público y sus entradas saldrán a la venta.`,
+        confirmLabel: 'Publicar',
+      }
+      : {
+        title: 'Finalizar evento',
+        message: `Se cierra la venta de «${evento.nombre}». El evento dejará de estar disponible para compra.`,
+        confirmLabel: 'Finalizar',
+        danger: true,
+      });
+    if (!ok) return;
     setMsg(null);
     const d = await api(`/admin/api/entradas/eventos/${evento.id}/estado`, {
       method: 'POST',
@@ -4349,6 +4365,7 @@ function zonasByKeyAdmin(tipos) {
 const SPLITS_POR_TEMPLATE = { 2: [0.5], 3: [0.33, 0.66], 4: [0.25, 0.5, 0.75] };
 
 function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
+  const confirm = useConfirm();
   const [ev, setEv] = useState(evento);
   const [tipos, setTipos] = useState(null); // null = cargando
   const [selectedKey, setSelectedKey] = useState(null);
@@ -4533,6 +4550,16 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
   async function setEstadoButacasSel(estado) {
     const ids = [...seatSel];
     if (ids.length === 0) return;
+    const bloquear = estado === 'bloqueado';
+    const ok = await confirm({
+      title: bloquear ? 'Bloquear butacas' : 'Habilitar butacas',
+      message: bloquear
+        ? `${ids.length} butaca(s) quedarán bloqueadas y no se podrán vender.`
+        : `${ids.length} butaca(s) volverán a estar disponibles para la venta.`,
+      confirmLabel: bloquear ? 'Bloquear' : 'Habilitar',
+      danger: bloquear,
+    });
+    if (!ok) return;
     setBusy(true);
     const d = await api('/admin/api/entradas/asientos/estado', {
       method: 'POST',
@@ -4585,6 +4612,22 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     return updated;
   }
 
+  // Cambio de estado de un sector desde el panel (acción puntual del usuario);
+  // los presets llaman a setEstadoSector directamente sin este diálogo.
+  async function confirmSetEstadoSector(t, estado) {
+    const alaventa = estado === 'activo';
+    const ok = await confirm({
+      title: alaventa ? 'Poner sector a la venta' : 'Sacar sector de venta',
+      message: alaventa
+        ? `«${t.nombre}» quedará disponible para compra y su cupo entra en el aforo activo.`
+        : `«${t.nombre}» dejará de venderse y su cupo se redistribuye entre los sectores activos.`,
+      confirmLabel: alaventa ? 'Poner a la venta' : 'Sacar de venta',
+      danger: !alaventa,
+    });
+    if (!ok) return;
+    await setEstadoSector(t, estado);
+  }
+
   async function agregarZona(key) {
     const i = catalogo.findIndex((s) => s.key === key);
     if (i < 0) return;
@@ -4604,6 +4647,12 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
 
   // Presets del venue ("templates del mapa").
   async function presetEstadioCompleto() {
+    const ok = await confirm({
+      title: 'Activar estadio completo',
+      message: `Se activan todas las zonas del estadio y se redistribuye el aforo (${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')} lugares). Los precios que hayas definido se conservan.`,
+      confirmLabel: 'Aplicar preset',
+    });
+    if (!ok) return;
     setMsg(null);
     const current = tipos || [];
     const keysActivas = new Set(catalogo.map((zona) => zona.key));
@@ -4616,6 +4665,12 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
   }
 
   async function presetGramilla(template) {
+    const ok = await confirm({
+      title: `Configurar gramilla en ${template} zonas`,
+      message: `El campo se dividirá en ${template} zonas de gramilla y el aforo se redistribuirá (${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')} lugares). Las zonas de gramilla fuera de la plantilla quedan fuera de venta.`,
+      confirmLabel: 'Aplicar preset',
+    });
+    if (!ok) return;
     setMsg(null); setBusy(true);
     await api(`/admin/api/entradas/eventos/${evento.id}/mapa`, {
       method: 'PUT',
@@ -4641,6 +4696,12 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
   }
 
   async function presetSoloTribunas() {
+    const ok = await confirm({
+      title: 'Dejar solo tribunas',
+      message: `Todas las zonas de gramilla saldrán de venta y el aforo (${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')} lugares) se redistribuye entre las tribunas.`,
+      confirmLabel: 'Aplicar preset',
+    });
+    if (!ok) return;
     setMsg(null);
     const byKey = zonasByKeyAdmin(tipos || []);
     for (const g of GRAMILLA_SECTORES) {
@@ -4750,7 +4811,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
                 <button
                   type="button"
                   className={seleccionado.estado === 'activo' ? 'active' : ''}
-                  onClick={() => setEstadoSector(seleccionado, 'activo')}
+                  onClick={() => confirmSetEstadoSector(seleccionado, 'activo')}
                   disabled={busy || seleccionado.estado === 'activo'}
                 >
                   A la venta
@@ -4758,7 +4819,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
                 <button
                   type="button"
                   className={seleccionado.estado === 'inactivo' ? 'active inactive' : ''}
-                  onClick={() => setEstadoSector(seleccionado, 'inactivo')}
+                  onClick={() => confirmSetEstadoSector(seleccionado, 'inactivo')}
                   disabled={busy || seleccionado.estado === 'inactivo'}
                 >
                   Fuera de venta
@@ -4909,9 +4970,17 @@ function AsientosModal({ tipo, onClose, asPanel = false }) {
 
 
 function CortesiaModal({ evento, tipos, onClose, asPanel }) {
+  const confirm = useConfirm();
   const [form, setForm] = useState({ tipoId: tipos?.[0]?.id || '', nombre: '', email: '' });
   const [msg, setMsg] = useState(null);
   async function submit() {
+    const tipoNombre = (tipos || []).find((t) => t.id === form.tipoId)?.nombre;
+    const ok = await confirm({
+      title: 'Emitir cortesía',
+      message: `Se emitirá una entrada de cortesía${tipoNombre ? ` de «${tipoNombre}»` : ''}${form.email ? ` y se enviará a ${form.email}` : ''}. Esta acción no se puede deshacer.`,
+      confirmLabel: 'Emitir cortesía',
+    });
+    if (!ok) return;
     setMsg(null);
     const d = await api('/admin/api/entradas/cortesia', { method: 'POST', body: JSON.stringify({ eventoId: evento.id, ...form }) });
     if (!d.ok) return setMsg({ type: 'error', text: d.error });
