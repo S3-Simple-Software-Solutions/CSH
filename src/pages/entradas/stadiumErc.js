@@ -66,6 +66,21 @@ export function zoneColor(key) {
   return ERC_ZONE_META[key]?.color ?? '#c9a961';
 }
 
+/**
+ * Orientación del bowl para el selector de butacas: de qué lado queda la cancha
+ * según la tribuna, para que cada grada se vea "mirando" a la cancha (no un cine).
+ * La fila A (más cercana a la cancha) queda del lado que devuelve esta función.
+ */
+export function orientationForZone(key) {
+  switch (key) {
+    case 'sol-norte': return 'field-bottom';  // tribuna arriba → cancha abajo
+    case 'sol-sur': return 'field-top';        // tribuna abajo → cancha arriba
+    case 'lateral-oeste': return 'field-right'; // tribuna izquierda → cancha a la derecha
+    case 'lateral-este': return 'field-left';   // tribuna derecha → cancha a la izquierda
+    default: return 'field-bottom';             // gramilla / desconocido
+  }
+}
+
 export function mapaFromZoneKey(key) {
   const meta = ERC_ZONE_META[key];
   if (!meta) return null;

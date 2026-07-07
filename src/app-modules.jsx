@@ -4,9 +4,10 @@ import AdminTopBar from './layout/AdminTopBar.jsx';
 import DataTable from './components/DataTable.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
 import { StadiumMap, tiposByZoneKey, usesVectorMap } from './pages/entradas/StadiumMap.jsx';
-import { StadiumSvgERC, ZoneSeatGrid } from './pages/entradas/StadiumSvgERC.jsx';
+import { StadiumSvgERC } from './pages/entradas/StadiumSvgERC.jsx';
+import { SeatPickerPanel, SeatAdminPanel } from './pages/entradas/SeatPicker.jsx';
 import { SeatAdminGrid } from './pages/entradas/SeatAdminGrid.jsx';
-import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
+import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey, orientationForZone } from './pages/entradas/stadiumErc.js';
 import { gramillaKeysForTemplate } from './pages/entradas/stadiumFieldGeometry.js';
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
@@ -2488,47 +2489,23 @@ function BoletoLookup() {
   );
 }
 
-function SeatGrid({ tipo, asientos, selected, onToggle }) {
-  const porFila = new Map();
-  for (const a of asientos) {
-    if (!porFila.has(a.fila)) porFila.set(a.fila, []);
-    porFila.get(a.fila).push(a);
-  }
-  const filas = [...porFila.keys()].sort();
-  const seatStyle = (a) => {
-    const isSel = selected.includes(a.id);
-    const libre = a.estado === 'disponible';
-    return {
-      width: 26, height: 26, borderRadius: 6, fontSize: '.62rem', fontWeight: 700,
-      border: '1px solid ' + (isSel ? '#c9a961' : libre ? '#3a5a3a' : '#444'),
-      background: isSel ? '#c9a961' : libre ? '#1d2e1d' : '#333',
-      color: isSel ? '#1a1a1a' : libre ? '#9fd49f' : '#666',
-      cursor: libre || isSel ? 'pointer' : 'not-allowed',
-      padding: 0,
-    };
-  };
+// Selector de butacas moderno (SeatPicker): mismo contrato que la grilla
+// anterior — onToggle(tipoId, asientoId) — con zoom, tooltip, auto-elección
+// y bandeja de seleccionadas. onBoxSelect habilita la selección por arrastre.
+function SeatGrid({ tipo, asientos, selected, onToggle, onBoxSelect = null }) {
+  const zoneKey = tipo.mapa?.points?.key ?? nombreToZoneKey(tipo.nombre);
   return (
-    <div className="seat-grid" style={{ margin: '10px 0 4px', overflowX: 'auto' }}>
-      <p className="muted" style={{ fontSize: '.78rem', margin: '0 0 6px' }}>
-        {tipo.nombre}: elegí tus butacas ({selected.length} seleccionada{selected.length === 1 ? '' : 's'})
-      </p>
-      {filas.map((fila) => (
-        <div key={fila} style={{ display: 'flex', gap: 3, alignItems: 'center', marginBottom: 3 }}>
-          <span className="muted" style={{ width: 26, fontSize: '.68rem', textAlign: 'center', flexShrink: 0 }}>{fila}</span>
-          {porFila.get(fila).sort((a, b) => a.numero - b.numero).map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              style={seatStyle(a)}
-              disabled={a.estado !== 'disponible' && !selected.includes(a.id)}
-              title={`Fila ${a.fila} · Asiento ${a.numero}${a.estado !== 'disponible' ? ' · Ocupado' : ''}`}
-              onClick={() => onToggle(tipo.id, a.id)}
-            >
-              {a.numero}
-            </button>
-          ))}
-        </div>
-      ))}
+    <div className="seat-grid" style={{ margin: '10px 0 4px' }}>
+      <SeatPickerPanel
+        tipo={tipo}
+        asientos={asientos}
+        selectedIds={selected}
+        onSeatToggle={(a) => onToggle(tipo.id, a.id)}
+        onBoxSelect={onBoxSelect}
+        orientation={orientationForZone(zoneKey)}
+        accentColor={tipo.mapa?.color}
+        compact
+      />
     </div>
   );
 }
@@ -2709,7 +2686,7 @@ function PublicEventDetail({ slug }) {
                   </div>
                   <div className="sector-stock">{t.disponibles > 0 ? `${t.disponibles} disponibles` : 'Agotado'}</div>
                   {t.numerado ? (
-                    <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} />
+                    <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} onBoxSelect={boxSelectSeats} />
                   ) : (
                     <div className="stepper">
                       <button onClick={() => setCantidad(t.id, (qty[t.id] || 0) - 1, Math.min(10, t.disponibles))} disabled={!qty[t.id]}>−</button>
@@ -2730,7 +2707,7 @@ function PublicEventDetail({ slug }) {
             {tiposNumerados.map((t) => (
               <div key={t.id} className="sector">
                 <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioVigente ?? t.precioCrc)}</span></div>
-                <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} />
+                <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} onBoxSelect={boxSelectSeats} />
               </div>
             ))}
           </section>
@@ -4679,20 +4656,14 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
           />
           {selectedKey && seatsByZoneKey[selectedKey]?.length > 0 && (
             <div className="zone-seat-expand">
-              <div className="zone-seat-expand-head">
-                <b>{metaSel?.label ?? selectedKey}</b>
-                <span className="muted">Tocá o arrastrá para seleccionar butacas</span>
-                <span className="zone-seat-legend">
-                  <i style={{ background: '#6de06d' }} /> disponible
-                  <i style={{ background: '#888' }} /> bloqueada
-                  <i style={{ background: '#e05555' }} /> vendida
-                </span>
-              </div>
-              <ZoneSeatGrid
+              <SeatAdminPanel
+                titulo={metaSel?.label ?? selectedKey}
                 asientos={seatsByZoneKey[selectedKey]}
-                selectedSeatIds={seatSel}
-                onSeatClick={toggleSeat}
+                selectedIds={seatSel}
+                onSeatToggle={toggleSeat}
                 onBoxSelect={boxSelectSeats}
+                orientation={orientationForZone(selectedKey)}
+                accentColor={metaSel?.color}
               />
             </div>
           )}

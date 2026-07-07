@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../utils/api.js';
+import { SeatCanvas } from './SeatPicker.jsx';
+import { nombreToZoneKey, orientationForZone } from './stadiumErc.js';
 
 // Grilla admin de butacas de un sector: generar/regenerar la grilla y
 // bloquear/desbloquear butacas con click. Compartida por el modal de sectores,
 // el wizard de eventos y la pestaña Butacas del detalle.
+// Usa el mismo lienzo del selector público (SeatCanvas) con semántica admin:
+// click en disponible ↔ bloqueada; vendidas/reservadas no se tocan.
 export function SeatAdminGrid({ tipo, onChanged }) {
   const [asientos, setAsientos] = useState([]);
   const [form, setForm] = useState({ filas: '10', porFila: '20' });
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const load = async () => {
     const d = await api(`/admin/api/entradas/tipos/${tipo.id}/asientos`);
     if (d.ok) setAsientos(d.asientos);
@@ -38,17 +43,6 @@ export function SeatAdminGrid({ tipo, onChanged }) {
     setAsientos((prev) => prev.map((x) => (x.id === a.id ? d.asiento : x)));
     onChanged?.();
   }
-  const porFila = new Map();
-  for (const a of asientos) {
-    if (!porFila.has(a.fila)) porFila.set(a.fila, []);
-    porFila.get(a.fila).push(a);
-  }
-  const seatColor = (a) => (
-    a.estado === 'vendido' ? { bg: '#7a2020', fg: '#f3baba' }
-      : a.estado === 'bloqueado' ? { bg: '#555', fg: '#ccc' }
-        : a.estado === 'reservado' ? { bg: '#7a6420', fg: '#f0e0a0' }
-          : { bg: '#1d2e1d', fg: '#9fd49f' }
-  );
   return (
     <>
       <p className="muted" style={{ fontSize: '.85rem' }}>
@@ -66,27 +60,30 @@ export function SeatAdminGrid({ tipo, onChanged }) {
       {error && <div className="error">{error}</div>}
       {msg && <div className="okbox">{msg}</div>}
       {asientos.length > 0 && (
-        <div style={{ marginTop: 12, overflowX: 'auto', maxHeight: 340, overflowY: 'auto' }}>
-          {[...porFila.keys()].sort().map((fila) => (
-            <div key={fila} style={{ display: 'flex', gap: 3, alignItems: 'center', marginBottom: 3 }}>
-              <span className="muted" style={{ width: 26, fontSize: '.68rem', textAlign: 'center', flexShrink: 0 }}>{fila}</span>
-              {porFila.get(fila).sort((a, b) => a.numero - b.numero).map((a) => {
-                const c = seatColor(a);
-                return (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => toggleBloqueo(a)}
-                    disabled={a.estado === 'vendido' || a.estado === 'reservado'}
-                    title={`${a.fila}${a.numero} · ${a.estado}`}
-                    style={{ width: 24, height: 24, borderRadius: 5, fontSize: '.6rem', fontWeight: 700, border: '1px solid #444', background: c.bg, color: c.fg, cursor: a.estado === 'vendido' ? 'not-allowed' : 'pointer', padding: 0 }}
-                  >
-                    {a.numero}
-                  </button>
-                );
-              })}
+        <div className="seatpicker seatpicker--admin" style={{ marginTop: 12 }}>
+          <div className="seatpicker-head">
+            <div className="seatpicker-title">
+              <span className="sp-stat sp-stat--libre">{stats.disponible || 0} disp.</span>
+              <span className="sp-stat sp-stat--vendida">{stats.vendido || 0} vend.</span>
+              <span className="sp-stat sp-stat--bloq">{stats.bloqueado || 0} bloq.</span>
+              {(stats.reservado || 0) > 0 && <span className="sp-stat sp-stat--reservada">{stats.reservado} reserv.</span>}
             </div>
-          ))}
+            <div className="seatpicker-zoom" role="group" aria-label="Zoom">
+              <button type="button" onClick={() => setZoom((z) => Math.max(0.6, z / 1.25))} aria-label="Alejar">−</button>
+              <span>{Math.round(zoom * 100)}%</span>
+              <button type="button" onClick={() => setZoom((z) => Math.min(2.4, z * 1.25))} aria-label="Acercar">+</button>
+            </div>
+          </div>
+          <SeatCanvas
+            asientos={asientos}
+            orientation={orientationForZone(tipo.mapa?.points?.key ?? nombreToZoneKey(tipo.nombre))}
+            selectedIds={null}
+            onSeatClick={toggleBloqueo}
+            clickableStates={['disponible', 'bloqueado']}
+            zoom={zoom}
+            onZoomChange={setZoom}
+          />
+          <p className="seatpicker-hint">Click en una butaca para bloquear ↔ habilitar. Las vendidas no se pueden tocar.</p>
         </div>
       )}
     </>
