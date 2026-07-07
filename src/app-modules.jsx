@@ -3,7 +3,7 @@ import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Ch
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import DataTable from './components/DataTable.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
-import { StadiumMap, tiposByZoneKey } from './pages/entradas/StadiumMap.jsx';
+import { StadiumMap, tiposByZoneKey, usesVectorMap } from './pages/entradas/StadiumMap.jsx';
 import { StadiumSvgERC, ZoneSeatGrid } from './pages/entradas/StadiumSvgERC.jsx';
 import { SeatAdminGrid } from './pages/entradas/SeatAdminGrid.jsx';
 import { isErcVectorLayout, ERC_SECTORES, ERC_ZONE_META, GRAMILLA_ZONE_META, GRAMILLA_SECTORES, nombreToZoneKey } from './pages/entradas/stadiumErc.js';
@@ -2616,13 +2616,39 @@ function PublicEventDetail({ slug }) {
       return { ...s, [tipoId]: [...cur, asientoId] };
     });
   };
+  // Click en butaca del croquis: solo permite marcar disponibles (o desmarcar propias).
+  const clickSeat = (a) => {
+    const sel = seats[a.tipoId] || [];
+    if (!sel.includes(a.id) && a.estado !== 'disponible') return;
+    toggleSeat(a.tipoId, a.id);
+  };
+  // Selección en caja sobre el croquis (Shift/Ctrl suma). Máx 10 por sector.
+  const boxSelectSeats = (hits, additive) => {
+    const porTipo = new Map();
+    for (const a of hits) {
+      if (a.estado !== 'disponible') continue;
+      if (!porTipo.has(a.tipoId)) porTipo.set(a.tipoId, []);
+      porTipo.get(a.tipoId).push(a.id);
+    }
+    if (porTipo.size === 0) return;
+    setSeats((s) => {
+      const next = { ...s };
+      for (const [tipoId, ids] of porTipo) {
+        const merged = additive ? [...(next[tipoId] || [])] : [];
+        for (const id of ids) if (!merged.includes(id) && merged.length < 10) merged.push(id);
+        next[tipoId] = merged;
+      }
+      return next;
+    });
+  };
   const cantidadDe = (t) => (t.numerado ? (seats[t.id] || []).length : (qty[t.id] || 0));
   const lineas = tipos
     .filter((t) => cantidadDe(t) > 0)
     .map((t) => (t.numerado ? { tipoId: t.id, cantidad: seats[t.id].length, asientos: seats[t.id] } : { tipoId: t.id, cantidad: qty[t.id] }));
   const total = tipos.reduce((s, t) => s + (t.precioVigente ?? t.precioCrc) * cantidadDe(t), 0);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
-  const hasMapa = isErcVectorLayout(evento) || tipos.some((t) => t.mapa);
+  const vectorMap = usesVectorMap(evento, tipos);
+  const hasMapa = vectorMap || tipos.some((t) => t.mapa);
   const tiposNumerados = tipos.filter((t) => t.numerado);
   const allSelectedSeats = tiposNumerados.flatMap((t) => seats[t.id] || []);
   async function continuar() {
@@ -2657,7 +2683,18 @@ function PublicEventDetail({ slug }) {
         )}
 
         {viewMode === 'mapa' && hasMapa
-          ? <StadiumMap evento={evento} tipos={tipos} qty={qty} onUpdate={handleMapUpdate} />
+          ? (
+            <StadiumMap
+              evento={evento}
+              tipos={tipos}
+              qty={qty}
+              onUpdate={handleMapUpdate}
+              asientos={asientos}
+              seats={seats}
+              onSeatClick={clickSeat}
+              onSeatBoxSelect={boxSelectSeats}
+            />
+          )
           : (
             <section className="sector-list">
               {tipos.map((t) => (
@@ -2686,7 +2723,9 @@ function PublicEventDetail({ slug }) {
           )
         }
 
-        {viewMode === 'mapa' && tiposNumerados.length > 0 && (
+        {/* Con croquis vectorial las butacas se eligen en el propio mapa; la
+            grilla plana queda solo para eventos con mapa de foto. */}
+        {viewMode === 'mapa' && !vectorMap && tiposNumerados.length > 0 && (
           <section className="sector-list" style={{ marginTop: 12 }}>
             {tiposNumerados.map((t) => (
               <div key={t.id} className="sector">
