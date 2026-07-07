@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../utils/api.js';
 import { SeatCanvas } from './SeatPicker.jsx';
 import { nombreToZoneKey, orientationForZone } from './stadiumErc.js';
+import { useConfirm } from '../../utils/confirm.jsx';
 
 // Grilla admin de butacas de un sector: generar/regenerar la grilla y
 // bloquear/desbloquear butacas con click. Compartida por el modal de sectores,
@@ -9,6 +10,7 @@ import { nombreToZoneKey, orientationForZone } from './stadiumErc.js';
 // Usa el mismo lienzo del selector público (SeatCanvas) con semántica admin:
 // click en disponible ↔ bloqueada; vendidas/reservadas no se tocan.
 export function SeatAdminGrid({ tipo, onChanged }) {
+  const confirm = useConfirm();
   const [asientos, setAsientos] = useState([]);
   const [form, setForm] = useState({ filas: '10', porFila: '20' });
   const [error, setError] = useState('');
@@ -23,10 +25,16 @@ export function SeatAdminGrid({ tipo, onChanged }) {
   const stats = asientos.reduce((s, a) => ({ ...s, [a.estado]: (s[a.estado] || 0) + 1 }), {});
   async function generar() {
     const total = Number(form.filas) * Number(form.porFila);
-    const warn = asientos.length > 0
-      ? `Esto reemplaza las ${asientos.length} butacas actuales del sector (se rechaza si hay vendidas). ¿Continuar?`
-      : `Se generarán ${total} butacas (${form.filas} filas × ${form.porFila}). El cupo del sector pasa a ${total}. ¿Continuar?`;
-    if (!window.confirm(warn)) return;
+    const regenera = asientos.length > 0;
+    const ok = await confirm({
+      title: regenera ? 'Regenerar butacas' : 'Generar butacas',
+      message: regenera
+        ? `Esto reemplaza las ${asientos.length} butacas actuales del sector (se rechaza si hay vendidas).`
+        : `Se generarán ${total} butacas (${form.filas} filas × ${form.porFila}). El cupo del sector pasa a ${total}.`,
+      confirmLabel: regenera ? 'Regenerar' : 'Generar',
+      danger: regenera,
+    });
+    if (!ok) return;
     setError(''); setMsg(''); setLoading(true);
     const d = await api(`/admin/api/entradas/tipos/${tipo.id}/asientos/generar`, { method: 'POST', body: JSON.stringify({ filas: Number(form.filas), porFila: Number(form.porFila) }) });
     setLoading(false);
