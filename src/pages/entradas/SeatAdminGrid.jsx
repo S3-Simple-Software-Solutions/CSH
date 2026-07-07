@@ -62,7 +62,10 @@ export function SeatAdminGrid({ tipo, onChanged }) {
         <div className="seatpicker seatpicker--admin" style={{ marginTop: 12 }}>
           <div className="seatpicker-head">
             <div className="seatpicker-title">
-              <span className="seatpicker-avail">disponible ↔ bloqueada con un click</span>
+              <span className="sp-stat sp-stat--libre">{stats.disponible || 0} disp.</span>
+              <span className="sp-stat sp-stat--vendida">{stats.vendido || 0} vend.</span>
+              <span className="sp-stat sp-stat--bloq">{stats.bloqueado || 0} bloq.</span>
+              {(stats.reservado || 0) > 0 && <span className="sp-stat sp-stat--reservada">{stats.reservado} reserv.</span>}
             </div>
             <div className="seatpicker-zoom" role="group" aria-label="Zoom">
               <button type="button" onClick={() => setZoom((z) => Math.max(0.6, z / 1.25))} aria-label="Alejar">−</button>
@@ -79,6 +82,7 @@ export function SeatAdminGrid({ tipo, onChanged }) {
             onZoomChange={setZoom}
             showFieldArc
           />
+          <p className="seatpicker-hint">Click en una butaca para bloquear ↔ habilitar. Las vendidas no se pueden tocar.</p>
         </div>
       )}
     </>
