@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { StadiumSvgERC, ZoneSeatGrid } from './StadiumSvgERC.jsx';
+import { StadiumSvgERC } from './StadiumSvgERC.jsx';
+import { SeatPickerPanel } from './SeatPicker.jsx';
 import {
   ERC_ZONE_KEYS,
   ERC_ZONE_META,
@@ -201,20 +202,13 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
         </div>
         {selectedKey && seatsByZoneKey[selectedKey]?.length > 0 && (
           <div className="zone-seat-expand">
-            <div className="zone-seat-expand-head">
-              <b>{(ERC_ZONE_META[selectedKey] ?? GRAMILLA_ZONE_META[selectedKey])?.label ?? selectedKey}</b>
-              <span className="muted">Tocá o arrastrá para elegir tus butacas</span>
-              <span className="zone-seat-legend">
-                <i style={{ background: '#6de06d' }} /> disponible
-                <i style={{ background: '#888' }} /> no disponible
-                <i style={{ background: '#e05555' }} /> vendida
-              </span>
-            </div>
-            <ZoneSeatGrid
+            <SeatPickerPanel
+              tipo={tiposMap[selectedKey]}
               asientos={seatsByZoneKey[selectedKey]}
-              selectedSeatIds={selectedSeatIds}
-              onSeatClick={onSeatClick}
+              selectedIds={selectedSeatIds}
+              onSeatToggle={onSeatClick}
               onBoxSelect={onSeatBoxSelect}
+              accentColor={(ERC_ZONE_META[selectedKey] ?? GRAMILLA_ZONE_META[selectedKey])?.color}
             />
           </div>
         )}
