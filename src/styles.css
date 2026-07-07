@@ -362,6 +362,10 @@ input:focus, select:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb
   display: flex;
   flex-direction: column;
   gap: 8px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
   overflow-y: auto;
 }
 .admin-nav-backdrop {

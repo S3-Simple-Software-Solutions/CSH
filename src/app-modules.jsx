@@ -3582,7 +3582,6 @@ function EventCreateWorkspace({ navigate }) {
       <form id="new-event-form" className="event-create-details" onSubmit={(e) => e.preventDefault()}>
         <div className="event-create-col">
           <div className="workspace-section-heading">
-            <span>02</span>
             <div><h2>Datos del evento</h2><p>La información pública que verá la afición.</p></div>
           </div>
           <div className="event-create-details-layout">
@@ -3642,9 +3641,8 @@ function EventCreateWorkspace({ navigate }) {
 
       <section className="event-create-map-step">
         <div className="workspace-section-heading workspace-section-heading--spaced">
-          <span>03</span>
           <div>
-            <h2>Configurá el mapa</h2>
+            <h2>Configuración del Estadio</h2>
             <p>
               {draft
                 ? 'Tocá cada zona para precio, estado, tandas y butacas. El aforo se reparte automáticamente.'
@@ -4449,6 +4447,13 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
         const seeded = await seedFaltantes(current, false);
         const conButacas = await generarButacasDefault(seeded);
         await loadSeats(conButacas);
+      } else if (autoSeed && !seededRef.current && catalogo.some((z) => !zonasByKeyAdmin(current)[z.key])) {
+        // Al pasar el evento a espectáculo el servidor fija field_template pero no
+        // crea los tipos de gramilla; se siembran aquí para que no queden "sin configurar".
+        seededRef.current = true;
+        const seeded = await seedFaltantes(current, false);
+        const final = await redistribuirAforo(seeded, false);
+        await loadSeats(final);
       } else if (current.length > 0) {
         const distribucion = calcularDistribucionAforo(current, catalogo);
         const necesitaAjuste = distribucion.some(({ tipo, cupo }) => tipo.stockTotal !== cupo);
