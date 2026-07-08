@@ -4335,7 +4335,7 @@ function repartirAforo(sectores, totalAforo = VENUE_AFORO_DEFAULT, gramillaAforo
   return cupos;
 }
 
-function calcularDistribucionAforo(tipos, catalogo, totalAforo = VENUE_AFORO_DEFAULT, gramillaAforo = GRAMILLA_AFORO_DEFAULT) {
+function calcularDistribucionAforo(tipos, catalogo, totalAforo = VENUE_AFORO_DEFAULT) {
   const todosActivos = (tipos || []).filter((tipo) => tipo.estado === 'activo');
   const catalogoByKey = new Map(catalogo.map((zona) => [zona.key, zona]));
   const keyDe = (tipo) => tipo.mapa?.points?.key ?? nombreToZoneKey(tipo.nombre);
@@ -4345,11 +4345,11 @@ function calcularDistribucionAforo(tipos, catalogo, totalAforo = VENUE_AFORO_DEF
   const aforoNumerado = todosActivos.filter((t) => t.numerado).reduce((s, t) => s + (t.stockTotal || 0), 0);
   const tribunaAforo = Math.max(0, totalAforo - aforoNumerado);
 
-  // Dos pools independientes: tribunas (bowl) y gramilla (cancha). La gramilla
-  // no compite con las tribunas por el aforo; suma su propia capacidad de pie.
+  // Solo las tribunas de pie entran al reparto automático de VENUE_AFORO_DEFAULT.
+  // La gramilla (cancha) queda fuera: su capacidad es MANUAL y configurable por
+  // zona, así que se conserva tal cual (como las zonas numeradas/especiales).
   const noNumerados = todosActivos.filter((tipo) => !tipo.numerado);
   const stands = noNumerados.filter((tipo) => !esGramillaKey(keyDe(tipo)));
-  const gramilla = noNumerados.filter((tipo) => esGramillaKey(keyDe(tipo)));
 
   const resultado = [];
   const distribuir = (grupo, total) => {
@@ -4382,7 +4382,6 @@ function calcularDistribucionAforo(tipos, catalogo, totalAforo = VENUE_AFORO_DEF
   };
 
   distribuir(stands, tribunaAforo);
-  distribuir(gramilla, gramillaAforo);
   return resultado;
 }
 
@@ -4463,7 +4462,8 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
       if (byKey[s.key]) continue;
       const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, {
         method: 'POST',
-        body: JSON.stringify({ nombre: s.nombre, precioCrc: s.precio, stockTotal: cupos[i], zoneKey: s.key }),
+        // La gramilla nace fuera de venta: el admin la pone a la venta a mano.
+        body: JSON.stringify({ nombre: s.nombre, precioCrc: s.precio, stockTotal: cupos[i], zoneKey: s.key, estado: esGramillaKey(s.key) ? 'inactivo' : 'activo' }),
       });
       if (d.ok) creadas += 1;
     }
@@ -4728,9 +4728,11 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     const t = allByKey[selectedKey];
     if (!t || !form) return;
     setBusy(true);
+    // La gramilla tiene cupo manual (configurable); el resto conserva el suyo.
+    const stockTotal = esGramillaSel ? Math.max(1, Number(form.stockTotal) || 0) : t.stockTotal;
     const d = await api(`/admin/api/entradas/tipos/${t.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ nombre: form.nombre, precioCrc: Number(form.precioCrc), stockTotal: t.stockTotal, estado: t.estado }),
+      body: JSON.stringify({ nombre: form.nombre, precioCrc: Number(form.precioCrc), stockTotal, estado: t.estado }),
     });
     setBusy(false);
     if (!d.ok) return setMsg({ type: 'error', text: d.error });
@@ -4924,7 +4926,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
   async function presetGramilla(template) {
     const ok = await confirm({
       title: `Configurar gramilla en ${template} zonas`,
-      message: `El campo se dividirá en ${template} zonas de gramilla y el aforo se redistribuirá (${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')} lugares). Las zonas de gramilla fuera de la plantilla quedan fuera de venta.`,
+      message: `El campo se dividirá en ${template} zonas de gramilla. Nacen fuera de venta y con cupo editable (por defecto ~${GRAMILLA_AFORO_DEFAULT.toLocaleString('es-CR')} en total); las ponés a la venta cuando quieras. Las tribunas mantienen su aforo de ${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')}.`,
       confirmLabel: 'Aplicar preset',
     });
     if (!ok) return;
@@ -4941,15 +4943,16 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     const byKey = zonasByKeyAdmin(updated);
     for (const g of GRAMILLA_SECTORES) {
       const t = byKey[g.key];
-      if (keys.includes(g.key)) {
-        if (t && t.estado === 'inactivo') await setEstadoSector(t, 'activo', false);
-      } else if (t && t.estado === 'activo') {
+      // Las zonas de gramilla fuera de la plantilla se sacan de venta. Las que
+      // aplican NO se ponen a la venta automáticamente: nacen fuera de venta y
+      // el admin las activa a mano (respetamos si ya estaban a la venta).
+      if (!keys.includes(g.key) && t && t.estado === 'activo') {
         await setEstadoSector(t, 'inactivo', false);
       }
     }
     const seeded = await seedFaltantes(await refresh(), false, targetCatalogo);
     await redistribuirAforo(seeded, false, targetCatalogo);
-    setMsg({ type: 'ok', text: `Gramilla configurada en ${template} zonas · aforo ${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')}.` });
+    setMsg({ type: 'ok', text: `Gramilla configurada en ${template} zonas · nace fuera de venta con cupo configurable (~${GRAMILLA_AFORO_DEFAULT.toLocaleString('es-CR')} por defecto).` });
   }
 
   async function presetSoloTribunas() {
@@ -5165,6 +5168,8 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
                 <>
                   <label>Nombre</label>
                   <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                  <label>Cupo (lugares de pie)</label>
+                  <input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} />
                 </>
               )}
               <label>Precio CRC</label>
@@ -5176,12 +5181,14 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
                   {seleccionado.stockVendido} vendidos ·{' '}
                   {seleccionado.numerado
                     ? 'sector numerado: el cupo lo definen sus butacas'
-                    : `reparto automático de ${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')}`}
+                    : esGramillaSel
+                      ? 'cupo de pie configurable por zona'
+                      : `reparto automático de ${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')}`}
                 </small>
               </div>
               {seleccionado.tandaNombre && <p className="muted zone-current-tanda">Tanda vigente: {seleccionado.tandaNombre}</p>}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button className="btn" onClick={guardarSector} disabled={busy || !form.precioCrc}>Guardar precio</button>
+                <button className="btn" onClick={guardarSector} disabled={busy || !form.precioCrc || (esGramillaSel && !Number(form.stockTotal))}>{esGramillaSel ? 'Guardar' : 'Guardar precio'}</button>
                 <button className="btn ghost" onClick={() => setTandasFor(seleccionado)}>Tandas</button>
                 <button className="btn ghost" onClick={() => setShowButacas(true)}>{seleccionado.numerado ? 'Butacas ✓' : 'Butacas'}</button>
               </div>
