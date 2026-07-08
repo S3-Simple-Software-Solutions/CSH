@@ -2387,7 +2387,7 @@ function PublicEntradasList() {
       
       <main className="page">
         <p className="eyebrow">Modulo de entradas</p>
-        <h1>Entradas para el Team</h1>
+        <h1>Eventos</h1>
         <p className="sub">Compra boletos para los proximos partidos. Recibis tu codigo QR al instante por correo.</p>
         <section className="event-list">
           {loaded && eventos.length === 0 && <div className="result empty">No hay eventos a la venta en este momento.</div>}
