@@ -758,6 +758,20 @@ tr:last-child td { border-bottom: 0; }
 .stepper button:disabled { opacity: .4; cursor: not-allowed; }
 .stepper span { min-width: 22px; text-align: center; font-weight: 700; }
 .checkout-bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 760px; margin-top: 18px; padding: 14px 16px; border: 1px solid var(--gold); border-radius: 8px; background: var(--surface-2); }
+.checkout-bar--mapa {
+  max-width: none;
+  background: linear-gradient(180deg, rgba(201,169,97,.12), rgba(201,169,97,.06)), var(--surface);
+  box-shadow: 0 -10px 30px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.04);
+}
+@media (min-width: 960px) {
+  .checkout-bar--mapa {
+    width: calc((100% - 1.25rem) * 0.649);
+  }
+}
+html[data-theme='light'] .checkout-bar--mapa {
+  background: linear-gradient(180deg, rgba(138,109,36,.11), rgba(138,109,36,.05)), rgba(255,253,248,.92);
+  box-shadow: 0 -14px 34px rgba(62,47,24,.14), inset 0 1px 0 rgba(255,255,255,.82);
+}
 .checkout-bar div { display: flex; flex-direction: column; }
 .checkout-bar span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
 .checkout-bar b { color: var(--gold); font-size: 26px; line-height: 1; }
@@ -963,6 +977,69 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
 .view-toggle { display: flex; gap: .5rem; margin-bottom: 1.25rem; }
 .view-toggle .btn.ghost.active { background: rgba(201,169,97,.15); border-color: var(--gold); color: var(--gold); }
 
+.stadium-svg-erc {
+  --erc-bg-top: #161616;
+  --erc-bg-mid: #0c0c0c;
+  --erc-bg-bottom: #080808;
+  --erc-ambient-core: rgba(201,169,97,.12);
+  --erc-ambient-edge: rgba(0,0,0,0);
+  --erc-bowl-fill: #141414;
+  --erc-bowl-stroke: rgba(201,169,97,.2);
+  --erc-rim-stroke: rgba(255,255,255,.06);
+  --erc-track-fill: #252525;
+  --erc-track-stroke: #5a5a5a;
+  --erc-track-inner-stroke: rgba(255,255,255,.06);
+  --erc-field-top: #449e58;
+  --erc-field-bottom: #2a6e3a;
+  --erc-field-line: rgba(255,255,255,.72);
+  --erc-field-line-dot: rgba(255,255,255,.82);
+  --erc-field-stripe-light: rgba(255,255,255,.05);
+  --erc-field-stripe-dark: rgba(0,0,0,.05);
+  --erc-stand-depth: #1a1408;
+  --erc-gramilla-depth: #1a3020;
+  --erc-zone-inactive: #2a2a2a;
+  --erc-zone-soldout: #4a4a4a;
+  --erc-zone-stroke: rgba(255,255,255,.32);
+  --erc-selected-stroke: #ffffff;
+  --erc-special-stroke: rgba(255,255,255,.55);
+  --erc-step-shade-rgb: 0 0 0;
+  --erc-step-line-rgb: 255 255 255;
+  --erc-aisle-rgb: 0 0 0;
+  --erc-compass-bg: rgba(201,169,97,.15);
+  --erc-compass-stroke: #c9a961;
+}
+html[data-theme='light'] .stadium-svg-erc {
+  --erc-bg-top: #f7f0df;
+  --erc-bg-mid: #e8dec8;
+  --erc-bg-bottom: #d9c9a9;
+  --erc-ambient-core: rgba(138,109,36,.2);
+  --erc-ambient-edge: rgba(255,255,255,0);
+  --erc-bowl-fill: #d5c19d;
+  --erc-bowl-stroke: rgba(138,109,36,.42);
+  --erc-rim-stroke: rgba(34,28,21,.15);
+  --erc-track-fill: #c9c0b0;
+  --erc-track-stroke: #928168;
+  --erc-track-inner-stroke: rgba(255,253,248,.58);
+  --erc-field-top: #4aa864;
+  --erc-field-bottom: #2e7a43;
+  --erc-field-line: rgba(255,255,255,.8);
+  --erc-field-line-dot: rgba(255,255,255,.9);
+  --erc-field-stripe-light: rgba(255,255,255,.08);
+  --erc-field-stripe-dark: rgba(0,0,0,.06);
+  --erc-stand-depth: #5a411b;
+  --erc-gramilla-depth: #245238;
+  --erc-zone-inactive: #8b806c;
+  --erc-zone-soldout: #746b5c;
+  --erc-zone-stroke: rgba(34,28,21,.26);
+  --erc-selected-stroke: #fff7df;
+  --erc-special-stroke: rgba(34,28,21,.46);
+  --erc-step-shade-rgb: 80 58 24;
+  --erc-step-line-rgb: 255 253 248;
+  --erc-aisle-rgb: 47 35 18;
+  --erc-compass-bg: rgba(138,109,36,.16);
+  --erc-compass-stroke: #8a6d24;
+}
+
 .stadium-map-wrap { display: grid; grid-template-columns: 1fr; gap: 1.25rem; }
 @media (min-width: 800px) {
   .stadium-map-wrap { grid-template-columns: 1fr 280px; align-items: start; }
@@ -1112,8 +1189,15 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
   padding: 0;
   box-shadow: 0 12px 40px rgba(0,0,0,.5), inset 0 1px 0 rgba(201,169,97,.15);
 }
+html[data-theme='light'] .stadium-map-plano--vector {
+  background: radial-gradient(ellipse at 50% 28%, rgba(138,109,36,.18) 0%, transparent 62%), #e5d9c4;
+  box-shadow: 0 18px 42px rgba(62,47,24,.2), inset 0 1px 0 rgba(255,253,248,.7);
+}
 .stadium-svg-erc--v2 {
   filter: drop-shadow(0 4px 20px rgba(0,0,0,.35));
+}
+html[data-theme='light'] .stadium-svg-erc--v2 {
+  filter: drop-shadow(0 10px 22px rgba(62,47,24,.18));
 }
 .stadium-north-label {
   fill: #c9a961;
@@ -1158,6 +1242,12 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
   text-transform: uppercase;
 }
 .stadium-zone-label-status.inactive { fill: #d5b45b; }
+html[data-theme='light'] .stadium-zone-label,
+html[data-theme='light'] .stadium-special-label {
+  text-shadow: 0 1px 3px rgba(34,28,21,.68), 0 0 10px rgba(34,28,21,.22);
+}
+html[data-theme='light'] .stadium-zone-label-price { fill: #fff0bd; }
+html[data-theme='light'] .stadium-zone-label-status { fill: #d8ffd8; }
 .stadium-special-label {
   fill: #fff;
   font-size: 12px;
@@ -1554,6 +1644,11 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
   box-shadow: 0 4px 24px rgba(0,0,0,.25);
   animation: stadium-panel-in 0.22s ease;
 }
+html[data-theme='light'] .stadium-panel--sidebar {
+  background: linear-gradient(180deg, rgba(255,253,248,.86), rgba(238,229,210,.74));
+  border-color: rgba(138,109,36,.24);
+  box-shadow: 0 18px 38px rgba(62,47,24,.14), inset 0 1px 0 rgba(255,255,255,.8);
+}
 @keyframes stadium-panel-in {
   from { opacity: 0; transform: translateX(8px); }
   to { opacity: 1; transform: translateX(0); }
@@ -1561,9 +1656,11 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
 .stadium-panel--empty {
   justify-content: center;
   text-align: center;
-  border-style: dashed;
   border-color: var(--line);
-  background: rgba(201,169,97,.03);
+  background: radial-gradient(circle at 50% 30%, rgba(201,169,97,.08), transparent 34%), rgba(201,169,97,.03);
+}
+html[data-theme='light'] .stadium-panel--empty {
+  background: radial-gradient(circle at 50% 30%, rgba(138,109,36,.1), transparent 34%), rgba(255,253,248,.76);
 }
 .stadium-panel-empty-icon {
   font-size: 2rem;

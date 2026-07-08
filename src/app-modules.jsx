@@ -2749,7 +2749,7 @@ function PublicEventDetail({ slug }) {
         )}
         {seatError && <div className="error">{seatError}</div>}
 
-        <div className="checkout-bar">
+        <div className={`checkout-bar${viewMode === 'mapa' && hasMapa ? ' checkout-bar--mapa' : ''}`}>
           <div><span>{count} boleto(s)</span><b>{money(total)}</b></div>
           <button className="btn" disabled={count === 0} onClick={continuar}>Continuar</button>
         </div>

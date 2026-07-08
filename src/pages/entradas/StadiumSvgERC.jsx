@@ -36,7 +36,7 @@ function FieldMarkings() {
   // Área de juego, inset respecto al borde del césped (172..828 / 198..522).
   const X1 = 180, X2 = 820, Y1 = 206, Y2 = 514;
   const CX = 500, CY = 360;
-  const LINE = 'rgba(255,255,255,0.72)';
+  const LINE = 'var(--erc-field-line)';
   const W = 2.2;
   // Proporciones reglamentarias (relativas al largo/alto del campo).
   const PA_D = 100, PA_H = 184;   // área penal (grande)
@@ -62,7 +62,7 @@ function FieldMarkings() {
             y={198}
             width={82}
             height={324}
-            fill={i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
+            fill={i % 2 === 0 ? 'var(--erc-field-stripe-light)' : 'var(--erc-field-stripe-dark)'}
           />
         ))}
       </g>
@@ -98,7 +98,7 @@ function FieldMarkings() {
       </g>
 
       {/* Puntos: central y penales */}
-      <g fill="rgba(255,255,255,0.82)">
+      <g fill="var(--erc-field-line-dot)">
         <circle cx={CX} cy={CY} r="2.8" />
         <circle cx={X1 + SPOT} cy={CY} r="2.4" />
         <circle cx={X2 - SPOT} cy={CY} r="2.4" />
@@ -175,7 +175,7 @@ function ZoneGradas({ zoneKey, status, filas = 0, layer = 'base' }) {
                 y={horiz ? p0 : 40}
                 width={horiz ? 920 : step}
                 height={horiz ? step : 640}
-                fill={`rgba(0,0,0,${opacity.toFixed(3)})`}
+                fill={`rgb(var(--erc-step-shade-rgb) / ${opacity.toFixed(3)})`}
               />
             ))}
           </>
@@ -184,13 +184,13 @@ function ZoneGradas({ zoneKey, status, filas = 0, layer = 'base' }) {
           <>
             {bands.slice(1).map(({ p0 }) => (
               horiz
-                ? <line key={`l-${p0}`} x1="40" y1={p0} x2="960" y2={p0} stroke="rgba(255,255,255,0.24)" strokeWidth="1" />
-                : <line key={`l-${p0}`} x1={p0} y1="40" x2={p0} y2="680" stroke="rgba(255,255,255,0.24)" strokeWidth="1" />
+                ? <line key={`l-${p0}`} x1="40" y1={p0} x2="960" y2={p0} stroke="rgb(var(--erc-step-line-rgb) / .28)" strokeWidth="1" />
+                : <line key={`l-${p0}`} x1={p0} y1="40" x2={p0} y2="680" stroke="rgb(var(--erc-step-line-rgb) / .28)" strokeWidth="1" />
             ))}
             {aisles.map((p) => (
               horiz
-                ? <rect key={`a-${p}`} x={p - ZONE_AISLE_WIDTH / 2} y={from} width={ZONE_AISLE_WIDTH} height={span} fill="rgba(0,0,0,0.46)" />
-                : <rect key={`a-${p}`} x={from} y={p - ZONE_AISLE_WIDTH / 2} width={span} height={ZONE_AISLE_WIDTH} fill="rgba(0,0,0,0.46)" />
+                ? <rect key={`a-${p}`} x={p - ZONE_AISLE_WIDTH / 2} y={from} width={ZONE_AISLE_WIDTH} height={span} fill="rgb(var(--erc-aisle-rgb) / .58)" />
+                : <rect key={`a-${p}`} x={from} y={p - ZONE_AISLE_WIDTH / 2} width={span} height={ZONE_AISLE_WIDTH} fill="rgb(var(--erc-aisle-rgb) / .58)" />
             ))}
           </>
         )}
@@ -202,8 +202,8 @@ function ZoneGradas({ zoneKey, status, filas = 0, layer = 'base' }) {
 function NorthMarker() {
   return (
     <g className="stadium-north" pointerEvents="none" transform="translate(500, 46)">
-      <circle r="14" fill="rgba(201,169,97,0.15)" stroke="rgba(201,169,97,0.45)" strokeWidth="1" />
-      <path d="M 0 -7 L 0 5 M 0 -7 L -4 0 M 0 -7 L 4 0" stroke="#c9a961" strokeWidth="1.5" fill="none" />
+      <circle r="14" fill="var(--erc-compass-bg)" stroke="var(--erc-compass-stroke)" strokeWidth="1" />
+      <path d="M 0 -7 L 0 5 M 0 -7 L -4 0 M 0 -7 L 4 0" stroke="var(--erc-compass-stroke)" strokeWidth="1.5" fill="none" />
       <text y="-1" textAnchor="middle" className="stadium-north-label">N</text>
     </g>
   );
@@ -681,10 +681,10 @@ export function StadiumSvgERC({
   }
 
   function zoneStroke(status, key) {
-    if (status === 'selected') return '#fff';
+    if (status === 'selected') return 'var(--erc-selected-stroke)';
     const meta = ERC_ZONE_META[key] ?? GRAMILLA_ZONE_META[key];
     if (status === 'hover') return meta?.color ?? '#f0d078';
-    return 'rgba(255,255,255,0.32)';
+    return 'var(--erc-zone-stroke)';
   }
 
   function zoneFilter(status) {
@@ -695,8 +695,8 @@ export function StadiumSvgERC({
 
   // isGramilla: gramilla usa fillOpacity mayor (más visible sobre el campo verde)
   function zoneFillProps(key, status, isGramilla = false) {
-    if (status === 'inactive') return { fill: '#2a2a2a', fillOpacity: zoneOpacity(status) };
-    if (status === 'agotado') return { fill: '#4a4a4a', fillOpacity: zoneOpacity(status) };
+    if (status === 'inactive') return { fill: 'var(--erc-zone-inactive)', fillOpacity: zoneOpacity(status) };
+    if (status === 'agotado') return { fill: 'var(--erc-zone-soldout)', fillOpacity: zoneOpacity(status) };
     const base = zoneOpacity(status);
     return { fill: `url(#${zoneGradientId(key)})`, fillOpacity: isGramilla ? Math.min(1, base + 0.2) : base };
   }
@@ -719,17 +719,17 @@ export function StadiumSvgERC({
     >
       <defs>
         <linearGradient id="erc-bg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#161616" />
-          <stop offset="55%" stopColor="#0c0c0c" />
-          <stop offset="100%" stopColor="#080808" />
+          <stop offset="0%" stopColor="var(--erc-bg-top)" />
+          <stop offset="55%" stopColor="var(--erc-bg-mid)" />
+          <stop offset="100%" stopColor="var(--erc-bg-bottom)" />
         </linearGradient>
         <radialGradient id="erc-ambient" cx="50%" cy="42%" r="55%">
-          <stop offset="0%" stopColor="rgba(201,169,97,0.12)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+          <stop offset="0%" stopColor="var(--erc-ambient-core)" />
+          <stop offset="100%" stopColor="var(--erc-ambient-edge)" />
         </radialGradient>
         <linearGradient id="erc-field" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#449e58" />
-          <stop offset="100%" stopColor="#2a6e3a" />
+          <stop offset="0%" stopColor="var(--erc-field-top)" />
+          <stop offset="100%" stopColor="var(--erc-field-bottom)" />
         </linearGradient>
         {[...ERC_ZONE_KEYS, 'gramilla-1', 'gramilla-2', 'gramilla-3', 'gramilla-4'].map((key) => {
           const color = ERC_ZONE_META[key]?.color ?? GRAMILLA_ZONE_META[key]?.color ?? '#c9a961';
@@ -745,7 +745,7 @@ export function StadiumSvgERC({
             >
               <stop offset="0%" stopColor={color} stopOpacity="0.9" />
               <stop offset="50%" stopColor={color} stopOpacity="0.7" />
-              <stop offset="100%" stopColor={isGramilla ? '#1a3020' : '#1a1408'} stopOpacity="0.85" />
+              <stop offset="100%" stopColor={isGramilla ? 'var(--erc-gramilla-depth)' : 'var(--erc-stand-depth)'} stopOpacity="0.85" />
             </linearGradient>
           );
         })}
@@ -801,13 +801,13 @@ export function StadiumSvgERC({
       <rect width="1000" height="720" fill="url(#erc-ambient)" rx="14" pointerEvents="none" />
 
       {/* Bowl exterior + borde iluminado */}
-      <path d={BOWL_OUTER} fill="#141414" stroke="rgba(201,169,97,0.2)" strokeWidth="2" pointerEvents="none" />
-      <path d={BOWL_INNER_RIM} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" pointerEvents="none" />
+      <path d={BOWL_OUTER} fill="var(--erc-bowl-fill)" stroke="var(--erc-bowl-stroke)" strokeWidth="2" pointerEvents="none" />
+      <path d={BOWL_INNER_RIM} fill="none" stroke="var(--erc-rim-stroke)" strokeWidth="1.5" pointerEvents="none" />
 
       {/* Pista atlética */}
-      <path d={TRACK_PATH} fill="#252525" fillOpacity="0.7" pointerEvents="none" />
-      <path d={TRACK_PATH} fill="none" stroke="#5a5a5a" strokeWidth="3" pointerEvents="none" />
-      <path d={TRACK_PATH} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" transform="scale(0.98) translate(10 14)" pointerEvents="none" />
+      <path d={TRACK_PATH} fill="var(--erc-track-fill)" fillOpacity="0.86" pointerEvents="none" />
+      <path d={TRACK_PATH} fill="none" stroke="var(--erc-track-stroke)" strokeWidth="3" pointerEvents="none" />
+      <path d={TRACK_PATH} fill="none" stroke="var(--erc-track-inner-stroke)" strokeWidth="1" transform="scale(0.98) translate(10 14)" pointerEvents="none" />
 
       {/* Zonas interactivas */}
       {Object.entries(ERC_ZONE_PATHS_V2).map(([key, paths]) => {
@@ -952,7 +952,7 @@ export function StadiumSvgERC({
               ry={12}
               fill={color}
               fillOpacity={inactive ? 0.28 : selected ? 0.92 : hovered ? 0.8 : 0.62}
-              stroke={selected ? '#ffffff' : 'rgba(255,255,255,0.55)'}
+              stroke={selected ? 'var(--erc-selected-stroke)' : 'var(--erc-special-stroke)'}
               strokeWidth={selected ? 3 : 1.5}
               strokeDasharray="7 4"
               filter={selected ? 'url(#erc-glow)' : undefined}
