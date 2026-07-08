@@ -122,6 +122,20 @@ entradasRouter.put('/admin/api/entradas/eventos/:id', requireAdmin, async (req, 
   }
 });
 
+entradasRouter.delete('/admin/api/entradas/eventos/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const result = await entradas.adminEliminarEvento(String(req.params.id), req.adminUser!);
+    // Best-effort: borra el flyer subido del disco (si era propio del evento).
+    const flyer = String(result.imagenUrl || '').split('?')[0];
+    if (flyer.startsWith('/brand/events/')) {
+      fs.rmSync(path.join(EVENT_FLYERS_DIR, path.basename(flyer)), { force: true });
+    }
+    res.json({ ok: true, nombre: result.nombre });
+  } catch (err) {
+    next(err);
+  }
+});
+
 entradasRouter.post('/admin/api/entradas/eventos/:id/flyer', flyerRateLimit, requireAdmin, flyerUpload, async (req, res, next) => {
   try {
     const id = String(req.params.id);

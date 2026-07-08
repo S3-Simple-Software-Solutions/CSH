@@ -3899,6 +3899,20 @@ function EventWorkspace({ eventId, navigate }) {
     setMsg({ type: 'ok', text: `${d.evento.nombre} quedó ${estado}.` });
   }
 
+  async function eliminarEvento() {
+    const ok = await confirm({
+      title: 'Eliminar evento',
+      message: `Se eliminará «${evento.nombre}» con toda su configuración (zonas, butacas, mapa, descuentos). Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar evento',
+      danger: true,
+    });
+    if (!ok) return;
+    setMsg(null);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}`, { method: 'DELETE' });
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    navigate('/admin/entradas');
+  }
+
   if (loading) return <main className="page event-workspace-page"><p className="muted">Cargando espacio de trabajo…</p></main>;
   if (error || !evento) {
     return (
@@ -3936,6 +3950,7 @@ function EventWorkspace({ eventId, navigate }) {
           <button className="btn" onClick={toggleEstado}>
             {evento.estado === 'publicado' ? <><Lock size={16} />Finalizar</> : <><Send size={16} />Publicar</>}
           </button>
+          <button className="btn danger" onClick={eliminarEvento}><Trash2 size={16} />Eliminar</button>
         </div>
       </header>
 
