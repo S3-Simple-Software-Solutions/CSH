@@ -98,10 +98,10 @@ function normalizeLineas(raw: unknown): CompraLinea[] {
 
 // ---- Fee + descuentos ----
 
-async function resolveFeeForEvento(repo: EntradasRepository, evento: Evento): Promise<FeeConfig> {
+async function resolveFeeForEvento(_repo: EntradasRepository, evento: Evento): Promise<FeeConfig> {
   if (evento.feeTipo) return { tipo: evento.feeTipo, valor: evento.feeValor ?? 0 };
-  const cfg = await repo.getConfig();
-  return { tipo: cfg.feeTipoDefault, valor: cfg.feeValorDefault };
+  // Cargo por servicio global eliminado: si el evento no define su propio cargo, no hay cargo.
+  return { tipo: 'ninguno', valor: 0 };
 }
 
 // Valida (sin consumir) un código de descuento para un evento. Lanza 400 si no aplica.
