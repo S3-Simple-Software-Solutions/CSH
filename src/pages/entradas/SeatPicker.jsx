@@ -17,7 +17,7 @@
  * Solo frontend: consume los mismos asientos {id, fila, numero, estado}
  * y los mismos handlers que el sistema anterior.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 /** Orden natural de filas: A..Z antes que AA (longitud primero, luego alfabético). */
 function filaSort(a, b) {
@@ -226,9 +226,39 @@ function seatVisual(estado, selected, accent) {
   return { fill: hexToRgba(accent, 0.16), stroke: hexToRgba(accent, 0.85), strokeWidth: 1.2, num: hexToRgba(accent, 0.95), cls: 'sp-seat--libre' };
 }
 
+const ZOOM_STEP = 1.25;
+const TAP_MOVE = 8;          // px de tolerancia para distinguir tap de arrastre
+const HIT_R = CELL * 0.78;   // radio de hit-test al tocar una butaca
+
+/** Dibuja una butaca (respaldo + cojín + número/×). Sin eventos: la selección
+ *  se resuelve por hit-test a nivel del lienzo, mucho más liviano que 900 handlers. */
+function seatEls(a, x, y, selected, accentColor, seatRot, showNums) {
+  const v = seatVisual(a.estado, selected, accentColor);
+  const seatW = CELL * 0.72, seatH = CELL * 0.58, backH = CELL * 0.16;
+  const unrot = seatRot ? `rotate(${-seatRot} ${x} ${y})` : undefined;
+  return (
+    <g key={a.id} className={`sp-seat sp-seat--${a.estado}${selected ? ' sp-seat--selected' : ''}`}
+      transform={seatRot ? `rotate(${seatRot} ${x} ${y})` : undefined}
+      filter={selected ? 'url(#sp-sel-shadow)' : undefined}>
+      <rect x={x - seatW / 2} y={y - seatH / 2 - backH + 1.5} width={seatW} height={backH} rx={backH / 2}
+        fill={v.fill === 'url(#sp-hatch)' ? '#3a3a3a' : v.fill} stroke={v.stroke} strokeWidth={v.strokeWidth * 0.8} opacity={0.9} />
+      <rect x={x - seatW / 2} y={y - seatH / 2 + 2.5} width={seatW} height={seatH} rx={3.4}
+        fill={v.fill} stroke={v.stroke} strokeWidth={v.strokeWidth} />
+      {a.estado === 'vendido' && !selected && (
+        <text x={x} y={y + 5.4} textAnchor="middle" className="sp-seat-x" transform={unrot}>×</text>
+      )}
+      {showNums && a.estado !== 'vendido' && (
+        <text x={x} y={y + 5.2} textAnchor="middle" className="sp-seat-num" fill={v.num} transform={unrot}>{a.numero}</text>
+      )}
+    </g>
+  );
+}
+
 /**
- * Lienzo SVG de butacas: render + gestos (click, marquee, ctrl+rueda, pinch).
- * `clickableStates` define qué estados admiten click además de las seleccionadas.
+ * Lienzo SVG de butacas con zoom propio (fit-to-view), pan táctil de un dedo,
+ * tap para seleccionar, pinch de dos dedos y —en desktop— arrastre-selección.
+ * Render optimizado: capa base memoizada (no se redibuja al seleccionar) + capa
+ * de seleccionados encima; sin handlers ni <title> por butaca.
  */
 export function SeatCanvas({
   asientos,
@@ -236,135 +266,265 @@ export function SeatCanvas({
   orientation = 'field-bottom',
   selectedIds = null,
   onSeatClick = null,
-  onBoxSelect = null,
+  onBoxSelect = null,          // arrastre-selección: solo mouse (desktop)
   clickableStates = ['disponible'],
-  zoom = 1,
-  onZoomChange = null,
   showField = true,
   fieldLabel = 'CANCHA',
 }) {
   const svgRef = useRef(null);
   const wrapRef = useRef(null);
-  const pinchRef = useRef(null);
+  const scrollRef = useRef(null);
+  const gRef = useRef(null);          // gesto en curso
+  const hoverIdRef = useRef(null);
+  const [zoom, setZoom] = useState(null);  // null hasta calcular el fit inicial
   const [marquee, setMarquee] = useState(null);
   const [hover, setHover] = useState(null);
 
+  const empty = !asientos || asientos.length === 0;
   const layout = useMemo(() => buildBowlLayout(asientos || [], orientation), [asientos, orientation]);
-
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el || !onZoomChange) return;
-    const onWheel = (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-      onZoomChange((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * factor)));
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [onZoomChange]);
-
-  if (!asientos || asientos.length === 0) return null;
   const { seats, labels, steps, nSteps, aisles, band, width, height, seatRot } = layout;
+
+  const z = zoom ?? 1;
+  const zRef = useRef(z);
+  zRef.current = z;
+
+  // Fit: el sector entra completo al abrir/cambiar de sector; luego se hace zoom.
+  function fitZoom() {
+    const el = scrollRef.current;
+    if (!el || empty) return;
+    const fit = Math.min(el.clientWidth / width, el.clientHeight / height);
+    setZoom(Math.min(1.15, Math.max(MIN_ZOOM, fit)));
+    requestAnimationFrame(() => { if (scrollRef.current) { scrollRef.current.scrollLeft = 0; scrollRef.current.scrollTop = 0; } });
+  }
+  useLayoutEffect(() => { fitZoom(); }, [width, height, empty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function svgCoords(clientX, clientY) {
     const svg = svgRef.current;
     const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-    return { x: p.x, y: p.y };
+    pt.x = clientX; pt.y = clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
   }
   function localCoords(clientX, clientY) {
     const r = wrapRef.current.getBoundingClientRect();
     return { x: clientX - r.left, y: clientY - r.top };
   }
-
-  function handlePointerDown(e) {
-    if (e.pointerType === 'touch') {
-      const p = pinchRef.current;
-      if (p && p.pointers.size === 1 && onZoomChange) {
-        p.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        const pts = [...p.pointers.values()];
-        p.startDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-        p.startZoom = zoom;
-        p.pinching = true;
-        setMarquee(null);
-        return;
-      }
-      pinchRef.current = { pointers: new Map([[e.pointerId, { x: e.clientX, y: e.clientY }]]), pinching: false };
+  function hitTest(clientX, clientY) {
+    const p = svgCoords(clientX, clientY);
+    let best = null, bestD = HIT_R * HIT_R;
+    for (const s of seats) {
+      const dx = s.x - p.x, dy = s.y - p.y, d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = s; }
     }
-    startMarquee(e);
+    return best;
   }
-  function handlePointerMove(e) {
-    const p = pinchRef.current;
-    if (p?.pinching && p.pointers.has(e.pointerId)) {
-      p.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      const pts = [...p.pointers.values()];
-      if (pts.length === 2 && p.startDist > 0) {
-        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-        onZoomChange?.(() => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, p.startZoom * (dist / p.startDist))));
-      }
-    }
-  }
-  function handlePointerUp(e) {
-    const p = pinchRef.current;
-    if (p) {
-      p.pointers.delete(e.pointerId);
-      if (p.pointers.size === 0) pinchRef.current = null;
-    }
+  function selectAt(clientX, clientY) {
+    const s = hitTest(clientX, clientY);
+    if (!s || !onSeatClick) return;
+    if (selectedIds?.has(s.a.id) || clickableStates.includes(s.a.estado)) onSeatClick(s.a);
   }
 
-  function startMarquee(e) {
-    if (!onBoxSelect || e.button !== 0) return;
-    if (pinchRef.current?.pinching) return;
-    const start = svgCoords(e.clientX, e.clientY);
-    const startClient = { x: e.clientX, y: e.clientY };
-    let moved = false;
-    const rectFrom = (cur) => ({
-      x1: Math.min(start.x, cur.x), y1: Math.min(start.y, cur.y),
-      x2: Math.max(start.x, cur.x), y2: Math.max(start.y, cur.y),
+  // Zoom anclado a un punto (cursor / centro del pinch / centro del viewport).
+  function zoomAround(nz, clientX, clientY) {
+    const s = scrollRef.current;
+    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nz));
+    if (!s) { setZoom(clamped); return; }
+    const rect = s.getBoundingClientRect();
+    const lx = (clientX ?? rect.left + rect.width / 2) - rect.left;
+    const ly = (clientY ?? rect.top + rect.height / 2) - rect.top;
+    const oldZ = zRef.current;
+    const cx = (s.scrollLeft + lx) / oldZ;
+    const cy = (s.scrollTop + ly) / oldZ;
+    setZoom(clamped);
+    requestAnimationFrame(() => {
+      const s2 = scrollRef.current;
+      if (!s2) return;
+      s2.scrollLeft = cx * clamped - lx;
+      s2.scrollTop = cy * clamped - ly;
     });
-    const onMove = (ev) => {
-      if (pinchRef.current?.pinching) { setMarquee(null); return; }
-      if (!moved && Math.hypot(ev.clientX - startClient.x, ev.clientY - startClient.y) < 6) return;
-      moved = true;
-      setMarquee(rectFrom(svgCoords(ev.clientX, ev.clientY)));
-    };
-    const onUp = (ev) => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      setMarquee(null);
-      if (!moved || pinchRef.current?.pinching) return;
-      const rect = rectFrom(svgCoords(ev.clientX, ev.clientY));
-      const hits = seats
-        .filter(({ x, y }) => x >= rect.x1 && x <= rect.x2 && y >= rect.y1 && y <= rect.y2)
-        .map(({ a }) => a);
-      onBoxSelect(hits, ev.shiftKey || ev.ctrlKey);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
   }
 
-  const seatW = CELL * 0.72;
-  const seatH = CELL * 0.58;
-  const backH = CELL * 0.16;
-  const showNums = CELL * zoom >= 19;
+  // ctrl/⌘ + rueda = zoom al cursor; rueda normal = scroll nativo del contenedor.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      zoomAround(zRef.current * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Gestos con pointer capture (el svg recibe todos los eventos del puntero) ──
+  function onPointerDown(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    try { svgRef.current.setPointerCapture(e.pointerId); } catch { /* noop */ }
+    const g = gRef.current || (gRef.current = { pts: new Map(), mode: 'none' });
+    g.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (e.pointerType === 'touch') {
+      if (g.pts.size === 2) {
+        const [p1, p2] = [...g.pts.values()];
+        g.mode = 'pinch';
+        g.startDist = Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1;
+        g.startZoom = zRef.current;
+        g.center = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+        setMarquee(null);
+      } else if (g.pts.size === 1) {
+        g.mode = 'pending';
+        g.start = { x: e.clientX, y: e.clientY };
+        g.startScroll = { x: scrollRef.current.scrollLeft, y: scrollRef.current.scrollTop };
+        g.t0 = Date.now();
+      }
+    } else {
+      g.mode = 'mouse-down';
+      g.start = { x: e.clientX, y: e.clientY };
+    }
+  }
+  function onPointerMove(e) {
+    const g = gRef.current;
+    if (!g || g.mode === 'none') {
+      if (e.pointerType === 'mouse') {
+        const s = hitTest(e.clientX, e.clientY);
+        const id = s?.a.id ?? null;
+        if (id !== hoverIdRef.current) {
+          hoverIdRef.current = id;
+          setHover(s ? { a: s.a, ...localCoords(e.clientX, e.clientY) } : null);
+        } else if (s) {
+          const lc = localCoords(e.clientX, e.clientY);
+          setHover((h) => (h ? { ...h, x: lc.x, y: lc.y } : h));
+        }
+      }
+      return;
+    }
+    if (g.pts.has(e.pointerId)) g.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (g.mode === 'pinch' && g.pts.size >= 2) {
+      const [p1, p2] = [...g.pts.values()];
+      const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      zoomAround(g.startZoom * (dist / g.startDist), g.center.x, g.center.y);
+      return;
+    }
+    if (g.mode === 'pending' || g.mode === 'pan') {
+      const dx = e.clientX - g.start.x, dy = e.clientY - g.start.y;
+      if (g.mode === 'pending' && Math.hypot(dx, dy) < TAP_MOVE) return;
+      g.mode = 'pan';
+      const s = scrollRef.current;
+      if (s) { s.scrollLeft = g.startScroll.x - dx; s.scrollTop = g.startScroll.y - dy; }
+      return;
+    }
+    if (g.mode === 'mouse-down' || g.mode === 'marquee') {
+      const dx = e.clientX - g.start.x, dy = e.clientY - g.start.y;
+      if (g.mode === 'mouse-down' && Math.hypot(dx, dy) < 6) return;
+      if (!onBoxSelect) { g.mode = 'mouse-drag'; return; }
+      g.mode = 'marquee';
+      const a = svgCoords(g.start.x, g.start.y), b = svgCoords(e.clientX, e.clientY);
+      setMarquee({ x1: Math.min(a.x, b.x), y1: Math.min(a.y, b.y), x2: Math.max(a.x, b.x), y2: Math.max(a.y, b.y) });
+    }
+  }
+  function onPointerUp(e) {
+    const g = gRef.current;
+    if (!g) return;
+    g.pts.delete(e.pointerId);
+    const mode = g.mode;
+    if (mode === 'pinch') { g.mode = g.pts.size >= 1 ? 'locked' : 'none'; }
+    else if (mode === 'pending') { if (Date.now() - g.t0 < 500) selectAt(e.clientX, e.clientY); g.mode = 'none'; }
+    else if (mode === 'mouse-down') { selectAt(e.clientX, e.clientY); g.mode = 'none'; }
+    else if (mode === 'marquee') {
+      const a = svgCoords(g.start.x, g.start.y), b = svgCoords(e.clientX, e.clientY);
+      const r = { x1: Math.min(a.x, b.x), y1: Math.min(a.y, b.y), x2: Math.max(a.x, b.x), y2: Math.max(a.y, b.y) };
+      const hits = seats.filter(({ x, y }) => x >= r.x1 && x <= r.x2 && y >= r.y1 && y <= r.y2).map((s) => s.a);
+      if (onBoxSelect) onBoxSelect(hits, e.shiftKey || e.ctrlKey);
+      setMarquee(null);
+      g.mode = 'none';
+    }
+    if (g.pts.size === 0) { gRef.current = null; setMarquee(null); }
+  }
+
+  const showNums = CELL * z >= 19;
+
+  // "CANCHA" repetido a lo largo de la banda para que siempre quede a la vista.
+  const fieldLabels = useMemo(() => {
+    if (!showField) return [];
+    const SPACING = 180;
+    const len = band.vertical ? band.h : band.w;
+    const count = Math.max(1, Math.round(len / SPACING));
+    return Array.from({ length: count }, (_, i) => {
+      const t = (i + 0.5) / count;
+      return {
+        cx: band.vertical ? band.x + band.w / 2 : band.x + t * band.w,
+        cy: band.vertical ? band.y + t * band.h : band.y + band.h / 2,
+      };
+    });
+  }, [band, showField]);
+
+  // Capa estática (gradas, escaleras, cancha, filas y butacas base): memoizada,
+  // NO se redibuja al seleccionar (solo cambia la capa de seleccionados encima).
+  const staticLayer = useMemo(() => (
+    <>
+      <g className="sp-steps" pointerEvents="none">
+        {steps.map((s) => {
+          const t = nSteps > 1 ? s.fi / (nSteps - 1) : 0;
+          const fill = 0.075 - 0.055 * t;
+          return (
+            <g key={`step-${s.fi}`}>
+              <rect x={s.x} y={s.y} width={s.w} height={s.h} rx="4" fill={`rgba(255,255,255,${fill.toFixed(3)})`} />
+              <line x1={s.lip.x1} y1={s.lip.y1} x2={s.lip.x2} y2={s.lip.y2} stroke={hexToRgba(accentColor, 0.22)} strokeWidth="1" />
+            </g>
+          );
+        })}
+      </g>
+      <g className="sp-aisles" pointerEvents="none">
+        {aisles.map((al, i) => (
+          <g key={`aisle-${i}`}>
+            <polygon points={al.points} fill="rgba(255,255,255,0.05)" />
+            {al.treads.map((t, j) => (
+              <line key={j} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke="rgba(255,255,255,0.26)" strokeWidth="1.3" strokeLinecap="round" />
+            ))}
+          </g>
+        ))}
+      </g>
+      {showField && (
+        <g pointerEvents="none">
+          <rect x={band.x} y={band.y} width={band.w} height={band.h} rx="6" fill="url(#sp-field-band)" stroke={hexToRgba(accentColor, 0.4)} strokeWidth="1" />
+          {fieldLabels.map((f, i) => (
+            <text key={i} x={f.cx} y={f.cy} textAnchor="middle" dominantBaseline="central" className="sp-field-label"
+              transform={band.vertical ? `rotate(-90 ${f.cx} ${f.cy})` : undefined}>{fieldLabel}</text>
+          ))}
+        </g>
+      )}
+      <g pointerEvents="none">
+        {labels.map((l, i) => (
+          <text key={`${l.fila}-${i}`} x={l.x} y={l.y + 3.4} textAnchor="middle" className="sp-row-label">{l.fila}</text>
+        ))}
+      </g>
+      <g className="sp-seats" pointerEvents="none">
+        {seats.map((s) => seatEls(s.a, s.x, s.y, false, accentColor, seatRot, showNums))}
+      </g>
+    </>
+  ), [steps, aisles, labels, seats, band, nSteps, seatRot, accentColor, showNums, showField, fieldLabel, fieldLabels]);
+
+  if (empty) return null;
 
   return (
     <div className="sp-canvas-wrap" ref={wrapRef}>
-      <div className="sp-canvas-scroll">
+      <div className="sp-zoom-overlay" role="group" aria-label="Zoom">
+        <button type="button" onClick={() => zoomAround(zRef.current / ZOOM_STEP)} aria-label="Alejar">−</button>
+        <button type="button" onClick={fitZoom} aria-label="Ajustar a la vista" title="Ajustar">⤢</button>
+        <button type="button" onClick={() => zoomAround(zRef.current * ZOOM_STEP)} aria-label="Acercar">+</button>
+      </div>
+      <div className="sp-canvas-scroll" ref={scrollRef}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
-          style={{ width: width * zoom, height: height * zoom, display: 'block', margin: '0 auto' }}
+          style={{ width: width * z, height: height * z, display: 'block', margin: '0 auto' }}
           className="sp-canvas"
           role="img"
           aria-label="Mapa de butacas"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onPointerLeave={(e) => { if (e.pointerType === 'mouse' && (!gRef.current || gRef.current.mode === 'none')) { hoverIdRef.current = null; setHover(null); } }}
         >
           <defs>
             <pattern id="sp-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -380,96 +540,16 @@ export function SeatCanvas({
             </filter>
           </defs>
 
-          {/* Gradas: escalones (tarimas) detrás de las butacas — más claros al
-              frente (cerca de la cancha), más oscuros hacia el fondo */}
-          <g className="sp-steps" pointerEvents="none">
-            {steps.map((s) => {
-              const t = nSteps > 1 ? s.fi / (nSteps - 1) : 0;
-              const fill = 0.075 - 0.055 * t;      // opacidad decreciente hacia atrás
-              return (
-                <g key={`step-${s.fi}`}>
-                  <rect x={s.x} y={s.y} width={s.w} height={s.h} rx="4" fill={`rgba(255,255,255,${fill.toFixed(3)})`} />
-                  <line x1={s.lip.x1} y1={s.lip.y1} x2={s.lip.x2} y2={s.lip.y2} stroke={hexToRgba(accentColor, 0.22)} strokeWidth="1" />
-                </g>
-              );
-            })}
+          {/* Fondo captor de eventos: el resto del SVG es pointer-events:none,
+              así que este rect recibe los gestos (pan/tap/pinch/marquee). */}
+          <rect x={0} y={0} width={width} height={height} fill="none" pointerEvents="all" />
+
+          {staticLayer}
+
+          {/* Capa de seleccionados (encima): lo unico que se redibuja al elegir */}
+          <g className="sp-selected" pointerEvents="none">
+            {seats.filter((s) => selectedIds?.has(s.a.id)).map((s) => seatEls(s.a, s.x, s.y, true, accentColor, seatRot, showNums))}
           </g>
-
-          {/* Escaleras (pasillos): franja del pasillo + peldaños */}
-          <g className="sp-aisles" pointerEvents="none">
-            {aisles.map((al, i) => (
-              <g key={`aisle-${i}`}>
-                <polygon points={al.points} fill="rgba(255,255,255,0.05)" />
-                {al.treads.map((t, j) => (
-                  <line key={j} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke="rgba(255,255,255,0.26)" strokeWidth="1.3" strokeLinecap="round" />
-                ))}
-              </g>
-            ))}
-          </g>
-
-          {/* Banda de cancha del lado que corresponde a la tribuna */}
-          {showField && (
-            <g pointerEvents="none">
-              <rect x={band.x} y={band.y} width={band.w} height={band.h} rx="6" fill="url(#sp-field-band)" stroke={hexToRgba(accentColor, 0.4)} strokeWidth="1" />
-              <text
-                x={band.x + band.w / 2}
-                y={band.y + band.h / 2}
-                textAnchor="middle"
-                dominantBaseline="central"
-                className="sp-field-label"
-                transform={band.vertical ? `rotate(-90 ${band.x + band.w / 2} ${band.y + band.h / 2})` : undefined}
-              >
-                {fieldLabel}
-              </text>
-            </g>
-          )}
-
-          {/* Etiquetas de fila */}
-          {labels.map((l, i) => (
-            <text key={`${l.fila}-${i}`} x={l.x} y={l.y + 3.4} textAnchor="middle" className="sp-row-label" pointerEvents="none">
-              {l.fila}
-            </text>
-          ))}
-
-          {/* Butacas */}
-          {seats.map(({ a, x, y }) => {
-            const selected = selectedIds?.has(a.id);
-            const clickable = !!onSeatClick && (selected || clickableStates.includes(a.estado));
-            const v = seatVisual(a.estado, selected, accentColor);
-            return (
-              <g
-                key={a.id}
-                className={`sp-seat ${v.cls}${clickable ? ' sp-seat--clickable' : ''}`}
-                transform={seatRot ? `rotate(${seatRot} ${x} ${y})` : undefined}
-                filter={selected ? 'url(#sp-sel-shadow)' : undefined}
-                onClick={clickable ? (e) => { e.stopPropagation(); onSeatClick(a); } : undefined}
-                onMouseEnter={(e) => setHover({ a, ...localCoords(e.clientX, e.clientY) })}
-                onMouseMove={(e) => setHover({ a, ...localCoords(e.clientX, e.clientY) })}
-                onMouseLeave={() => setHover(null)}
-              >
-                <rect
-                  x={x - seatW / 2} y={y - seatH / 2 - backH + 1.5}
-                  width={seatW} height={backH} rx={backH / 2}
-                  fill={v.fill === 'url(#sp-hatch)' ? '#3a3a3a' : v.fill}
-                  stroke={v.stroke} strokeWidth={v.strokeWidth * 0.8} opacity={0.9}
-                />
-                <rect
-                  x={x - seatW / 2} y={y - seatH / 2 + 2.5}
-                  width={seatW} height={seatH} rx={3.4}
-                  fill={v.fill} stroke={v.stroke} strokeWidth={v.strokeWidth}
-                />
-                {a.estado === 'vendido' && !selected && (
-                  <text x={x} y={y + 5.4} textAnchor="middle" className="sp-seat-x" pointerEvents="none"
-                    transform={seatRot ? `rotate(${-seatRot} ${x} ${y})` : undefined}>×</text>
-                )}
-                {showNums && a.estado !== 'vendido' && (
-                  <text x={x} y={y + 5.2} textAnchor="middle" pointerEvents="none" className="sp-seat-num" fill={v.num}
-                    transform={seatRot ? `rotate(${-seatRot} ${x} ${y})` : undefined}>{a.numero}</text>
-                )}
-                <title>{`Fila ${a.fila} · Asiento ${a.numero} · ${a.estado}`}</title>
-              </g>
-            );
-          })}
 
           {marquee && (
             <rect
@@ -520,18 +600,6 @@ export function pickBestSeats(asientos, n, excludeIds = null) {
   return all.slice(0, n);
 }
 
-const ZOOM_STEP = 1.25;
-
-function ZoomControls({ zoom, setZoom }) {
-  return (
-    <div className="seatpicker-zoom" role="group" aria-label="Zoom">
-      <button type="button" onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z / ZOOM_STEP))} aria-label="Alejar">−</button>
-      <span>{Math.round(zoom * 100)}%</span>
-      <button type="button" onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * ZOOM_STEP))} aria-label="Acercar">+</button>
-      <button type="button" className="seatpicker-zoom-reset" onClick={() => setZoom(1)} aria-label="Restablecer zoom" title="Restablecer">⤢</button>
-    </div>
-  );
-}
 
 /** Panel público del selector: encabezado, zoom, lienzo, leyenda, auto y bandeja. */
 export function SeatPickerPanel({
@@ -546,7 +614,6 @@ export function SeatPickerPanel({
   fieldLabel = 'CANCHA',
   compact = false,
 }) {
-  const [zoom, setZoom] = useState(1);
   const [autoN, setAutoN] = useState(2);
   const selSet = useMemo(
     () => (selectedIds instanceof Set ? selectedIds : new Set(selectedIds || [])),
@@ -587,7 +654,6 @@ export function SeatPickerPanel({
             {pctLibre}% libre
           </span>
         </div>
-        <ZoomControls zoom={zoom} setZoom={setZoom} />
       </div>
 
       <SeatCanvas
@@ -597,8 +663,6 @@ export function SeatPickerPanel({
         selectedIds={selSet}
         onSeatClick={onSeatToggle}
         onBoxSelect={onBoxSelect}
-        zoom={zoom}
-        onZoomChange={setZoom}
         fieldLabel={fieldLabel}
       />
 
@@ -655,7 +719,6 @@ export function SeatAdminPanel({
   accentColor = '#c9a961',
   hint = 'Tocá o arrastrá para seleccionar butacas · Shift suma a la selección',
 }) {
-  const [zoom, setZoom] = useState(1);
   const selSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds || []);
   const stats = useMemo(
     () => asientos.reduce((s, a) => ({ ...s, [a.estado]: (s[a.estado] || 0) + 1 }), {}),
@@ -676,7 +739,6 @@ export function SeatAdminPanel({
           <span className="sp-stat sp-stat--bloq">{stats.bloqueado || 0} bloq.</span>
           {(stats.reservado || 0) > 0 && <span className="sp-stat sp-stat--reservada">{stats.reservado} reserv.</span>}
         </div>
-        <ZoomControls zoom={zoom} setZoom={setZoom} />
       </div>
       <SeatCanvas
         asientos={asientos}
@@ -686,8 +748,6 @@ export function SeatAdminPanel({
         onSeatClick={onSeatToggle}
         onBoxSelect={onBoxSelect}
         clickableStates={['disponible', 'bloqueado', 'reservado']}
-        zoom={zoom}
-        onZoomChange={setZoom}
       />
       <p className="seatpicker-hint">{hint}</p>
     </div>
