@@ -2821,8 +2821,8 @@ function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose }) {
   return (
     <Modal title="Finalizar compra" onClose={onClose}>
       <div className="pay-summary">{evento.nombre}<br />{count} boleto(s)</div>
-      <label>Nombre completo</label><input value={buyer.nombre} onChange={(e) => setBuyer({ ...buyer, nombre: e.target.value })} autoFocus />
-      <label>Correo (recibis el QR aqui)</label><input type="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} />
+      <label>Nombre completo</label><input name="name" autoComplete="name" value={buyer.nombre} onChange={(e) => setBuyer({ ...buyer, nombre: e.target.value })} autoFocus />
+      <label>Correo (recibis el QR aqui)</label><input type="email" name="email" autoComplete="email" inputMode="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} />
 
       <label className="check" style={{ margin: '8px 0 4px' }}>
         <input type="checkbox" checked={buyer.notifWhatsapp} onChange={(e) => setBuyer({ ...buyer, notifWhatsapp: e.target.checked })} />
@@ -2831,7 +2831,7 @@ function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose }) {
       {buyer.notifWhatsapp && (
         <>
           <label>Teléfono (WhatsApp)</label>
-          <input inputMode="tel" placeholder="8888 8888" value={buyer.telefono} onChange={(e) => setBuyer({ ...buyer, telefono: e.target.value })} />
+          <input type="tel" name="tel" autoComplete="tel" inputMode="tel" placeholder="8888 8888" value={buyer.telefono} onChange={(e) => setBuyer({ ...buyer, telefono: e.target.value })} />
         </>
       )}
 
