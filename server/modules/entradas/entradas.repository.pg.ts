@@ -1312,6 +1312,30 @@ export class PgEntradasRepository implements EntradasRepository {
     return toEvento(rows[0]);
   }
 
+  async eliminarTipo(id: string): Promise<{ eventoId: string; nombre: string }> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const tipo = await client.query('select evento_id, nombre from entrada_tipos where id = $1', [id]);
+      if (!tipo.rows[0]) throw new Error('Sector no encontrado');
+      // No se puede borrar un sector con boletos emitidos (la FK no cascada y
+      // perderíamos historial de venta). Asientos y tandas sí cascadan.
+      const boletos = await client.query(
+        "select count(*)::int as n from entrada_boletos where tipo_id = $1 and estado <> 'cancelado'",
+        [id],
+      );
+      if (Number(boletos.rows[0].n) > 0) throw new Error('No se puede eliminar: el sector tiene boletos emitidos');
+      await client.query('delete from entrada_tipos where id = $1', [id]);
+      await client.query('commit');
+      return { eventoId: String(tipo.rows[0].evento_id), nombre: String(tipo.rows[0].nombre) };
+    } catch (err) {
+      await client.query('rollback');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async actualizarMapaTipo(tipoId: string, input: MapaTipoInput | null): Promise<TicketType> {
     let rows: any[];
     if (input === null) {

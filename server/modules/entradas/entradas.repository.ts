@@ -62,6 +62,7 @@ export interface EntradasRepository {
   setEstadoEvento(id: string, estado: string): Promise<Evento>;
   crearTipo(eventoId: string, input: TipoInput): Promise<TicketType>;
   actualizarTipo(id: string, input: Partial<TipoInput>): Promise<TicketType>;
+  eliminarTipo(id: string): Promise<{ eventoId: string; nombre: string }>;
   ventasEvento(eventoId: string): Promise<VentasEvento | null>;
   ventasPorDiaEvento(eventoId: string): Promise<VentasPorDia[]>;
   validarBoleto(codigo: string, actor: { id: string; name: string }): Promise<Boleto>;

@@ -140,8 +140,17 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
   const [hoveredKey, setHoveredKey] = useState(null);
   const [panelTipo, setPanelTipo] = useState(null);
   const tiposMap = useMemo(() => tiposByZoneKey(tipos), [tipos]);
+  // Zonas especiales (DJ, patrocinador…): tipos con mapa rectangular sobre la cancha.
+  const specialZonesForMap = useMemo(
+    () => (tipos || [])
+      .filter((t) => t.mapa?.shape === 'rect')
+      .map((t) => ({ key: `especial:${t.id}`, nombre: t.nombre, color: t.mapa?.color, rect: t.mapa?.points, estado: t.estado, tipo: t })),
+    [tipos],
+  );
   const selectedKey = panelTipo
-    ? (panelTipo.mapa?.points?.key ?? nombreToZoneKey(panelTipo.nombre))
+    ? (panelTipo.mapa?.shape === 'rect'
+        ? `especial:${panelTipo.id}`
+        : (panelTipo.mapa?.points?.key ?? nombreToZoneKey(panelTipo.nombre)))
     : null;
 
   // Butacas numeradas agrupadas por zona (mismo croquis que usa el admin).
@@ -201,6 +210,7 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
             onZoneClick={handleZoneClick}
             onZoneHover={setHoveredKey}
             showZoneDetails
+            specialZones={specialZonesForMap}
             seatsByZoneKey={seatsByZoneKey}
             selectedSeatIds={selectedSeatIds}
             selectedSeatZoneKeys={selectedSeatZoneKeys}
