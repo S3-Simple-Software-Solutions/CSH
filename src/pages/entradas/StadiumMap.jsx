@@ -155,6 +155,15 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
     return map;
   }, [tiposMap, asientos]);
   const selectedSeatIds = useMemo(() => new Set(Object.values(seats).flat()), [seats]);
+  // Zonas cuyas butacas están seleccionadas: se resaltan en el mapa junto con
+  // el panel abierto, para que la tribuna de la butaca quede marcada también.
+  const selectedSeatZoneKeys = useMemo(() => {
+    const keys = new Set();
+    for (const [key, list] of Object.entries(seatsByZoneKey)) {
+      if (list.some((a) => selectedSeatIds.has(a.id))) keys.add(key);
+    }
+    return keys;
+  }, [seatsByZoneKey, selectedSeatIds]);
 
   const fieldTemplate = evento?.fieldTemplate ?? null;
   const fieldSplits = evento?.fieldSplits ?? null;
@@ -194,6 +203,7 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
             showZoneDetails
             seatsByZoneKey={seatsByZoneKey}
             selectedSeatIds={selectedSeatIds}
+            selectedSeatZoneKeys={selectedSeatZoneKeys}
             onSeatClick={onSeatClick}
             onSeatBoxSelect={onSeatBoxSelect}
           />
