@@ -504,15 +504,27 @@ function filaSort(a, b) {
   return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
 }
 
-function seatAxisPosition(index, total, start, length) {
+function seatDotRadius(spacing) {
+  return Math.min(5, Math.max(0.18, spacing * 0.34), spacing * 0.45);
+}
+
+function seatEdgePad(span, dotR) {
+  return Math.min(Math.max(2, dotR + 1.1), Math.max(0, span * 0.18));
+}
+
+function seatAxisPosition(index, total, start, length, clearance = 0) {
   if (total <= 0 || length <= 0) return start;
   const gapCount = ZONE_AISLE_FRACTIONS.length;
   const gap = aisleGapForLength(length);
   const usable = Math.max(length - gap * gapCount, length * 0.65);
-  const segment = usable / (gapCount + 1);
+  const segmentCount = gapCount + 1;
+  const segment = usable / segmentCount;
   const u = (index + 0.5) / total * usable;
-  const gapsBefore = Math.min(gapCount, Math.floor(u / segment));
-  return start + Math.min(length, u + gapsBefore * gap);
+  const segmentIndex = Math.min(gapCount, Math.floor(u / segment));
+  const local = u - segment * segmentIndex;
+  const pad = Math.min(Math.max(0, clearance), segment * 0.32);
+  const inner = Math.max(segment - pad * 2, segment * 0.4);
+  return start + segmentIndex * (segment + gap) + pad + (local / segment) * inner;
 }
 
 /** Posiciones (coords del viewBox) de los dots de butacas de una zona. */
@@ -537,7 +549,12 @@ export function seatDotLayout(zoneKey, asientos) {
   const spacing = axis === 'h'
     ? Math.min(w / Math.max(maxCols, 1), h / Math.max(nFilas, 1))
     : Math.min(h / Math.max(maxCols, 1), w / Math.max(nFilas, 1));
-  const dotR = Math.max(1.5, Math.min(spacing * 0.38, 5));
+  const dotR = seatDotRadius(spacing);
+  const rowSpan = axis === 'h' ? h : w;
+  const rowPad = seatEdgePad(rowSpan, dotR);
+  const rowStart = axis === 'h' ? y1 + rowPad : x1 + rowPad;
+  const rowLength = Math.max(1, rowSpan - rowPad * 2);
+  const aisleClearance = Math.max(dotR + 0.7, 1);
 
   const dots = [];
   filas.forEach((fila, fi) => {
@@ -552,11 +569,11 @@ export function seatDotLayout(zoneKey, asientos) {
     const colH = h - dropY;
     cols.forEach((a, ci) => {
       const cx = axis === 'h'
-        ? seatAxisPosition(ci, nCols, rowX, rowW)
-        : x1 + (fi + 0.5) / nFilas * w;
+        ? seatAxisPosition(ci, nCols, rowX, rowW, aisleClearance)
+        : rowStart + (fi + 0.5) / nFilas * rowLength;
       const cy = axis === 'h'
-        ? y1 + (fi + 0.5) / nFilas * h
-        : seatAxisPosition(ci, nCols, colY, colH);
+        ? rowStart + (fi + 0.5) / nFilas * rowLength
+        : seatAxisPosition(ci, nCols, colY, colH, aisleClearance);
       dots.push({ a, cx, cy });
     });
   });
