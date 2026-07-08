@@ -4396,6 +4396,8 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
   const [showButacas, setShowButacas] = useState(false);
   const [seatsByZoneKey, setSeatsByZoneKey] = useState({});
   const [seatSel, setSeatSel] = useState(() => new Set()); // ids de butacas seleccionadas en el mapa
+  const [creatingEspecial, setCreatingEspecial] = useState(false);
+  const [zonaForm, setZonaForm] = useState({ nombre: '', precioCrc: '', stockTotal: '', color: '#f59e0b' });
   const seededRef = useRef(false);
 
   // ESC limpia la selección múltiple de butacas.
@@ -4537,6 +4539,26 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
 
   const allByKey = useMemo(() => zonasByKeyAdmin(tipos || []), [tipos]);
 
+  // Zonas especiales (DJ, patrocinador…): tipos con mapa rectangular dibujados
+  // sobre la cancha. No entran en el reparto de aforo (cupo manual por zona).
+  const especiales = useMemo(() => (tipos || []).filter((t) => t.mapa?.shape === 'rect'), [tipos]);
+  const especialByKey = useMemo(() => {
+    const m = {};
+    for (const t of especiales) m[`especial:${t.id}`] = t;
+    return m;
+  }, [especiales]);
+  const specialZonesForMap = useMemo(
+    () => especiales.map((t) => ({
+      key: `especial:${t.id}`,
+      nombre: t.nombre,
+      color: t.mapa?.color,
+      rect: t.mapa?.points,
+      estado: t.estado,
+      tipo: t,
+    })),
+    [especiales],
+  );
+
   // ── Selección de butacas individuales sobre el mapa ──
   function toggleSeat(a) {
     if (a.estado === 'vendido') return;
@@ -4600,6 +4622,12 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     setMsg(null);
     setTandasFor(null);
     setShowButacas(false);
+    setCreatingEspecial(false);
+    const esp = especialByKey[key];
+    if (esp) {
+      setForm({ nombre: esp.nombre, precioCrc: String(esp.precioCrc), stockTotal: String(esp.stockTotal), color: esp.mapa?.color || '#f59e0b' });
+      return;
+    }
     const t = allByKey[key];
     setForm(t ? { nombre: t.nombre, precioCrc: String(t.precioCrc), stockTotal: String(t.stockTotal) } : null);
   }
@@ -4635,16 +4663,22 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
   // los presets llaman a setEstadoSector directamente sin este diálogo.
   async function confirmSetEstadoSector(t, estado) {
     const alaventa = estado === 'activo';
+    const especial = t.mapa?.shape === 'rect';
     const ok = await confirm({
       title: alaventa ? 'Poner sector a la venta' : 'Sacar sector de venta',
-      message: alaventa
-        ? `«${t.nombre}» quedará disponible para compra y su cupo entra en el aforo activo.`
-        : `«${t.nombre}» dejará de venderse y su cupo se redistribuye entre los sectores activos.`,
+      message: especial
+        ? (alaventa
+            ? `«${t.nombre}» quedará disponible para compra en el mapa del evento.`
+            : `«${t.nombre}» quedará como zona informativa: se muestra en el mapa del admin pero no se vende ni aparece al comprador.`)
+        : (alaventa
+            ? `«${t.nombre}» quedará disponible para compra y su cupo entra en el aforo activo.`
+            : `«${t.nombre}» dejará de venderse y su cupo se redistribuye entre los sectores activos.`),
       confirmLabel: alaventa ? 'Poner a la venta' : 'Sacar de venta',
       danger: !alaventa,
     });
     if (!ok) return;
-    await setEstadoSector(t, estado);
+    // Las zonas especiales tienen cupo manual: no dispares el reparto de aforo.
+    await setEstadoSector(t, estado, !especial);
   }
 
   async function agregarZona(key) {
@@ -4662,6 +4696,95 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     const updated = await redistribuirAforo(await refresh());
     const t = zonasByKeyAdmin(updated)[key];
     if (t) setForm({ nombre: t.nombre, precioCrc: String(t.precioCrc), stockTotal: String(t.stockTotal) });
+  }
+
+  // Ubica la próxima zona especial en una grilla dentro de la cancha (coords unit).
+  function nextEspecialRect(idx) {
+    const FX = 0.172, FY = 0.275, FW = 0.656, FH = 0.45;
+    const boxW = 0.15, boxH = 0.12, gap = 0.02, padX = 0.03, padY = 0.05;
+    const perRow = 3;
+    const col = idx % perRow;
+    const row = Math.floor(idx / perRow);
+    let x = FX + padX + col * (boxW + gap);
+    let y = FY + padY + row * (boxH + gap);
+    x = Math.min(x, FX + FW - boxW - 0.01);
+    y = Math.min(y, FY + FH - boxH - 0.01);
+    const r = (n) => Math.round(n * 10000) / 10000;
+    return { x: r(x), y: r(y), w: boxW, h: boxH };
+  }
+
+  async function crearZonaEspecial() {
+    const nombre = zonaForm.nombre.trim();
+    if (!nombre) return setMsg({ type: 'error', text: 'Ponle un nombre a la zona.' });
+    setBusy(true);
+    const rect = nextEspecialRect(especiales.length);
+    const d = await api(`/admin/api/entradas/eventos/${evento.id}/tipos`, {
+      method: 'POST',
+      body: JSON.stringify({
+        nombre,
+        precioCrc: Number(zonaForm.precioCrc || 0),
+        stockTotal: Number(zonaForm.stockTotal || 0),
+        estado: 'inactivo', // nace como zona informativa; se pone a la venta a mano
+      }),
+    });
+    if (!d.ok) { setBusy(false); return setMsg({ type: 'error', text: d.error }); }
+    const m = await api(`/admin/api/entradas/tipos/${d.tipo.id}/mapa`, {
+      method: 'PUT',
+      body: JSON.stringify({ mapa: { shape: 'rect', points: rect, color: zonaForm.color } }),
+    });
+    setBusy(false);
+    if (!m.ok) return setMsg({ type: 'error', text: m.error });
+    await refresh();
+    setCreatingEspecial(false);
+    setZonaForm({ nombre: '', precioCrc: '', stockTotal: '', color: '#f59e0b' });
+    setSelectedKey(`especial:${d.tipo.id}`);
+    setForm({ nombre, precioCrc: String(Number(zonaForm.precioCrc || 0)), stockTotal: String(Number(zonaForm.stockTotal || 0)), color: zonaForm.color });
+    setMsg({ type: 'ok', text: `Zona «${nombre}» agregada al mapa.` });
+  }
+
+  async function guardarZonaEspecial() {
+    const t = especialByKey[selectedKey];
+    if (!t || !form) return;
+    setBusy(true);
+    const d = await api(`/admin/api/entradas/tipos/${t.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        nombre: form.nombre,
+        precioCrc: Number(form.precioCrc || 0),
+        stockTotal: Number(form.stockTotal || 0),
+        estado: t.estado,
+      }),
+    });
+    if (!d.ok) { setBusy(false); return setMsg({ type: 'error', text: d.error }); }
+    // Persistir color / posición del rectángulo (se conserva la posición actual).
+    const nuevoColor = form.color || t.mapa?.color || '#f59e0b';
+    if (nuevoColor !== t.mapa?.color) {
+      await api(`/admin/api/entradas/tipos/${t.id}/mapa`, {
+        method: 'PUT',
+        body: JSON.stringify({ mapa: { shape: 'rect', points: t.mapa.points, color: nuevoColor } }),
+      });
+    }
+    setBusy(false);
+    await refresh();
+    setMsg({ type: 'ok', text: `Zona «${d.tipo.nombre}» actualizada.` });
+  }
+
+  async function eliminarZonaEspecial(t) {
+    const ok = await confirm({
+      title: 'Eliminar zona especial',
+      message: `«${t.nombre}» se quitará del mapa de forma permanente. Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    const d = await api(`/admin/api/entradas/tipos/${t.id}`, { method: 'DELETE' });
+    setBusy(false);
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setSelectedKey(null);
+    setForm(null);
+    await refresh();
+    setMsg({ type: 'ok', text: `Zona «${t.nombre}» eliminada.` });
   }
 
   // Presets del venue ("templates del mapa").
@@ -4733,7 +4856,8 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
 
   if (tipos === null) return <p className="muted">Cargando venue…</p>;
 
-  const seleccionado = selectedKey ? allByKey[selectedKey] : null;
+  const esEspecialSel = selectedKey?.startsWith('especial:');
+  const seleccionado = selectedKey ? (allByKey[selectedKey] ?? especialByKey[selectedKey]) : null;
   const metaSel = selectedKey ? (ERC_ZONE_META[selectedKey] ?? GRAMILLA_ZONE_META[selectedKey]) : null;
   const esGramillaSel = selectedKey?.startsWith('gramilla-');
   const aforoActivo = (tipos || []).filter((t) => t.estado === 'activo').reduce((s, t) => s + t.stockTotal, 0);
@@ -4752,6 +4876,13 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
             <button className="btn ghost" onClick={presetEstadioCompleto} disabled={busy}>Todo activo</button>
           </>
         )}
+        <button
+          className="btn ghost"
+          onClick={() => { setCreatingEspecial(true); setSelectedKey(null); setForm(null); setMsg(null); }}
+          disabled={busy}
+        >
+          <Plus size={15} />Zona especial
+        </button>
         <span className="pill publicado" style={{ marginLeft: 'auto', fontSize: '.7rem' }}>Aforo activo: {aforoActivo}</span>
       </div>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
@@ -4771,6 +4902,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
             selectedSeatIds={seatSel}
             onSeatClick={toggleSeat}
             onSeatBoxSelect={boxSelectSeats}
+            specialZones={specialZonesForMap}
             showInactive
             showZoneDetails
           />
@@ -4810,10 +4942,28 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
               <TandasModal tipo={tandasFor} asPanel />
             </div>
           )}
-          {!tandasFor && !selectedKey && (
+          {!tandasFor && creatingEspecial && (
+            <div className="stadium-panel stadium-panel--sidebar" style={{ textAlign: 'left' }}>
+              <h3 className="stadium-panel-name">Nueva zona especial</h3>
+              <p className="stadium-panel-hint">Zonas como DJ, patrocinador o backstage. Se dibujan sobre la cancha con cupo propio; nacen fuera de venta (informativas).</p>
+              <label>Nombre</label>
+              <input value={zonaForm.nombre} placeholder="Zona DJ, Patrocinador…" onChange={(e) => setZonaForm({ ...zonaForm, nombre: e.target.value })} />
+              <label>Precio CRC</label>
+              <input inputMode="numeric" value={zonaForm.precioCrc} onChange={(e) => setZonaForm({ ...zonaForm, precioCrc: e.target.value.replace(/\D/g, '') })} />
+              <label>Cupo (lugares)</label>
+              <input inputMode="numeric" value={zonaForm.stockTotal} onChange={(e) => setZonaForm({ ...zonaForm, stockTotal: e.target.value.replace(/\D/g, '') })} />
+              <label>Color</label>
+              <input type="color" value={zonaForm.color} onChange={(e) => setZonaForm({ ...zonaForm, color: e.target.value })} style={{ width: 56, height: 34, padding: 2 }} />
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                <button className="btn" onClick={crearZonaEspecial} disabled={busy || !zonaForm.nombre.trim()}>Agregar al mapa</button>
+                <button className="btn ghost" onClick={() => setCreatingEspecial(false)} disabled={busy}>Cancelar</button>
+              </div>
+            </div>
+          )}
+          {!tandasFor && !creatingEspecial && !selectedKey && (
             <div className="stadium-panel stadium-panel--sidebar">
               <h3 className="stadium-panel-name">Tocá una zona del mapa</h3>
-              <p className="stadium-panel-hint">Cada zona muestra precio y estado. Seleccionala para editarla; el aforo de 3.000 lugares se reparte automáticamente.</p>
+              <p className="stadium-panel-hint">Cada zona muestra precio y estado. Seleccionala para editarla; el aforo de 3.000 lugares se reparte automáticamente. Usá «Zona especial» para agregar áreas como DJ o patrocinador.</p>
             </div>
           )}
           {!tandasFor && selectedKey && !seleccionado && (
@@ -4823,7 +4973,48 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
               <button className="btn" onClick={() => agregarZona(selectedKey)} disabled={busy}><Plus size={15} />Agregar al mapa</button>
             </div>
           )}
-          {!tandasFor && !showButacas && seleccionado && form && (
+          {!tandasFor && esEspecialSel && seleccionado && form && (
+            <div className="stadium-panel stadium-panel--sidebar" style={{ textAlign: 'left' }}>
+              <h3 className="stadium-panel-name">{seleccionado.nombre}</h3>
+              <p className="stadium-panel-hint">Zona especial · cupo propio (no entra en el reparto de aforo).</p>
+              <div className="zone-status-selector" aria-label="Estado de venta">
+                <button
+                  type="button"
+                  className={seleccionado.estado === 'activo' ? 'active' : ''}
+                  onClick={() => confirmSetEstadoSector(seleccionado, 'activo')}
+                  disabled={busy || seleccionado.estado === 'activo'}
+                >
+                  A la venta
+                </button>
+                <button
+                  type="button"
+                  className={seleccionado.estado === 'inactivo' ? 'active inactive' : ''}
+                  onClick={() => confirmSetEstadoSector(seleccionado, 'inactivo')}
+                  disabled={busy || seleccionado.estado === 'inactivo'}
+                >
+                  Informativa
+                </button>
+              </div>
+              <label>Nombre</label>
+              <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+              <label>Precio CRC</label>
+              <input inputMode="numeric" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value.replace(/\D/g, '') })} />
+              <label>Cupo (lugares)</label>
+              <input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} />
+              <label>Color</label>
+              <input type="color" value={form.color || '#f59e0b'} onChange={(e) => setForm({ ...form, color: e.target.value })} style={{ width: 56, height: 34, padding: 2 }} />
+              <div className="zone-capacity-summary">
+                <span>Vendidos</span>
+                <b>{seleccionado.stockVendido}</b>
+                <small>{seleccionado.estado === 'activo' ? 'A la venta en el mapa del evento' : 'Informativa: visible solo en el admin'}</small>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button className="btn" onClick={guardarZonaEspecial} disabled={busy || !form.nombre.trim()}>Guardar</button>
+                <button className="btn danger" onClick={() => eliminarZonaEspecial(seleccionado)} disabled={busy}><Trash2 size={15} />Eliminar</button>
+              </div>
+            </div>
+          )}
+          {!tandasFor && !showButacas && seleccionado && form && !esEspecialSel && (
             <div className="stadium-panel stadium-panel--sidebar" style={{ textAlign: 'left' }}>
               <h3 className="stadium-panel-name">{metaSel?.label ?? seleccionado.nombre}</h3>
               <div className="zone-status-selector" aria-label="Estado de venta">

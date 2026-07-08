@@ -511,6 +511,7 @@ export function StadiumSvgERC({
   selectedSeatZoneKeys = null,
   onSeatClick = null,
   onSeatBoxSelect = null,
+  specialZones = [],
 }) {
   const svgRef = useRef(null);
   const suppressZoneClick = useRef(false);
@@ -771,6 +772,73 @@ export function StadiumSvgERC({
           showZoneDetails={showZoneDetails}
         />
       )}
+
+      {/* Zonas especiales (DJ, patrocinador, etc.) — rectángulos sobre la cancha */}
+      {specialZones.map((z) => {
+        if (!z || !z.rect) return null;
+        const inactive = z.estado === 'inactivo';
+        const selected = selectedKey === z.key;
+        const hovered = hoveredKey === z.key;
+        const x = z.rect.x * 1000;
+        const y = z.rect.y * 720;
+        const w = z.rect.w * 1000;
+        const h = z.rect.h * 720;
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        const color = z.color || '#f59e0b';
+        const canInteract = interactive;
+        const handlers = canInteract
+          ? {
+              onClick: (e) => { e.stopPropagation(); zoneClick?.(z.key, z.tipo); },
+              onMouseEnter: () => onZoneHover?.(z.key),
+              onMouseLeave: () => onZoneHover?.(null),
+            }
+          : {};
+        return (
+          <g
+            key={z.key}
+            className="stadium-special-group"
+            style={{ cursor: canInteract ? 'pointer' : 'default' }}
+            {...handlers}
+          >
+            <rect
+              x={x}
+              y={y}
+              width={w}
+              height={h}
+              rx={12}
+              ry={12}
+              fill={color}
+              fillOpacity={inactive ? 0.28 : selected ? 0.92 : hovered ? 0.8 : 0.62}
+              stroke={selected ? '#ffffff' : 'rgba(255,255,255,0.55)'}
+              strokeWidth={selected ? 3 : 1.5}
+              strokeDasharray="7 4"
+              filter={selected ? 'url(#erc-glow)' : undefined}
+              style={{ transition: 'fill-opacity .2s ease, stroke .2s ease' }}
+            />
+            {showLabels && (
+              <text
+                x={cx}
+                y={cy}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className="stadium-special-label"
+                pointerEvents="none"
+              >
+                <tspan x={cx} dy={showZoneDetails ? -6 : 0}>{z.nombre}</tspan>
+                {showZoneDetails && (
+                  <>
+                    <tspan x={cx} dy="15" className="stadium-zone-label-price">{formatZonePrice(z.tipo)}</tspan>
+                    <tspan x={cx} dy="13" className={`stadium-zone-label-status${inactive ? ' inactive' : ''}`}>
+                      {zoneStateText(z.tipo)}
+                    </tspan>
+                  </>
+                )}
+              </text>
+            )}
+          </g>
+        );
+      })}
 
       {/* Labels tribunas */}
       {showLabels && Object.entries(ERC_ZONE_META).map(([key, meta]) => {

@@ -177,6 +177,14 @@ entradasRouter.put('/admin/api/entradas/tipos/:id', requireAdmin, async (req, re
   }
 });
 
+entradasRouter.delete('/admin/api/entradas/tipos/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminEliminarTipo(String(req.params.id), req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 entradasRouter.get('/admin/api/entradas/ventas', requireAdmin, async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await entradas.adminVentas(req.adminUser!)) });
