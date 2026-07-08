@@ -518,6 +518,17 @@ export async function adminEliminarTipo(id: string, user: AdminUser) {
   return { eventoId: borrado.eventoId };
 }
 
+export async function adminEliminarEvento(id: string, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso para gestionar eventos');
+  const borrado = await getEntradasRepository().eliminarEvento(String(id));
+  await getEntradasRepository().logEvento('evento_eliminado', {
+    eventoId: String(id),
+    user: actorOf(user),
+    notas: borrado.nombre,
+  });
+  return { nombre: borrado.nombre, imagenUrl: borrado.imagenUrl };
+}
+
 export async function adminVentas(user: AdminUser) {
   if (!canViewSales(user)) throw new ApiError(403, 'Sin permiso para ver ventas');
   return { eventos: await getEntradasRepository().adminListEventos() };

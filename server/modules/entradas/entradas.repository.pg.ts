@@ -1336,6 +1336,35 @@ export class PgEntradasRepository implements EntradasRepository {
     }
   }
 
+  async eliminarEvento(id: string): Promise<{ nombre: string; imagenUrl: string }> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const ev = await client.query('select nombre, imagen_url from entrada_eventos where id = $1', [id]);
+      if (!ev.rows[0]) throw new Error('Evento no encontrado');
+      // No se puede borrar un evento con boletos emitidos: perderíamos el
+      // historial de venta y dejaríamos compradores con entradas huérfanas.
+      const boletos = await client.query(
+        "select count(*)::int as n from entrada_boletos where evento_id = $1 and estado <> 'cancelado'",
+        [id],
+      );
+      if (Number(boletos.rows[0].n) > 0) throw new Error(`No se puede eliminar: el evento tiene ${boletos.rows[0].n} boleto(s) emitido(s)`);
+      // Órdenes y boletos referencian el evento sin cascade: se borran primero.
+      // El resto (tipos, asientos, tandas, descuentos) cascada desde el evento.
+      await client.query('delete from entrada_boletos where evento_id = $1', [id]);
+      await client.query('delete from entrada_ordenes where evento_id = $1', [id]);
+      await client.query('delete from entrada_log where evento_id = $1', [id]);
+      await client.query('delete from entrada_eventos where id = $1', [id]);
+      await client.query('commit');
+      return { nombre: String(ev.rows[0].nombre), imagenUrl: String(ev.rows[0].imagen_url || '') };
+    } catch (err) {
+      await client.query('rollback');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async actualizarMapaTipo(tipoId: string, input: MapaTipoInput | null): Promise<TicketType> {
     let rows: any[];
     if (input === null) {
