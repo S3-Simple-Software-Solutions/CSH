@@ -20,13 +20,13 @@ export const ERC_ZONE_PATHS_V2 = {
     'M 168 72 Q 500 54 832 72 L 818 162 Q 500 148 182 162 L 168 72 Z',
   ],
   'sol-sur': [
-    'M 182 518 Q 500 538 818 518 L 832 648 Q 500 668 168 648 L 182 518 Z',
+    'M 182 526 Q 500 546 818 526 L 832 648 Q 500 668 168 648 L 182 526 Z',
   ],
   'lateral-este': [
-    'M 818 162 L 908 178 L 918 358 L 908 518 L 818 518 L 818 162 Z',
+    'M 830 162 L 908 178 L 918 358 L 908 518 L 830 518 L 830 162 Z',
   ],
   'lateral-oeste': [
-    'M 182 162 L 92 178 L 82 358 L 92 518 L 182 518 L 182 162 Z',
+    'M 170 162 L 92 178 L 82 358 L 92 518 L 170 518 L 170 162 Z',
   ],
 };
 
@@ -36,7 +36,7 @@ export const ERC_ZONE_PATHS_V2 = {
  */
 export const ZONE_SEAT_BOUNDS = {
   'sol-norte':     { x1: 210, y1: 85,  x2: 790, y2: 148, axis: 'h' },
-  'sol-sur':       { x1: 210, y1: 528, x2: 790, y2: 638, axis: 'h' },
-  'lateral-este':  { x1: 822, y1: 178, x2: 898, y2: 504, axis: 'v' },
-  'lateral-oeste': { x1: 102, y1: 178, x2: 178, y2: 504, axis: 'v' },
+  'sol-sur':       { x1: 210, y1: 534, x2: 790, y2: 638, axis: 'h' },
+  'lateral-este':  { x1: 838, y1: 172, x2: 902, y2: 508, axis: 'v' },
+  'lateral-oeste': { x1: 98,  y1: 172, x2: 162, y2: 508, axis: 'v' },
 };

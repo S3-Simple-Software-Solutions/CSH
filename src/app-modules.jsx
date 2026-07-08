@@ -4498,15 +4498,27 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     return m;
   }, [especiales]);
   const specialZonesForMap = useMemo(
-    () => especiales.map((t) => ({
-      key: `especial:${t.id}`,
-      nombre: t.nombre,
-      color: t.mapa?.color,
-      rect: t.mapa?.points,
-      estado: t.estado,
-      tipo: t,
-    })),
-    [especiales],
+    () => especiales.map((t) => {
+      const key = `especial:${t.id}`;
+      let rect = t.mapa?.points;
+      let color = t.mapa?.color;
+      // Preview en vivo: la zona seleccionada refleja tamaño/rotación/color del form.
+      if (key === selectedKey && form?.rectW != null && rect) {
+        const w = Math.max(0.03, Math.min(1, Number(form.rectW) / 100));
+        const h = Math.max(0.03, Math.min(1, Number(form.rectH) / 100));
+        rect = {
+          ...rect,
+          x: Math.max(0, Math.min(rect.x, 1 - w)),
+          y: Math.max(0, Math.min(rect.y, 1 - h)),
+          w,
+          h,
+          rot: Number(form.rot) || 0,
+        };
+        if (form.color) color = form.color;
+      }
+      return { key, nombre: t.nombre, color, rect, estado: t.estado, tipo: t };
+    }),
+    [especiales, selectedKey, form],
   );
 
   // ── Selección de butacas individuales sobre el mapa ──
@@ -4575,7 +4587,16 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     setCreatingEspecial(false);
     const esp = especialByKey[key];
     if (esp) {
-      setForm({ nombre: esp.nombre, precioCrc: String(esp.precioCrc), stockTotal: String(esp.stockTotal), color: esp.mapa?.color || '#f59e0b' });
+      const r = esp.mapa?.points || {};
+      setForm({
+        nombre: esp.nombre,
+        precioCrc: String(esp.precioCrc),
+        stockTotal: String(esp.stockTotal),
+        color: esp.mapa?.color || '#f59e0b',
+        rectW: Math.round((r.w ?? 0.15) * 100),
+        rectH: Math.round((r.h ?? 0.12) * 100),
+        rot: Math.round(Number(r.rot) || 0),
+      });
       return;
     }
     const t = allByKey[key];
@@ -4688,7 +4709,7 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     setCreatingEspecial(false);
     setZonaForm({ nombre: '', precioCrc: '', stockTotal: '', color: '#f59e0b' });
     setSelectedKey(`especial:${d.tipo.id}`);
-    setForm({ nombre, precioCrc: String(Number(zonaForm.precioCrc || 0)), stockTotal: String(Number(zonaForm.stockTotal || 0)), color: zonaForm.color });
+    setForm({ nombre, precioCrc: String(Number(zonaForm.precioCrc || 0)), stockTotal: String(Number(zonaForm.stockTotal || 0)), color: zonaForm.color, rectW: 15, rectH: 12, rot: 0 });
     setMsg({ type: 'ok', text: `Zona «${nombre}» agregada al mapa.` });
   }
 
@@ -4706,14 +4727,24 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
       }),
     });
     if (!d.ok) { setBusy(false); return setMsg({ type: 'error', text: d.error }); }
-    // Persistir color / posición del rectángulo (se conserva la posición actual).
-    const nuevoColor = form.color || t.mapa?.color || '#f59e0b';
-    if (nuevoColor !== t.mapa?.color) {
-      await api(`/admin/api/entradas/tipos/${t.id}/mapa`, {
-        method: 'PUT',
-        body: JSON.stringify({ mapa: { shape: 'rect', points: t.mapa.points, color: nuevoColor } }),
-      });
-    }
+    // Persistir color, tamaño y rotación del rectángulo (la posición se conserva,
+    // ajustada para que no se salga del mapa).
+    const base = t.mapa?.points || {};
+    const w = Math.max(0.03, Math.min(1, Number(form.rectW || 15) / 100));
+    const h = Math.max(0.03, Math.min(1, Number(form.rectH || 12) / 100));
+    const rot = Math.max(-180, Math.min(360, Math.round(Number(form.rot) || 0)));
+    const points = {
+      x: Math.max(0, Math.min(base.x ?? 0.2, 1 - w)),
+      y: Math.max(0, Math.min(base.y ?? 0.3, 1 - h)),
+      w,
+      h,
+      ...(rot ? { rot } : {}),
+    };
+    const m = await api(`/admin/api/entradas/tipos/${t.id}/mapa`, {
+      method: 'PUT',
+      body: JSON.stringify({ mapa: { shape: 'rect', points, color: form.color || t.mapa?.color || '#f59e0b' } }),
+    });
+    if (!m.ok) { setBusy(false); return setMsg({ type: 'error', text: m.error }); }
     setBusy(false);
     await refresh();
     setMsg({ type: 'ok', text: `Zona «${d.tipo.nombre}» actualizada.` });
@@ -4953,6 +4984,12 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
               <input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} />
               <label>Color</label>
               <input type="color" value={form.color || '#f59e0b'} onChange={(e) => setForm({ ...form, color: e.target.value })} style={{ width: 56, height: 34, padding: 2 }} />
+              <label>Ancho · {form.rectW ?? 15}%</label>
+              <input type="range" min="4" max="66" step="1" value={form.rectW ?? 15} onChange={(e) => setForm({ ...form, rectW: Number(e.target.value) })} />
+              <label>Alto · {form.rectH ?? 12}%</label>
+              <input type="range" min="4" max="45" step="1" value={form.rectH ?? 12} onChange={(e) => setForm({ ...form, rectH: Number(e.target.value) })} />
+              <label>Rotación · {form.rot ?? 0}°</label>
+              <input type="range" min="-90" max="90" step="5" value={form.rot ?? 0} onChange={(e) => setForm({ ...form, rot: Number(e.target.value) })} />
               <div className="zone-capacity-summary">
                 <span>Vendidos</span>
                 <b>{seleccionado.stockVendido}</b>
