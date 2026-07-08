@@ -177,7 +177,7 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
   const gramillaKeys = fieldTemplate ? gramillaKeysForTemplate(fieldTemplate) : [];
 
   function selectZone(key, t) {
-    if (!t || t.disponibles <= 0) return;
+    if (!t || t.estado !== 'activo' || t.disponibles <= 0) return;
     setPanelTipo((prev) => (prev?.id === t.id ? null : t));
   }
 

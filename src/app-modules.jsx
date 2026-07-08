@@ -2551,9 +2551,9 @@ function PublicEventDetail({ slug }) {
         setData(d);
         // Si hay zonas con mapa, mostrar mapa por defecto
         if (d.tipos?.some((t) => t.mapa) || isErcVectorLayout(d.evento)) setViewMode('mapa');
-        if (d.tipos?.some((t) => t.numerado)) loadAsientos();
+        if (d.tipos?.some((t) => t.estado === 'activo' && t.numerado)) loadAsientos();
         // Si hay un único sector numerado, abrilo por defecto en la lista.
-        const nums = (d.tipos || []).filter((t) => t.numerado && t.disponibles > 0);
+        const nums = (d.tipos || []).filter((t) => t.estado === 'activo' && t.numerado && t.disponibles > 0);
         if (nums.length === 1) setExpandedSector(nums[0].id);
       } else {
         setError(d.error);
@@ -2603,9 +2603,10 @@ function PublicEventDetail({ slug }) {
   if (error) return (<><main className="page"><p className="eyebrow">Entradas</p><h1>Evento no disponible</h1><p className="sub">{error}</p><a className="btn ghost" href="/entradas">Volver a eventos</a></main></>);
   if (!data) return (<><main className="page"><p>Cargando...</p></main></>);
   const { evento, tipos } = data;
+  const tiposCompra = tipos.filter((t) => t.estado === 'activo');
   const setCantidad = (id, n, max) => setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(max, n)) }));
   const handleMapUpdate = (tipoId, delta) => {
-    const t = tipos.find((t) => t.id === tipoId);
+    const t = tiposCompra.find((t) => t.id === tipoId);
     if (!t || t.numerado) return; // numerado se elige por butaca, no por stepper
     const cur = qty[tipoId] ?? 0;
     setCantidad(tipoId, cur + delta, Math.min(10, t.disponibles));
@@ -2625,14 +2626,14 @@ function PublicEventDetail({ slug }) {
     toggleSeat(a.tipoId, a.id);
   };
   const cantidadDe = (t) => (t.numerado ? (seats[t.id] || []).length : (qty[t.id] || 0));
-  const lineas = tipos
+  const lineas = tiposCompra
     .filter((t) => cantidadDe(t) > 0)
     .map((t) => (t.numerado ? { tipoId: t.id, cantidad: seats[t.id].length, asientos: seats[t.id] } : { tipoId: t.id, cantidad: qty[t.id] }));
-  const total = tipos.reduce((s, t) => s + (t.precioVigente ?? t.precioCrc) * cantidadDe(t), 0);
+  const total = tiposCompra.reduce((s, t) => s + (t.precioVigente ?? t.precioCrc) * cantidadDe(t), 0);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
   const vectorMap = usesVectorMap(evento, tipos);
   const hasMapa = vectorMap || tipos.some((t) => t.mapa);
-  const tiposNumerados = tipos.filter((t) => t.numerado);
+  const tiposNumerados = tiposCompra.filter((t) => t.numerado);
   const allSelectedSeats = tiposNumerados.flatMap((t) => seats[t.id] || []);
   async function continuar() {
     setSeatError('');
@@ -2679,7 +2680,7 @@ function PublicEventDetail({ slug }) {
           )
           : (
             <section className="sector-list sector-list--accordion">
-              {tipos.map((t) => {
+              {tiposCompra.map((t) => {
                 const precio = t.precioVigente ?? t.precioCrc;
                 const agotado = t.disponibles === 0;
                 const sel = t.numerado ? (seats[t.id]?.length || 0) : (qty[t.id] || 0);

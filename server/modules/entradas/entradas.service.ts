@@ -128,6 +128,7 @@ async function computeTotales(
   for (const linea of lineas) {
     const tipo = tipoMap.get(linea.tipoId);
     if (!tipo) throw new ApiError(404, 'Tipo de entrada no encontrado');
+    if (tipo.estado !== 'activo') throw new ApiError(409, `${tipo.nombre} no esta a la venta`);
     // Preventa: el precio vigente puede venir de una tanda activa.
     subtotal += (tipo.precioVigente ?? tipo.precioCrc) * linea.cantidad;
   }
