@@ -40,11 +40,3 @@ export const ZONE_SEAT_BOUNDS = {
   'lateral-este':  { x1: 822, y1: 178, x2: 898, y2: 504, axis: 'v' },
   'lateral-oeste': { x1: 102, y1: 178, x2: 178, y2: 504, axis: 'v' },
 };
-
-/** Líneas decorativas de gradas (coords normalizadas por zona). */
-export const ZONE_SEAT_LINES = {
-  'sol-norte': [110, 125, 140],
-  'sol-sur': [560, 595, 630],
-  'lateral-este': [220, 300, 380, 460],
-  'lateral-oeste': [220, 300, 380, 460],
-};

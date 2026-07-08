@@ -10,7 +10,6 @@ import {
   ERC_ZONE_PATHS_V2,
   FIELD_PATH,
   TRACK_PATH,
-  ZONE_SEAT_LINES,
   ZONE_SEAT_BOUNDS,
 } from './stadiumSvgGeometry.js';
 import { buildFieldZonePaths, buildFieldZoneLabelPositions } from './stadiumFieldGeometry.js';
@@ -108,39 +107,90 @@ function FieldMarkings() {
   );
 }
 
-function SeatLines({ zoneKey, status }) {
-  const ys = ZONE_SEAT_LINES[zoneKey];
-  if (!ys || status === 'inactive') return null;
+/**
+ * Rango de gradas por tribuna sobre el eje de filas y de qué lado queda la
+ * cancha (`fieldAt`), para sombrear más oscuro hacia afuera (más altura).
+ */
+const ZONE_GRADA_RANGE = {
+  'sol-norte':     { from: 66,  to: 164, axis: 'h', fieldAt: 'to',   defaultSteps: 7 },
+  'sol-sur':       { from: 516, to: 670, axis: 'h', fieldAt: 'from', defaultSteps: 9 },
+  'lateral-este':  { from: 816, to: 920, axis: 'v', fieldAt: 'from', defaultSteps: 8 },
+  'lateral-oeste': { from: 80,  to: 184, axis: 'v', fieldAt: 'to',   defaultSteps: 8 },
+};
+
+/**
+ * Dibuja la tribuna como gradas escalonadas: bandas que se oscurecen hacia
+ * afuera + canto iluminado por escalón + pasillos perpendiculares, todo
+ * recortado a la silueta de la zona. Si la tribuna tiene butacas numeradas,
+ * cada fila cae centrada sobre su propio escalón.
+ */
+function ZoneGradas({ zoneKey, status, filas = 0 }) {
+  const cfg = ZONE_GRADA_RANGE[zoneKey];
   const paths = ERC_ZONE_PATHS_V2[zoneKey];
-  if (!paths?.[0]) return null;
-  if (zoneKey === 'sol-norte' || zoneKey === 'sol-sur') {
-    return (
-      <g pointerEvents="none" opacity={0.12}>
-        {ys.map((y) => (
-          <line key={y} x1="200" y1={y} x2="800" y2={y} stroke="#fff" strokeWidth="1" />
+  if (!cfg || !paths?.length || status === 'inactive') return null;
+
+  const bounds = ZONE_SEAT_BOUNDS[zoneKey];
+  let { from, to } = cfg;
+  let n = cfg.defaultSteps;
+  if (filas > 0 && bounds) {
+    // Alinea los escalones con las filas de butacas (media grada extra por lado).
+    const b1 = cfg.axis === 'h' ? bounds.y1 : bounds.x1;
+    const b2 = cfg.axis === 'h' ? bounds.y2 : bounds.x2;
+    const paso = (b2 - b1) / filas;
+    from = b1 - paso / 2;
+    to = b2 + paso / 2;
+    n = filas + 1;
+  }
+  const step = (to - from) / n;
+  const span = to - from;
+  const horiz = cfg.axis === 'h';
+  const clipId = `erc-gradas-${zoneKey}`;
+
+  const bands = Array.from({ length: n }, (_, i) => {
+    const p0 = from + i * step;
+    const centro = p0 + step / 2;
+    const tOut = cfg.fieldAt === 'from' ? (centro - from) / span : (to - centro) / span;
+    return { p0, opacity: 0.03 + 0.2 * tOut };
+  });
+
+  // Pasillos que separan bloques de butacas (perpendiculares a las filas).
+  const zx1 = bounds ? bounds.x1 : 0;
+  const zx2 = bounds ? bounds.x2 : 0;
+  const zy1 = bounds ? bounds.y1 : 0;
+  const zy2 = bounds ? bounds.y2 : 0;
+  const aisles = bounds
+    ? [0.25, 0.5, 0.75].map((f) => (horiz ? zx1 + f * (zx2 - zx1) : zy1 + f * (zy2 - zy1)))
+    : [];
+
+  return (
+    <g pointerEvents="none">
+      <clipPath id={clipId}>
+        {paths.map((d, i) => <path key={i} d={d} />)}
+      </clipPath>
+      <g clipPath={`url(#${clipId})`}>
+        {bands.map(({ p0, opacity }) => (
+          <rect
+            key={p0}
+            x={horiz ? 40 : p0}
+            y={horiz ? p0 : 40}
+            width={horiz ? 920 : step}
+            height={horiz ? step : 640}
+            fill={`rgba(0,0,0,${opacity.toFixed(3)})`}
+          />
+        ))}
+        {bands.slice(1).map(({ p0 }) => (
+          horiz
+            ? <line key={`l-${p0}`} x1="40" y1={p0} x2="960" y2={p0} stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
+            : <line key={`l-${p0}`} x1={p0} y1="40" x2={p0} y2="680" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
+        ))}
+        {aisles.map((p) => (
+          horiz
+            ? <rect key={`a-${p}`} x={p - 3.5} y={from} width="7" height={span} fill="rgba(0,0,0,0.22)" />
+            : <rect key={`a-${p}`} x={from} y={p - 3.5} width={span} height="7" fill="rgba(0,0,0,0.22)" />
         ))}
       </g>
-    );
-  }
-  if (zoneKey === 'lateral-este') {
-    return (
-      <g pointerEvents="none" opacity={0.12}>
-        {ys.map((y) => (
-          <line key={y} x1="830" y1={y} x2="910" y2={y} stroke="#fff" strokeWidth="1" />
-        ))}
-      </g>
-    );
-  }
-  if (zoneKey === 'lateral-oeste') {
-    return (
-      <g pointerEvents="none" opacity={0.12}>
-        {ys.map((y) => (
-          <line key={y} x1="90" y1={y} x2="170" y2={y} stroke="#fff" strokeWidth="1" />
-        ))}
-      </g>
-    );
-  }
-  return null;
+    </g>
+  );
 }
 
 function NorthMarker() {
@@ -726,7 +776,11 @@ export function StadiumSvgERC({
                 pointerEvents="all"
               />
             ))}
-            <SeatLines zoneKey={key} status={status} />
+            <ZoneGradas
+              zoneKey={key}
+              status={status}
+              filas={new Set((seatsByZoneKey[key] ?? []).map((a) => a.fila)).size}
+            />
           </g>
         );
       })}
