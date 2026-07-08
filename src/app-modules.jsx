@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, ImagePlus, LayoutGrid, Lock, Mail, Map as MapIcon, MessageSquare, Moon, Newspaper, PanelLeftClose, PanelLeftOpen, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
+import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, ImagePlus, LayoutGrid, Lock, Mail, Map as MapIcon, MapPin, MessageSquare, Moon, Newspaper, PanelLeftClose, PanelLeftOpen, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import DataTable from './components/DataTable.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
@@ -2347,6 +2347,9 @@ function MessageModal({ title, text, onClose }) {
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const mesCorto = (iso) => MESES[new Date(iso).getMonth()];
+const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const diaSemana = (iso) => DIAS_SEMANA[new Date(iso).getDay()];
+const horaCorta = (iso) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
 function QRImage({ data, size = 140 }) {
   const [src, setSrc] = useState('');
@@ -2390,12 +2393,21 @@ function PublicEntradasList() {
           {loaded && eventos.length === 0 && <div className="result empty">No hay eventos a la venta en este momento.</div>}
           {eventos.map((ev) => (
             <a key={ev.id} className="event-card" href={`/entradas/${ev.slug}`}>
-              {ev.imagenUrl && <img className="event-card-flyer" src={ev.imagenUrl} alt="" />}
-              <div className="event-card-date"><b>{new Date(ev.fecha).getDate()}</b><span>{mesCorto(ev.fecha)}</span></div>
+              {ev.imagenUrl && <span className="event-card-glow" style={{ backgroundImage: `url("${ev.imagenUrl}")` }} aria-hidden="true" />}
+              <span className="event-card-poster">
+                {ev.imagenUrl
+                  ? <img src={ev.imagenUrl} alt={`Afiche de ${ev.nombre}`} loading="lazy" />
+                  : <span className="event-card-poster-empty"><Ticket size={24} /></span>}
+              </span>
+              <span className="event-card-date" aria-hidden="true">
+                <em>{diaSemana(ev.fecha).slice(0, 3)}</em>
+                <b>{pad(new Date(ev.fecha).getDate())}</b>
+                <span>{mesCorto(ev.fecha)}</span>
+              </span>
               <div className="event-card-body">
                 <h2>{ev.nombre}</h2>
-                <p>{ev.venue}</p>
-                <small>{fmtFullDate(ev.fecha)}</small>
+                <p className="event-card-meta"><MapPin size={13} />{ev.venue}</p>
+                <p className="event-card-meta"><Clock size={13} />{diaSemana(ev.fecha)} {new Date(ev.fecha).getDate()} de {mesCorto(ev.fecha)} · {horaCorta(ev.fecha)}</p>
               </div>
               <span className="event-card-cta">Comprar <Ticket size={16} /></span>
             </a>
