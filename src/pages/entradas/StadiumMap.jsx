@@ -214,8 +214,6 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
             seatsByZoneKey={seatsByZoneKey}
             selectedSeatIds={selectedSeatIds}
             selectedSeatZoneKeys={selectedSeatZoneKeys}
-            onSeatClick={onSeatClick}
-            onSeatBoxSelect={onSeatBoxSelect}
           />
           {hoveredTipo && !panelTipo && (
             <MapTooltip tipo={hoveredTipo} zoneKey={hoveredKey} meta={hoveredMeta} />
@@ -228,7 +226,6 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
               asientos={seatsByZoneKey[selectedKey]}
               selectedIds={selectedSeatIds}
               onSeatToggle={onSeatClick}
-              onBoxSelect={onSeatBoxSelect}
               orientation={orientationForZone(selectedKey)}
               accentColor={(ERC_ZONE_META[selectedKey] ?? GRAMILLA_ZONE_META[selectedKey])?.color}
             />
@@ -244,16 +241,20 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
       </div>
       <aside className="stadium-map-sidebar">
         {panelTipo
-          ? (
-            <ZonePanel
-              tipo={panelTipo}
-              zoneKey={selectedKey}
-              qty={panelTipo.numerado ? (seats[panelTipo.id]?.length ?? 0) : (qty[panelTipo.id] ?? 0)}
-              onUpdate={onUpdate}
-              onClose={() => setPanelTipo(null)}
-              compact
-            />
-          )
+          ? (panelTipo.numerado
+            // Los sectores numerados ya muestran nombre y precio en los chips y en
+            // el encabezado de la grilla de butacas; evitamos duplicar esos detalles.
+            ? null
+            : (
+              <ZonePanel
+                tipo={panelTipo}
+                zoneKey={selectedKey}
+                qty={qty[panelTipo.id] ?? 0}
+                onUpdate={onUpdate}
+                onClose={() => setPanelTipo(null)}
+                compact
+              />
+            ))
           : <PanelEmpty />}
       </aside>
     </div>
