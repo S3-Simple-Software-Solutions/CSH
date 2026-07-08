@@ -10,19 +10,22 @@ export const ERC_ZONE_KEYS = [
 ];
 
 /** Tier + color por sector (escala dorado Herediano según precio). */
+// Nota: las claves conservan su nombre histórico (sol-norte, etc.) como
+// identificador de POSICIÓN en el mapa; la etiqueta visible es la real del
+// estadio. Norte queda a la izquierda, Este arriba, Sur a la derecha, Oeste abajo.
 export const ERC_ZONE_META = {
-  'sol-norte': { label: 'Sol Norte', short: 'SN', tier: 'General', color: '#b8923f', labelX: 500, labelY: 108 },
-  'sol-sur': { label: 'Sol Sur', short: 'SS', tier: 'General', color: '#c9a961', labelX: 500, labelY: 612 },
-  'lateral-oeste': { label: 'Lateral Oeste', short: 'LO', tier: 'Preferente', color: '#d4a84b', labelX: 128, labelY: 360 },
-  'lateral-este': { label: 'Lateral Este', short: 'LE', tier: 'Preferente', color: '#e0b85c', labelX: 872, labelY: 360 },
+  'sol-norte': { label: 'Sol Este', short: 'SE', tier: 'General', color: '#b8923f', labelX: 500, labelY: 108 },
+  'sol-sur': { label: 'Oeste', short: 'O', tier: 'General', color: '#c9a961', labelX: 500, labelY: 612 },
+  'lateral-oeste': { label: 'Norte', short: 'N', tier: 'Preferente', color: '#d4a84b', labelX: 128, labelY: 360 },
+  'lateral-este': { label: 'Sur', short: 'S', tier: 'Preferente', color: '#e0b85c', labelX: 872, labelY: 360 },
 };
 
 /** Sectores demo con precios y stock. */
 export const ERC_SECTORES = [
-  { nombre: 'Sol Norte', precio: 8000, stock: 500, key: 'sol-norte' },
-  { nombre: 'Sol Sur', precio: 8000, stock: 500, key: 'sol-sur' },
-  { nombre: 'Lateral Este', precio: 10000, stock: 400, key: 'lateral-este' },
-  { nombre: 'Lateral Oeste', precio: 10000, stock: 400, key: 'lateral-oeste' },
+  { nombre: 'Sol Este', precio: 8000, stock: 500, key: 'sol-norte' },
+  { nombre: 'Oeste', precio: 8000, stock: 500, key: 'sol-sur' },
+  { nombre: 'Sur', precio: 10000, stock: 400, key: 'lateral-este' },
+  { nombre: 'Norte', precio: 10000, stock: 400, key: 'lateral-oeste' },
 ];
 
 export function nombreToZoneKey(nombre) {
@@ -30,10 +33,13 @@ export function nombreToZoneKey(nombre) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
-  if (n.includes('sol norte') || (n.includes('norte') && !n.includes('sur'))) return 'sol-norte';
-  if (n.includes('sol sur') || (n.includes('sur') && !n.includes('norte'))) return 'sol-sur';
-  if (n.includes('lateral este') || n === 'este' || n.includes(' oriente')) return 'lateral-este';
-  if (n.includes('lateral oeste') || n === 'oeste' || n.includes(' poniente')) return 'lateral-oeste';
+  // Etiquetas reales del estadio \u2192 clave de posici\u00f3n en el mapa. Ojo: "oeste"
+  // contiene "este", por eso se eval\u00faa antes que el "este" suelto.
+  if (n.includes('sol este')) return 'sol-norte';          // arriba
+  if (n.includes('oeste') || n.includes('poniente')) return 'sol-sur';   // abajo
+  if (n.includes('norte')) return 'lateral-oeste';         // izquierda
+  if (n.includes('sur')) return 'lateral-este';            // derecha
+  if (n.includes('este') || n.includes('oriente')) return 'sol-norte';   // arriba
   return null;
 }
 

@@ -373,8 +373,9 @@ function NorthMarker() {
   return (
     <g className="stadium-north" pointerEvents="none" transform="translate(500, 46)">
       <circle r="14" fill="var(--erc-compass-bg)" stroke="var(--erc-compass-stroke)" strokeWidth="1" />
-      <path d="M 0 -7 L 0 5 M 0 -7 L -4 0 M 0 -7 L 4 0" stroke="var(--erc-compass-stroke)" strokeWidth="1.5" fill="none" />
-      <text y="-1" textAnchor="middle" className="stadium-north-label">N</text>
+      {/* El Norte del estadio queda hacia la izquierda del mapa: la flecha apunta allí. */}
+      <path d="M 0 -7 L 0 5 M 0 -7 L -4 0 M 0 -7 L 4 0" transform="rotate(-90)" stroke="var(--erc-compass-stroke)" strokeWidth="1.5" fill="none" />
+      <text x="6" y="3" textAnchor="middle" className="stadium-north-label">N</text>
     </g>
   );
 }
