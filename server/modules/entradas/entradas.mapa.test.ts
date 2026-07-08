@@ -6,10 +6,11 @@ function inUnit(n: number): boolean {
   return typeof n === 'number' && isFinite(n) && n >= 0 && n <= 1;
 }
 
-function validateRect(pts: { x: number; y: number; w: number; h: number }): string | null {
+function validateRect(pts: { x: number; y: number; w: number; h: number; rot?: number }): string | null {
   if (!inUnit(pts.x) || !inUnit(pts.y)) return 'x,y deben estar en [0,1]';
   if (typeof pts.w !== 'number' || pts.w <= 0 || typeof pts.h !== 'number' || pts.h <= 0) return 'w,h deben ser > 0';
   if (pts.x + pts.w > 1.001 || pts.y + pts.h > 1.001) return 'rect sale del mapa';
+  if (pts.rot !== undefined && (typeof pts.rot !== 'number' || !isFinite(pts.rot) || pts.rot < -180 || pts.rot > 360)) return 'rotación inválida';
   return null;
 }
 
@@ -31,6 +32,11 @@ describe('entradas mapa — validación de geometría', () => {
       expect(validateRect({ x: 0, y: 0, w: 1, h: 1 })).toBeNull();
     });
 
+    it('acepta rotación opcional en grados', () => {
+      expect(validateRect({ x: 0.1, y: 0.2, w: 0.5, h: 0.3, rot: -90 })).toBeNull();
+      expect(validateRect({ x: 0.1, y: 0.2, w: 0.5, h: 0.3, rot: 45 })).toBeNull();
+    });
+
     it('rechaza x fuera de [0,1]', () => {
       expect(validateRect({ x: -0.1, y: 0, w: 0.5, h: 0.5 })).toBeTruthy();
     });
@@ -45,6 +51,12 @@ describe('entradas mapa — validación de geometría', () => {
 
     it('rechaza rect que sale por abajo (y+h > 1)', () => {
       expect(validateRect({ x: 0.0, y: 0.7, w: 0.5, h: 0.5 })).toBeTruthy();
+    });
+
+    it('rechaza rotación fuera de rango', () => {
+      expect(validateRect({ x: 0.1, y: 0.2, w: 0.5, h: 0.3, rot: -181 })).toBeTruthy();
+      expect(validateRect({ x: 0.1, y: 0.2, w: 0.5, h: 0.3, rot: 361 })).toBeTruthy();
+      expect(validateRect({ x: 0.1, y: 0.2, w: 0.5, h: 0.3, rot: Infinity })).toBeTruthy();
     });
   });
 

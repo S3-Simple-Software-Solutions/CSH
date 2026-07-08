@@ -822,6 +822,8 @@ function validateMapaTipo(input: MapaTipoInput): void {
       throw new ApiError(400, 'Rect inválido: x,y en [0,1] y w,h > 0');
     if (r.x + r.w > 1.001 || r.y + r.h > 1.001)
       throw new ApiError(400, 'Rect sale del mapa (x+w o y+h > 1)');
+    if (r.rot !== undefined && (typeof r.rot !== 'number' || !isFinite(r.rot) || r.rot < -180 || r.rot > 360))
+      throw new ApiError(400, 'Rotación inválida (grados entre -180 y 360)');
   } else if (input.shape === 'polygon') {
     const pts = input.points as MapPoint[];
     if (!Array.isArray(pts) || pts.length < 3)

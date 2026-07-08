@@ -1,7 +1,7 @@
 export type EventoEstado = 'borrador' | 'publicado' | 'agotado' | 'finalizado';
 export type MapShape = 'rect' | 'polygon' | 'zone';
 
-export interface MapRect { x: number; y: number; w: number; h: number }
+export interface MapRect { x: number; y: number; w: number; h: number; rot?: number }
 export interface MapPoint { x: number; y: number }
 export interface MapZoneKey { key: string }
 export type MapPoints = MapRect | MapPoint[] | MapZoneKey;

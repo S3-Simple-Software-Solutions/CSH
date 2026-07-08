@@ -113,9 +113,9 @@ function FieldMarkings() {
  */
 const ZONE_GRADA_RANGE = {
   'sol-norte':     { from: 66,  to: 164, axis: 'h', fieldAt: 'to',   defaultSteps: 7 },
-  'sol-sur':       { from: 516, to: 670, axis: 'h', fieldAt: 'from', defaultSteps: 9 },
-  'lateral-este':  { from: 816, to: 920, axis: 'v', fieldAt: 'from', defaultSteps: 8 },
-  'lateral-oeste': { from: 80,  to: 184, axis: 'v', fieldAt: 'to',   defaultSteps: 8 },
+  'sol-sur':       { from: 524, to: 670, axis: 'h', fieldAt: 'from', defaultSteps: 9 },
+  'lateral-este':  { from: 828, to: 920, axis: 'v', fieldAt: 'from', defaultSteps: 8 },
+  'lateral-oeste': { from: 80,  to: 172, axis: 'v', fieldAt: 'to',   defaultSteps: 8 },
 };
 
 /**
@@ -144,7 +144,7 @@ function ZoneGradas({ zoneKey, status, filas = 0 }) {
   const step = (to - from) / n;
   const span = to - from;
   const horiz = cfg.axis === 'h';
-  const clipId = `erc-gradas-${zoneKey}`;
+  const clipId = `erc-zone-clip-${zoneKey}`;
 
   const bands = Array.from({ length: n }, (_, i) => {
     const p0 = from + i * step;
@@ -164,9 +164,6 @@ function ZoneGradas({ zoneKey, status, filas = 0 }) {
 
   return (
     <g pointerEvents="none">
-      <clipPath id={clipId}>
-        {paths.map((d, i) => <path key={i} d={d} />)}
-      </clipPath>
       <g clipPath={`url(#${clipId})`}>
         {bands.map(({ p0, opacity }) => (
           <rect
@@ -309,8 +306,11 @@ function GramillaZones({
             <tspan x={pos.x} dy={showZoneDetails ? -9 : 0}>{showFull ? (meta?.label ?? key) : (meta?.short ?? key)}</tspan>
             {showZoneDetails && (
               <>
-                <tspan x={pos.x} dy="15" className="stadium-zone-label-price">{formatZonePrice(t)}</tspan>
-                <tspan x={pos.x} dy="13" className={`stadium-zone-label-status${status === 'inactive' ? ' inactive' : ''}`}>{zoneStateText(t)}</tspan>
+                {/* Fuera de venta: sin precio visible */}
+                {status !== 'inactive' && (
+                  <tspan x={pos.x} dy="15" className="stadium-zone-label-price">{formatZonePrice(t)}</tspan>
+                )}
+                <tspan x={pos.x} dy={status === 'inactive' ? 15 : 13} className={`stadium-zone-label-status${status === 'inactive' ? ' inactive' : ''}`}>{zoneStateText(t)}</tspan>
               </>
             )}
           </text>
@@ -324,6 +324,18 @@ function GramillaZones({
 function filaSort(a, b) {
   return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
 }
+
+/**
+ * Inclinación de las tribunas: las filas siguen la silueta trapezoidal de la
+ * zona. `h` = inset horizontal [primera fila, última fila]; `v` = cuánto baja
+ * el inicio de la columna [primera fila, última fila].
+ */
+const ZONE_DOT_TAPER = {
+  'sol-norte':     { h: [0, 10] },
+  'sol-sur':       { h: [10, 0] },
+  'lateral-este':  { v: [0, 12] },
+  'lateral-oeste': { v: [12, 0] },
+};
 
 /** Posiciones (coords del viewBox) de los dots de butacas de una zona. */
 export function seatDotLayout(zoneKey, asientos) {
@@ -349,17 +361,22 @@ export function seatDotLayout(zoneKey, asientos) {
     : Math.min(h / Math.max(maxCols, 1), w / Math.max(nFilas, 1));
   const dotR = Math.max(1.5, Math.min(spacing * 0.38, 5));
 
+  const taper = ZONE_DOT_TAPER[zoneKey];
   const dots = [];
   filas.forEach((fila, fi) => {
     const cols = filaMap.get(fila).sort((a, b) => a.numero - b.numero);
     const nCols = cols.length;
+    const tf = nFilas > 1 ? fi / (nFilas - 1) : 0;
+    // La fila se acomoda a la silueta inclinada de la tribuna.
+    const insetX = taper?.h ? taper.h[0] + (taper.h[1] - taper.h[0]) * tf : 0;
+    const dropY = taper?.v ? taper.v[0] + (taper.v[1] - taper.v[0]) * tf : 0;
     cols.forEach((a, ci) => {
       const cx = axis === 'h'
-        ? x1 + (ci + 0.5) / nCols * w
+        ? x1 + insetX + (ci + 0.5) / nCols * (w - insetX * 2)
         : x1 + (fi + 0.5) / nFilas * w;
       const cy = axis === 'h'
         ? y1 + (fi + 0.5) / nFilas * h
-        : y1 + (ci + 0.5) / nCols * h;
+        : y1 + dropY + (ci + 0.5) / nCols * (h - dropY);
       dots.push({ a, cx, cy });
     });
   });
@@ -370,7 +387,7 @@ function seatDotColor(estado) {
   if (estado === 'vendido') return '#e05555';
   if (estado === 'bloqueado') return '#888';
   if (estado === 'reservado') return '#d4a84b';
-  return '#6de06d';
+  return '#4fc96b';
 }
 
 function ZoneSeatDots({ zoneKey, asientos, selectedSeatIds = null, onSeatClick = null }) {
@@ -379,7 +396,7 @@ function ZoneSeatDots({ zoneKey, asientos, selectedSeatIds = null, onSeatClick =
   const { dots, dotR } = layout;
 
   return (
-    <g pointerEvents="none" opacity={0.82}>
+    <g pointerEvents="none" opacity={0.85} clipPath={ZONE_GRADA_RANGE[zoneKey] ? `url(#erc-zone-clip-${zoneKey})` : undefined}>
       {dots.map(({ a, cx, cy }) => {
         const selectable = !!onSeatClick && a.estado !== 'vendido';
         const selected = selectedSeatIds?.has(a.id);
@@ -721,6 +738,38 @@ export function StadiumSvgERC({
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
+        {/* Silueta de cada tribuna: recorta gradas y dots a la zona */}
+        {Object.entries(ERC_ZONE_PATHS_V2).map(([key, zonePaths]) => (
+          <clipPath key={`zc-${key}`} id={`erc-zone-clip-${key}`}>
+            {zonePaths.map((d, i) => <path key={i} d={d} />)}
+          </clipPath>
+        ))}
+        {/* Las zonas de gramilla rodean a las especiales: se les recorta el hueco */}
+        {specialZones.length > 0 && (
+          <mask id="erc-specials-cut" maskUnits="userSpaceOnUse">
+            <rect width="1000" height="720" fill="#fff" />
+            {specialZones.map((z) => {
+              if (!z?.rect) return null;
+              const x = z.rect.x * 1000;
+              const y = z.rect.y * 720;
+              const w = z.rect.w * 1000;
+              const h = z.rect.h * 720;
+              const rot = Number(z.rect.rot) || 0;
+              return (
+                <rect
+                  key={`cut-${z.key}`}
+                  x={x - 5}
+                  y={y - 5}
+                  width={w + 10}
+                  height={h + 10}
+                  rx="14"
+                  transform={rot ? `rotate(${rot} ${x + w / 2} ${y + h / 2})` : undefined}
+                  fill="#000"
+                />
+              );
+            })}
+          </mask>
+        )}
       </defs>
 
       <rect width="1000" height="720" fill="url(#erc-bg)" rx="14" />
@@ -796,17 +845,18 @@ export function StadiumSvgERC({
         />
       ))}
 
-      {/* Campo: opaco normal; semitransparente en espectáculo para ver zonas gramilla */}
+      {/* Campo: opaco normal; casi opaco en espectáculo para que las tribunas no se transparenten debajo */}
       <path
         d={FIELD_PATH}
         fill="url(#erc-field)"
-        fillOpacity={fieldTemplate ? 0.55 : 1}
+        fillOpacity={fieldTemplate ? 0.9 : 1}
         pointerEvents="none"
       />
       {!fieldTemplate && <FieldMarkings />}
 
-      {/* Zonas de gramilla (espectáculo) — encima del campo */}
+      {/* Zonas de gramilla (espectáculo) — encima del campo, rodeando las zonas especiales */}
       {fieldTemplate && (
+        <g mask={specialZones.length > 0 ? 'url(#erc-specials-cut)' : undefined}>
         <GramillaZones
           fieldTemplate={fieldTemplate}
           fieldSplits={fieldSplits}
@@ -825,6 +875,7 @@ export function StadiumSvgERC({
           showInactive={showInactive}
           showZoneDetails={showZoneDetails}
         />
+        </g>
       )}
 
       {/* Zonas especiales (DJ, patrocinador, etc.) — rectángulos sobre la cancha */}
@@ -839,6 +890,7 @@ export function StadiumSvgERC({
         const h = z.rect.h * 720;
         const cx = x + w / 2;
         const cy = y + h / 2;
+        const rot = Number(z.rect.rot) || 0;
         const color = z.color || '#f59e0b';
         const canInteract = interactive;
         const handlers = canInteract
@@ -869,6 +921,7 @@ export function StadiumSvgERC({
               strokeDasharray="7 4"
               filter={selected ? 'url(#erc-glow)' : undefined}
               style={{ transition: 'fill-opacity .2s ease, stroke .2s ease' }}
+              transform={rot ? `rotate(${rot} ${cx} ${cy})` : undefined}
             />
             {showLabels && (
               <text
@@ -882,8 +935,11 @@ export function StadiumSvgERC({
                 <tspan x={cx} dy={showZoneDetails ? -6 : 0}>{z.nombre}</tspan>
                 {showZoneDetails && (
                   <>
-                    <tspan x={cx} dy="15" className="stadium-zone-label-price">{formatZonePrice(z.tipo)}</tspan>
-                    <tspan x={cx} dy="13" className={`stadium-zone-label-status${inactive ? ' inactive' : ''}`}>
+                    {/* Fuera de venta: sin precio visible */}
+                    {!inactive && (
+                      <tspan x={cx} dy="15" className="stadium-zone-label-price">{formatZonePrice(z.tipo)}</tspan>
+                    )}
+                    <tspan x={cx} dy={inactive ? 15 : 13} className={`stadium-zone-label-status${inactive ? ' inactive' : ''}`}>
                       {zoneStateText(z.tipo)}
                     </tspan>
                   </>
@@ -935,8 +991,11 @@ export function StadiumSvgERC({
             <tspan x={meta.labelX} dy={showZoneDetails ? -9 : 0}>{showFull ? meta.label : meta.short}</tspan>
             {showZoneDetails && (
               <>
-                <tspan x={meta.labelX} dy="17" className="stadium-zone-label-price">{formatZonePrice(tipo)}</tspan>
-                <tspan x={meta.labelX} dy="14" className={`stadium-zone-label-status${status === 'inactive' ? ' inactive' : ''}`}>{zoneStateText(tipo)}</tspan>
+                {/* Fuera de venta: sin precio visible */}
+                {status !== 'inactive' && (
+                  <tspan x={meta.labelX} dy="17" className="stadium-zone-label-price">{formatZonePrice(tipo)}</tspan>
+                )}
+                <tspan x={meta.labelX} dy={status === 'inactive' ? 17 : 14} className={`stadium-zone-label-status${status === 'inactive' ? ' inactive' : ''}`}>{zoneStateText(tipo)}</tspan>
               </>
             )}
           </text>
