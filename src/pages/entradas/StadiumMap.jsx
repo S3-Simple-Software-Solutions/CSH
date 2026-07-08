@@ -78,18 +78,6 @@ function ZonePanel({ tipo, zoneKey, qty, onUpdate, onClose, compact }) {
   );
 }
 
-function PanelEmpty() {
-  return (
-    <div className="stadium-panel stadium-panel--empty stadium-panel--sidebar">
-      <div className="stadium-panel-empty-icon" aria-hidden="true">◎</div>
-      <h3 className="stadium-panel-name">Selecciona tu tribuna</h3>
-      <p className="stadium-panel-hint">
-        Haz click en una zona del mapa o en un chip de la leyenda para ver precio y disponibilidad.
-      </p>
-    </div>
-  );
-}
-
 function MapTooltip({ tipo, zoneKey, meta }) {
   const m = meta ?? ERC_ZONE_META[zoneKey] ?? GRAMILLA_ZONE_META[zoneKey];
   return (
@@ -195,10 +183,17 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
   const hoveredMeta = hoveredKey
     ? (ERC_ZONE_META[hoveredKey] ?? GRAMILLA_ZONE_META[hoveredKey])
     : null;
+  const hasSidePanel = !!panelTipo && !panelTipo.numerado;
 
   return (
-    <div className="stadium-map-wrap stadium-map-wrap--vector">
+    <div className={`stadium-map-wrap stadium-map-wrap--vector${hasSidePanel ? '' : ' stadium-map-wrap--single'}`}>
       <div className="stadium-map-stage">
+        {!panelTipo && (
+          <div className="stadium-map-guidance">
+            <strong>Selecciona tu tribuna</strong>
+            <span>Haz click en una zona del mapa o en un chip de la leyenda para ver precio y disponibilidad.</span>
+          </div>
+        )}
         <div className="stadium-map-plano stadium-map-plano--vector">
           <StadiumSvgERC
             venue={evento?.venue}
@@ -239,24 +234,18 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
           gramillaKeys={gramillaKeys}
         />
       </div>
-      <aside className="stadium-map-sidebar">
-        {panelTipo
-          ? (panelTipo.numerado
-            // Los sectores numerados ya muestran nombre y precio en los chips y en
-            // el encabezado de la grilla de butacas; evitamos duplicar esos detalles.
-            ? null
-            : (
-              <ZonePanel
-                tipo={panelTipo}
-                zoneKey={selectedKey}
-                qty={qty[panelTipo.id] ?? 0}
-                onUpdate={onUpdate}
-                onClose={() => setPanelTipo(null)}
-                compact
-              />
-            ))
-          : <PanelEmpty />}
-      </aside>
+      {hasSidePanel && (
+        <aside className="stadium-map-sidebar">
+          <ZonePanel
+            tipo={panelTipo}
+            zoneKey={selectedKey}
+            qty={qty[panelTipo.id] ?? 0}
+            onUpdate={onUpdate}
+            onClose={() => setPanelTipo(null)}
+            compact
+          />
+        </aside>
+      )}
     </div>
   );
 }
