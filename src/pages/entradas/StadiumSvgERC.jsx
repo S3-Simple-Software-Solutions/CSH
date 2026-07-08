@@ -150,7 +150,7 @@ function ZoneGradas({ zoneKey, status, filas = 0 }) {
     const p0 = from + i * step;
     const centro = p0 + step / 2;
     const tOut = cfg.fieldAt === 'from' ? (centro - from) / span : (to - centro) / span;
-    return { p0, opacity: 0.03 + 0.2 * tOut };
+    return { p0, opacity: 0.05 + 0.3 * tOut };
   });
 
   // Pasillos que separan bloques de butacas (perpendiculares a las filas).
@@ -180,13 +180,13 @@ function ZoneGradas({ zoneKey, status, filas = 0 }) {
         ))}
         {bands.slice(1).map(({ p0 }) => (
           horiz
-            ? <line key={`l-${p0}`} x1="40" y1={p0} x2="960" y2={p0} stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
-            : <line key={`l-${p0}`} x1={p0} y1="40" x2={p0} y2="680" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
+            ? <line key={`l-${p0}`} x1="40" y1={p0} x2="960" y2={p0} stroke="rgba(255,255,255,0.16)" strokeWidth="1" />
+            : <line key={`l-${p0}`} x1={p0} y1="40" x2={p0} y2="680" stroke="rgba(255,255,255,0.16)" strokeWidth="1" />
         ))}
         {aisles.map((p) => (
           horiz
-            ? <rect key={`a-${p}`} x={p - 3.5} y={from} width="7" height={span} fill="rgba(0,0,0,0.22)" />
-            : <rect key={`a-${p}`} x={from} y={p - 3.5} width={span} height="7" fill="rgba(0,0,0,0.22)" />
+            ? <rect key={`a-${p}`} x={p - 5} y={from} width="10" height={span} fill="rgba(0,0,0,0.32)" />
+            : <rect key={`a-${p}`} x={from} y={p - 5} width={span} height="10" fill="rgba(0,0,0,0.32)" />
         ))}
       </g>
     </g>
