@@ -763,11 +763,6 @@ tr:last-child td { border-bottom: 0; }
   background: linear-gradient(180deg, rgba(201,169,97,.12), rgba(201,169,97,.06)), var(--surface);
   box-shadow: 0 -10px 30px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.04);
 }
-@media (min-width: 960px) {
-  .checkout-bar--mapa {
-    width: calc((100% - 1.25rem) * 0.649);
-  }
-}
 html[data-theme='light'] .checkout-bar--mapa {
   background: linear-gradient(180deg, rgba(138,109,36,.11), rgba(138,109,36,.05)), rgba(255,253,248,.92);
   box-shadow: 0 -14px 34px rgba(62,47,24,.14), inset 0 1px 0 rgba(255,255,255,.82);
@@ -1167,12 +1162,36 @@ html[data-theme='light'] .stadium-svg-erc {
     grid-template-columns: minmax(0, 1.85fr) minmax(260px, 1fr);
     gap: 1.25rem;
   }
+  .stadium-map-wrap--vector.stadium-map-wrap--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .stadium-map-stage {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
+}
+.stadium-map-guidance {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 2px;
+  color: var(--muted);
+}
+.stadium-map-guidance strong {
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.stadium-map-guidance span {
+  font-size: .9rem;
+  line-height: 1.45;
 }
 .stadium-map-sidebar {
   min-width: 0;
@@ -1653,20 +1672,6 @@ html[data-theme='light'] .stadium-panel--sidebar {
   from { opacity: 0; transform: translateX(8px); }
   to { opacity: 1; transform: translateX(0); }
 }
-.stadium-panel--empty {
-  justify-content: center;
-  text-align: center;
-  border-color: var(--line);
-  background: radial-gradient(circle at 50% 30%, rgba(201,169,97,.08), transparent 34%), rgba(201,169,97,.03);
-}
-html[data-theme='light'] .stadium-panel--empty {
-  background: radial-gradient(circle at 50% 30%, rgba(138,109,36,.1), transparent 34%), rgba(255,253,248,.76);
-}
-.stadium-panel-empty-icon {
-  font-size: 2rem;
-  color: rgba(201,169,97,.35);
-  margin-bottom: 0.5rem;
-}
 .stadium-panel-hint {
   font-size: 0.85rem;
   color: var(--muted);
@@ -1699,9 +1704,6 @@ html[data-theme='light'] .stadium-panel--empty {
     pointer-events: auto;
     max-width: none;
     margin: 0;
-  }
-  .stadium-map-wrap--vector .stadium-panel--empty {
-    display: none;
   }
   .stadium-tooltip { display: none; }
 }

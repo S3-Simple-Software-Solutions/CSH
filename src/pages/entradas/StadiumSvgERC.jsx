@@ -121,6 +121,90 @@ const ZONE_AISLE_FRACTIONS = [0.25, 0.5, 0.75];
 const ZONE_AISLE_WIDTH = 12;
 
 /**
+ * Inclinación de las tribunas: las filas siguen la silueta trapezoidal de la
+ * zona. `h` = inset horizontal [primera fila, última fila]; `v` = cuánto baja
+ * el inicio de la columna [primera fila, última fila].
+ */
+const ZONE_DOT_TAPER = {
+  'sol-norte':     { h: [0, 10] },
+  'sol-sur':       { h: [10, 0] },
+  'lateral-este':  { v: [0, 12] },
+  'lateral-oeste': { v: [12, 0] },
+};
+
+function clamp01(n) {
+  return Math.max(0, Math.min(1, n));
+}
+
+function zoneTaperAt(zoneKey, t) {
+  const taper = ZONE_DOT_TAPER[zoneKey];
+  const u = clamp01(t);
+  return {
+    insetX: taper?.h ? taper.h[0] + (taper.h[1] - taper.h[0]) * u : 0,
+    dropY: taper?.v ? taper.v[0] + (taper.v[1] - taper.v[0]) * u : 0,
+  };
+}
+
+function aisleGapForLength(length) {
+  return Math.min(ZONE_AISLE_WIDTH, Math.max(0, length / 18));
+}
+
+function aisleGapOnAxis(index, start, length) {
+  const gapCount = ZONE_AISLE_FRACTIONS.length;
+  const gap = aisleGapForLength(length);
+  const usable = Math.max(length - gap * gapCount, length * 0.65);
+  const segment = usable / (gapCount + 1);
+  const a = start + segment * (index + 1) + gap * index;
+  return { a, b: a + gap };
+}
+
+function gradeBandPath(zoneKey, bounds, horiz, p0, p1) {
+  const { x1, y1, x2, y2 } = bounds;
+  if (horiz) {
+    const t0 = (p0 - y1) / (y2 - y1);
+    const t1 = (p1 - y1) / (y2 - y1);
+    const top = zoneTaperAt(zoneKey, t0).insetX;
+    const bottom = zoneTaperAt(zoneKey, t1).insetX;
+    return `M ${x1 + top} ${p0} L ${x2 - top} ${p0} L ${x2 - bottom} ${p1} L ${x1 + bottom} ${p1} Z`;
+  }
+  const t0 = (p0 - x1) / (x2 - x1);
+  const t1 = (p1 - x1) / (x2 - x1);
+  const left = zoneTaperAt(zoneKey, t0).dropY;
+  const right = zoneTaperAt(zoneKey, t1).dropY;
+  return `M ${p0} ${y1 + left} L ${p1} ${y1 + right} L ${p1} ${y2} L ${p0} ${y2} Z`;
+}
+
+function gradeLinePath(zoneKey, bounds, horiz, p) {
+  const { x1, y1, x2, y2 } = bounds;
+  if (horiz) {
+    const insetX = zoneTaperAt(zoneKey, (p - y1) / (y2 - y1)).insetX;
+    return `M ${x1 + insetX} ${p} L ${x2 - insetX} ${p}`;
+  }
+  const dropY = zoneTaperAt(zoneKey, (p - x1) / (x2 - x1)).dropY;
+  return `M ${p} ${y1 + dropY} L ${p} ${y2}`;
+}
+
+function gradeAislePath(zoneKey, bounds, horiz, index, from, to) {
+  const { x1, y1, x2, y2 } = bounds;
+  if (horiz) {
+    const atY = (y) => {
+      const insetX = zoneTaperAt(zoneKey, (y - y1) / (y2 - y1)).insetX;
+      return aisleGapOnAxis(index, x1 + insetX, (x2 - x1) - insetX * 2);
+    };
+    const top = atY(from);
+    const bottom = atY(to);
+    return `M ${top.a} ${from} L ${top.b} ${from} L ${bottom.b} ${to} L ${bottom.a} ${to} Z`;
+  }
+  const atX = (x) => {
+    const dropY = zoneTaperAt(zoneKey, (x - x1) / (x2 - x1)).dropY;
+    return aisleGapOnAxis(index, y1 + dropY, (y2 - y1) - dropY);
+  };
+  const left = atX(from);
+  const right = atX(to);
+  return `M ${from} ${left.a} L ${to} ${right.a} L ${to} ${right.b} L ${from} ${left.b} Z`;
+}
+
+/**
  * Dibuja la tribuna como gradas escalonadas: bandas que se oscurecen hacia
  * afuera + canto iluminado por escalón + pasillos perpendiculares, todo
  * recortado a la silueta de la zona. Si la tribuna tiene butacas numeradas,
@@ -146,6 +230,7 @@ function ZoneGradas({ zoneKey, status, filas = 0, layer = 'base' }) {
   const span = to - from;
   const horiz = cfg.axis === 'h';
   const clipId = `erc-zone-clip-${zoneKey}`;
+  const tapered = !!bounds && filas > 0;
 
   const bands = Array.from({ length: n }, (_, i) => {
     const p0 = from + i * step;
@@ -155,12 +240,11 @@ function ZoneGradas({ zoneKey, status, filas = 0, layer = 'base' }) {
   });
 
   // Pasillos que separan bloques de butacas (perpendiculares a las filas).
-  const zx1 = bounds ? bounds.x1 : 0;
-  const zx2 = bounds ? bounds.x2 : 0;
-  const zy1 = bounds ? bounds.y1 : 0;
-  const zy2 = bounds ? bounds.y2 : 0;
   const aisles = bounds
-    ? ZONE_AISLE_FRACTIONS.map((f) => (horiz ? zx1 + f * (zx2 - zx1) : zy1 + f * (zy2 - zy1)))
+    ? ZONE_AISLE_FRACTIONS.map((f, i) => ({
+        i,
+        p: horiz ? bounds.x1 + f * (bounds.x2 - bounds.x1) : bounds.y1 + f * (bounds.y2 - bounds.y1),
+      }))
     : [];
 
   return (
@@ -169,28 +253,44 @@ function ZoneGradas({ zoneKey, status, filas = 0, layer = 'base' }) {
         {layer === 'base' && (
           <>
             {bands.map(({ p0, opacity }) => (
-              <rect
-                key={p0}
-                x={horiz ? 40 : p0}
-                y={horiz ? p0 : 40}
-                width={horiz ? 920 : step}
-                height={horiz ? step : 640}
-                fill={`rgb(var(--erc-step-shade-rgb) / ${opacity.toFixed(3)})`}
-              />
+              tapered
+                ? (
+                  <path
+                    key={p0}
+                    d={gradeBandPath(zoneKey, bounds, horiz, p0, p0 + step)}
+                    fill={`rgb(var(--erc-step-shade-rgb) / ${opacity.toFixed(3)})`}
+                  />
+                )
+                : (
+                  <rect
+                    key={p0}
+                    x={horiz ? 40 : p0}
+                    y={horiz ? p0 : 40}
+                    width={horiz ? 920 : step}
+                    height={horiz ? step : 640}
+                    fill={`rgb(var(--erc-step-shade-rgb) / ${opacity.toFixed(3)})`}
+                  />
+                )
             ))}
           </>
         )}
         {layer === 'overlay' && (
           <>
             {bands.slice(1).map(({ p0 }) => (
-              horiz
-                ? <line key={`l-${p0}`} x1="40" y1={p0} x2="960" y2={p0} stroke="rgb(var(--erc-step-line-rgb) / .28)" strokeWidth="1" />
-                : <line key={`l-${p0}`} x1={p0} y1="40" x2={p0} y2="680" stroke="rgb(var(--erc-step-line-rgb) / .28)" strokeWidth="1" />
+              tapered
+                ? <path key={`l-${p0}`} d={gradeLinePath(zoneKey, bounds, horiz, p0)} stroke="rgb(var(--erc-step-line-rgb) / .32)" strokeWidth="1" fill="none" />
+                : (horiz
+                    ? <line key={`l-${p0}`} x1="40" y1={p0} x2="960" y2={p0} stroke="rgb(var(--erc-step-line-rgb) / .28)" strokeWidth="1" />
+                    : <line key={`l-${p0}`} x1={p0} y1="40" x2={p0} y2="680" stroke="rgb(var(--erc-step-line-rgb) / .28)" strokeWidth="1" />
+                  )
             ))}
-            {aisles.map((p) => (
-              horiz
-                ? <rect key={`a-${p}`} x={p - ZONE_AISLE_WIDTH / 2} y={from} width={ZONE_AISLE_WIDTH} height={span} fill="rgb(var(--erc-aisle-rgb) / .58)" />
-                : <rect key={`a-${p}`} x={from} y={p - ZONE_AISLE_WIDTH / 2} width={span} height={ZONE_AISLE_WIDTH} fill="rgb(var(--erc-aisle-rgb) / .58)" />
+            {aisles.map(({ i, p }) => (
+              tapered
+                ? <path key={`a-${i}`} d={gradeAislePath(zoneKey, bounds, horiz, i, from, to)} fill="rgb(var(--erc-aisle-rgb) / .58)" />
+                : (horiz
+                    ? <rect key={`a-${p}`} x={p - ZONE_AISLE_WIDTH / 2} y={from} width={ZONE_AISLE_WIDTH} height={span} fill="rgb(var(--erc-aisle-rgb) / .58)" />
+                    : <rect key={`a-${p}`} x={from} y={p - ZONE_AISLE_WIDTH / 2} width={span} height={ZONE_AISLE_WIDTH} fill="rgb(var(--erc-aisle-rgb) / .58)" />
+                  )
             ))}
           </>
         )}
@@ -334,22 +434,10 @@ function filaSort(a, b) {
   return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
 }
 
-/**
- * Inclinación de las tribunas: las filas siguen la silueta trapezoidal de la
- * zona. `h` = inset horizontal [primera fila, última fila]; `v` = cuánto baja
- * el inicio de la columna [primera fila, última fila].
- */
-const ZONE_DOT_TAPER = {
-  'sol-norte':     { h: [0, 10] },
-  'sol-sur':       { h: [10, 0] },
-  'lateral-este':  { v: [0, 12] },
-  'lateral-oeste': { v: [12, 0] },
-};
-
 function seatAxisPosition(index, total, start, length) {
   if (total <= 0 || length <= 0) return start;
   const gapCount = ZONE_AISLE_FRACTIONS.length;
-  const gap = Math.min(ZONE_AISLE_WIDTH, Math.max(0, length / 18));
+  const gap = aisleGapForLength(length);
   const usable = Math.max(length - gap * gapCount, length * 0.65);
   const segment = usable / (gapCount + 1);
   const u = (index + 0.5) / total * usable;
@@ -381,15 +469,13 @@ export function seatDotLayout(zoneKey, asientos) {
     : Math.min(h / Math.max(maxCols, 1), w / Math.max(nFilas, 1));
   const dotR = Math.max(1.5, Math.min(spacing * 0.38, 5));
 
-  const taper = ZONE_DOT_TAPER[zoneKey];
   const dots = [];
   filas.forEach((fila, fi) => {
     const cols = filaMap.get(fila).sort((a, b) => a.numero - b.numero);
     const nCols = cols.length;
     const tf = nFilas > 1 ? fi / (nFilas - 1) : 0;
     // La fila se acomoda a la silueta inclinada de la tribuna.
-    const insetX = taper?.h ? taper.h[0] + (taper.h[1] - taper.h[0]) * tf : 0;
-    const dropY = taper?.v ? taper.v[0] + (taper.v[1] - taper.v[0]) * tf : 0;
+    const { insetX, dropY } = zoneTaperAt(zoneKey, tf);
     const rowX = x1 + insetX;
     const rowW = w - insetX * 2;
     const colY = y1 + dropY;
