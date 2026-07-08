@@ -3707,7 +3707,7 @@ function EventCreateWorkspace({ navigate }) {
   );
 }
 
-function EventBasicsPanel({ evento, onCancel, onSaved }) {
+function EventBasicsPanel({ evento, onSavingChange, onSaved }) {
   const [form, setForm] = useState({
     nombre: evento.nombre,
     venue: evento.venue || '',
@@ -3719,10 +3719,15 @@ function EventBasicsPanel({ evento, onCancel, onSaved }) {
   const [flyerError, setFlyerError] = useState('');
   const [error, setError] = useState('');
 
+  const setSaving = (value) => { setLoading(value); onSavingChange?.(value); };
+
   async function submit(event) {
     event.preventDefault();
     setError('');
-    setLoading(true);
+    if (form.nombre.trim().length < 3 || !form.fecha) {
+      return setError('Completá el nombre (mínimo 3 caracteres) y la fecha del evento.');
+    }
+    setSaving(true);
     const d = await api(`/admin/api/entradas/eventos/${evento.id}`, {
       method: 'PUT',
       body: JSON.stringify({
@@ -3734,24 +3739,24 @@ function EventBasicsPanel({ evento, onCancel, onSaved }) {
       }),
     });
     if (!d.ok) {
-      setLoading(false);
+      setSaving(false);
       return setError(d.error);
     }
     let updated = d.evento;
     if (flyerFile) {
       const upload = await uploadFile(`/admin/api/entradas/eventos/${evento.id}/flyer`, flyerFile);
       if (!upload.ok) {
-        setLoading(false);
+        setSaving(false);
         return setFlyerError(upload.error || 'No se pudo subir el flyer.');
       }
       updated = upload.evento;
     }
-    setLoading(false);
+    setSaving(false);
     onSaved(updated);
   }
 
   return (
-    <form className="workspace-inline-form" onSubmit={submit}>
+    <form id="event-basics-form" className="workspace-inline-form" onSubmit={submit}>
       <div className="workspace-inline-copy">
         <p className="eyebrow">Datos del evento</p>
         <h2>Editar información</h2>
@@ -3774,10 +3779,7 @@ function EventBasicsPanel({ evento, onCancel, onSaved }) {
         </div>
         <label>Descripción</label><input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
         {error && <div className="error">{error}</div>}
-        <div className="workspace-inline-buttons">
-          <button className="btn" disabled={loading || form.nombre.trim().length < 3 || !form.fecha}>{loading ? 'Guardando…' : 'Guardar cambios'}</button>
-          <button type="button" className="btn ghost" onClick={onCancel}>Cancelar</button>
-        </div>
+        <p className="muted">{loading ? 'Guardando…' : 'Usá «Guardar» arriba para aplicar los cambios.'}</p>
       </div>
     </form>
   );
@@ -3833,6 +3835,7 @@ function EventWorkspace({ eventId, navigate }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [action, setAction] = useState(null);
+  const [savingBasics, setSavingBasics] = useState(false);
   const [msg, setMsg] = useState(null);
 
   const load = async (showLoading = false) => {
@@ -3915,7 +3918,7 @@ function EventWorkspace({ eventId, navigate }) {
           </div>
         </div>
         <div className="event-workspace-actions" aria-label="Controles del evento">
-          <button className={`btn ghost${action === 'datos' ? ' active' : ''}`} onClick={() => setAction(action === 'datos' ? null : 'datos')}><Pencil size={16} />Editar datos</button>
+          <button className="btn ghost" type="submit" form="event-basics-form" disabled={savingBasics}><Check size={16} />{savingBasics ? 'Guardando…' : 'Guardar'}</button>
           <button className={`btn ghost${action === 'cortesia' ? ' active' : ''}`} onClick={() => setAction(action === 'cortesia' ? null : 'cortesia')}><Gift size={16} />Cortesía</button>
           <button className={`btn ghost${action === 'template' ? ' active' : ''}`} onClick={() => setAction(action === 'template' ? null : 'template')}><Sparkles size={16} />Guardar template</button>
           <button className="btn" onClick={toggleEstado}>
@@ -3928,18 +3931,6 @@ function EventWorkspace({ eventId, navigate }) {
 
       {action && (
         <section className="workspace-action-region">
-          {action === 'datos' && (
-            <EventBasicsPanel
-              evento={evento}
-              onCancel={() => setAction(null)}
-              onSaved={(updated) => {
-                setEvento(updated);
-                setAction(null);
-                setMsg({ type: 'ok', text: 'Los datos del evento se guardaron correctamente.' });
-                load(false);
-              }}
-            />
-          )}
           {action === 'cortesia' && (
             <div className="workspace-inline-form">
               <div className="workspace-inline-copy">
@@ -3974,6 +3965,18 @@ function EventWorkspace({ eventId, navigate }) {
         <div><span>Vendidos</span><b>{vendidos}</b><small>de {capacidad}</small></div>
         <div><span>Validados</span><b>{usados}</b><small>en puerta</small></div>
         <div><span>Ocupación</span><b>{ocupacion}%</b><small>aforo activo</small></div>
+      </section>
+
+      <section className="workspace-action-region">
+        <EventBasicsPanel
+          evento={evento}
+          onSavingChange={setSavingBasics}
+          onSaved={(updated) => {
+            setEvento(updated);
+            setMsg({ type: 'ok', text: 'Los datos del evento se guardaron correctamente.' });
+            load(false);
+          }}
+        />
       </section>
 
       <section className="event-map-workspace">
