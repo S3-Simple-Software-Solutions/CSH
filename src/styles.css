@@ -1590,21 +1590,18 @@ html[data-theme='light'] .plano.no-plan { background: repeating-linear-gradient(
 
 /* Mobile: panel debajo del mapa como overlay compacto */
 @media (max-width: 959px) {
+  /* En móvil los detalles de compra fluyen al pie de página (no como modal fijo). */
   .stadium-map-wrap--vector .stadium-map-sidebar {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 50;
-    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
-    background: linear-gradient(transparent, rgba(10,9,8,.92) 24%);
-    pointer-events: none;
+    position: static;
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    background: none;
+    pointer-events: auto;
   }
   .stadium-map-wrap--vector .stadium-map-sidebar .stadium-panel {
     pointer-events: auto;
-    max-width: 480px;
-    margin: 0 auto;
-    box-shadow: 0 -8px 32px rgba(0,0,0,.5);
+    max-width: none;
+    margin: 0;
   }
   .stadium-map-wrap--vector .stadium-panel--empty {
     display: none;
