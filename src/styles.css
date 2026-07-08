@@ -2198,8 +2198,17 @@ th.dt-sorted { color: var(--gold-bright); }
 .seatpicker-zoom-reset { font-size: 13px !important; }
 
 .sp-canvas-wrap { position: relative; }
-.sp-canvas-scroll { overflow: auto; max-height: 420px; border-radius: 10px; border: 1px solid var(--line); background: radial-gradient(ellipse 90% 60% at 50% -10%, rgba(201,169,97,.09), transparent 60%), var(--field, #11130c); }
+.sp-canvas-scroll { overflow: auto; max-height: min(60vh, 520px); border-radius: 10px; border: 1px solid var(--line); background: radial-gradient(ellipse 90% 60% at 50% -10%, rgba(201,169,97,.09), transparent 60%), var(--field, #11130c); overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+/* Fades sutiles en los bordes: sugieren que hay más contenido para scrollear. */
+.sp-canvas-wrap::before, .sp-canvas-wrap::after { content: ''; position: absolute; top: 1px; bottom: 1px; width: 26px; pointer-events: none; z-index: 2; opacity: .55; }
+.sp-canvas-wrap::before { left: 1px; background: linear-gradient(90deg, var(--field, #11130c), transparent); border-radius: 10px 0 0 10px; }
+.sp-canvas-wrap::after { right: 1px; background: linear-gradient(270deg, var(--field, #11130c), transparent); border-radius: 0 10px 10px 0; }
 .sp-canvas { touch-action: none; user-select: none; -webkit-user-select: none; }
+
+/* Controles de zoom flotantes sobre el lienzo */
+.sp-zoom-overlay { position: absolute; top: 8px; right: 8px; z-index: 4; display: inline-flex; gap: 4px; background: rgba(12,10,6,.72); border: 1px solid rgba(201,169,97,.35); border-radius: 999px; padding: 3px; backdrop-filter: blur(4px); }
+.sp-zoom-overlay button { width: 30px; height: 30px; border-radius: 999px; border: none; background: transparent; color: var(--paper, #f7f1df); font-size: 17px; font-weight: 700; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.sp-zoom-overlay button:hover { background: rgba(201,169,97,.2); color: var(--gold, #c9a961); }
 .sp-field-label { font-size: 10px; letter-spacing: .34em; fill: var(--gold, #c9a961); font-weight: 700; opacity: .85; }
 .sp-row-label { font-size: 10px; fill: rgba(150,150,150,.75); font-weight: 600; }
 .sp-seat { transition: opacity .15s ease; }
