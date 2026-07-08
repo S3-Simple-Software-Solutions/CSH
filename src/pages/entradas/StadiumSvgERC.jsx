@@ -119,6 +119,12 @@ const ZONE_GRADA_RANGE = {
 };
 const ZONE_AISLE_FRACTIONS = [0.25, 0.5, 0.75];
 const ZONE_AISLE_WIDTH = 12;
+const ERC_VIEW_W = 1000;
+const ERC_VIEW_H = 720;
+const SPECIAL_MIN_W = 0.04;
+const SPECIAL_MIN_H = 0.04;
+const SPECIAL_MAX_W = 0.66;
+const SPECIAL_MAX_H = 0.45;
 
 /**
  * Inclinación de las tribunas: las filas siguen la silueta trapezoidal de la
@@ -134,6 +140,70 @@ const ZONE_DOT_TAPER = {
 
 function clamp01(n) {
   return Math.max(0, Math.min(1, n));
+}
+
+function clamp(n, min, max) {
+  return Math.min(max, Math.max(min, n));
+}
+
+function round4(n) {
+  return Math.round(n * 10000) / 10000;
+}
+
+function normalizeAngle(deg) {
+  const n = Number.isFinite(deg) ? deg : 0;
+  return Math.round((((n + 180) % 360) + 360) % 360 - 180);
+}
+
+function rotateAround(x, y, cx, cy, deg) {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return {
+    x: cx + dx * cos - dy * sin,
+    y: cy + dx * sin + dy * cos,
+  };
+}
+
+function unrotateAround(x, y, cx, cy, deg) {
+  return rotateAround(x, y, cx, cy, -deg);
+}
+
+function normalizeSpecialRect(rect) {
+  const w = clamp(Number(rect?.w) || 0.15, SPECIAL_MIN_W, SPECIAL_MAX_W);
+  const h = clamp(Number(rect?.h) || 0.12, SPECIAL_MIN_H, SPECIAL_MAX_H);
+  const x = clamp(Number(rect?.x) || 0, 0, 1 - w);
+  const y = clamp(Number(rect?.y) || 0, 0, 1 - h);
+  const rot = normalizeAngle(Number(rect?.rot) || 0);
+  return {
+    x: round4(x),
+    y: round4(y),
+    w: round4(w),
+    h: round4(h),
+    ...(rot ? { rot } : {}),
+  };
+}
+
+function specialRectMetrics(rect) {
+  const normalized = normalizeSpecialRect(rect);
+  const x = normalized.x * ERC_VIEW_W;
+  const y = normalized.y * ERC_VIEW_H;
+  const w = normalized.w * ERC_VIEW_W;
+  const h = normalized.h * ERC_VIEW_H;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const rot = Number(normalized.rot) || 0;
+  const corners = [
+    { key: 'nw', ...rotateAround(x, y, cx, cy, rot) },
+    { key: 'ne', ...rotateAround(x + w, y, cx, cy, rot) },
+    { key: 'se', ...rotateAround(x + w, y + h, cx, cy, rot) },
+    { key: 'sw', ...rotateAround(x, y + h, cx, cy, rot) },
+  ];
+  const top = rotateAround(cx, y, cx, cy, rot);
+  const rotateHandle = rotateAround(cx, y - 34, cx, cy, rot);
+  return { ...normalized, px: { x, y, w, h, cx, cy, rot, corners, top, rotateHandle } };
 }
 
 function zoneTaperAt(zoneKey, t) {
@@ -689,6 +759,8 @@ export function StadiumSvgERC({
   onSeatClick = null,
   onSeatBoxSelect = null,
   specialZones = [],
+  editableSpecialZones = false,
+  onSpecialZoneChange = null,
 }) {
   const svgRef = useRef(null);
   const suppressZoneClick = useRef(false);
@@ -743,6 +815,67 @@ export function StadiumSvgERC({
       }
       onSeatBoxSelect(hits, ev.shiftKey || ev.ctrlKey);
     };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  function startSpecialZoneEdit(e, zone, mode) {
+    if (!editableSpecialZones || !onSpecialZoneChange || !zone?.rect) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const start = svgCoords(e.clientX, e.clientY);
+    const startRect = normalizeSpecialRect(zone.rect);
+    const metrics = specialRectMetrics(startRect).px;
+    let moved = false;
+
+    const emit = (nextRect) => {
+      onSpecialZoneChange(zone.key, normalizeSpecialRect(nextRect));
+    };
+
+    const onMove = (ev) => {
+      const current = svgCoords(ev.clientX, ev.clientY);
+      if (!moved && Math.hypot(current.x - start.x, current.y - start.y) < 2) return;
+      moved = true;
+
+      if (mode === 'move') {
+        const dx = (current.x - start.x) / ERC_VIEW_W;
+        const dy = (current.y - start.y) / ERC_VIEW_H;
+        emit({ ...startRect, x: startRect.x + dx, y: startRect.y + dy });
+        return;
+      }
+
+      if (mode === 'resize') {
+        const local = unrotateAround(current.x, current.y, metrics.cx, metrics.cy, metrics.rot);
+        const w = Math.abs(local.x - metrics.cx) * 2 / ERC_VIEW_W;
+        const h = Math.abs(local.y - metrics.cy) * 2 / ERC_VIEW_H;
+        const nextW = clamp(w, SPECIAL_MIN_W, SPECIAL_MAX_W);
+        const nextH = clamp(h, SPECIAL_MIN_H, SPECIAL_MAX_H);
+        emit({
+          ...startRect,
+          x: startRect.x + startRect.w / 2 - nextW / 2,
+          y: startRect.y + startRect.h / 2 - nextH / 2,
+          w: nextW,
+          h: nextH,
+        });
+        return;
+      }
+
+      if (mode === 'rotate') {
+        const angle = Math.atan2(current.y - metrics.cy, current.x - metrics.cx) * 180 / Math.PI + 90;
+        emit({ ...startRect, rot: normalizeAngle(angle) });
+      }
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      if (!moved) return;
+      suppressZoneClick.current = true;
+      setTimeout(() => { suppressZoneClick.current = false; }, 0);
+    };
+
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   }
@@ -1006,15 +1139,10 @@ export function StadiumSvgERC({
         const inactive = z.estado === 'inactivo';
         const selected = selectedKey === z.key;
         const hovered = hoveredKey === z.key;
-        const x = z.rect.x * 1000;
-        const y = z.rect.y * 720;
-        const w = z.rect.w * 1000;
-        const h = z.rect.h * 720;
-        const cx = x + w / 2;
-        const cy = y + h / 2;
-        const rot = Number(z.rect.rot) || 0;
+        const { x, y, w, h, cx, cy, rot, corners, top, rotateHandle } = specialRectMetrics(z.rect).px;
         const color = z.color || '#f59e0b';
         const canInteract = interactive;
+        const canEdit = editableSpecialZones && selected && Boolean(onSpecialZoneChange);
         const handlers = canInteract
           ? {
               onClick: (e) => { e.stopPropagation(); zoneClick?.(z.key, z.tipo); },
@@ -1026,7 +1154,7 @@ export function StadiumSvgERC({
           <g
             key={z.key}
             className="stadium-special-group"
-            style={{ cursor: canInteract ? 'pointer' : 'default' }}
+            style={{ cursor: canEdit ? 'move' : canInteract ? 'pointer' : 'default' }}
             {...handlers}
           >
             <rect
@@ -1044,6 +1172,7 @@ export function StadiumSvgERC({
               filter={selected ? 'url(#erc-glow)' : undefined}
               style={{ transition: 'fill-opacity .2s ease, stroke .2s ease' }}
               transform={rot ? `rotate(${rot} ${cx} ${cy})` : undefined}
+              onPointerDown={canEdit ? (e) => startSpecialZoneEdit(e, z, 'move') : undefined}
             />
             {showLabels && (
               <text
@@ -1066,7 +1195,38 @@ export function StadiumSvgERC({
                     </tspan>
                   </>
                 )}
-              </text>
+                </text>
+            )}
+            {canEdit && (
+              <g className="stadium-special-controls">
+                <line
+                  x1={top.x}
+                  y1={top.y}
+                  x2={rotateHandle.x}
+                  y2={rotateHandle.y}
+                  className="stadium-special-rotate-line"
+                  pointerEvents="none"
+                />
+                <circle
+                  cx={rotateHandle.x}
+                  cy={rotateHandle.y}
+                  r="9"
+                  className="stadium-special-handle stadium-special-handle--rotate"
+                  onPointerDown={(e) => startSpecialZoneEdit(e, z, 'rotate')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                {corners.map((p) => (
+                  <circle
+                    key={p.key}
+                    cx={p.x}
+                    cy={p.y}
+                    r="7.5"
+                    className="stadium-special-handle stadium-special-handle--resize"
+                    onPointerDown={(e) => startSpecialZoneEdit(e, z, 'resize')}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ))}
+              </g>
             )}
           </g>
         );
