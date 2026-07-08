@@ -117,6 +117,8 @@ const ZONE_GRADA_RANGE = {
   'lateral-este':  { from: 828, to: 920, axis: 'v', fieldAt: 'from', defaultSteps: 8 },
   'lateral-oeste': { from: 80,  to: 172, axis: 'v', fieldAt: 'to',   defaultSteps: 8 },
 };
+const ZONE_AISLE_FRACTIONS = [0.25, 0.5, 0.75];
+const ZONE_AISLE_WIDTH = 12;
 
 /**
  * Dibuja la tribuna como gradas escalonadas: bandas que se oscurecen hacia
@@ -124,7 +126,7 @@ const ZONE_GRADA_RANGE = {
  * recortado a la silueta de la zona. Si la tribuna tiene butacas numeradas,
  * cada fila cae centrada sobre su propio escalón.
  */
-function ZoneGradas({ zoneKey, status, filas = 0 }) {
+function ZoneGradas({ zoneKey, status, filas = 0, layer = 'base' }) {
   const cfg = ZONE_GRADA_RANGE[zoneKey];
   const paths = ERC_ZONE_PATHS_V2[zoneKey];
   if (!cfg || !paths?.length || status === 'inactive') return null;
@@ -133,13 +135,12 @@ function ZoneGradas({ zoneKey, status, filas = 0 }) {
   let { from, to } = cfg;
   let n = cfg.defaultSteps;
   if (filas > 0 && bounds) {
-    // Alinea los escalones con las filas de butacas (media grada extra por lado).
+    // Alinea las butacas al centro de cada escalón, con las líneas entre filas.
     const b1 = cfg.axis === 'h' ? bounds.y1 : bounds.x1;
     const b2 = cfg.axis === 'h' ? bounds.y2 : bounds.x2;
-    const paso = (b2 - b1) / filas;
-    from = b1 - paso / 2;
-    to = b2 + paso / 2;
-    n = filas + 1;
+    from = b1;
+    to = b2;
+    n = filas;
   }
   const step = (to - from) / n;
   const span = to - from;
@@ -159,32 +160,40 @@ function ZoneGradas({ zoneKey, status, filas = 0 }) {
   const zy1 = bounds ? bounds.y1 : 0;
   const zy2 = bounds ? bounds.y2 : 0;
   const aisles = bounds
-    ? [0.25, 0.5, 0.75].map((f) => (horiz ? zx1 + f * (zx2 - zx1) : zy1 + f * (zy2 - zy1)))
+    ? ZONE_AISLE_FRACTIONS.map((f) => (horiz ? zx1 + f * (zx2 - zx1) : zy1 + f * (zy2 - zy1)))
     : [];
 
   return (
     <g pointerEvents="none">
       <g clipPath={`url(#${clipId})`}>
-        {bands.map(({ p0, opacity }) => (
-          <rect
-            key={p0}
-            x={horiz ? 40 : p0}
-            y={horiz ? p0 : 40}
-            width={horiz ? 920 : step}
-            height={horiz ? step : 640}
-            fill={`rgba(0,0,0,${opacity.toFixed(3)})`}
-          />
-        ))}
-        {bands.slice(1).map(({ p0 }) => (
-          horiz
-            ? <line key={`l-${p0}`} x1="40" y1={p0} x2="960" y2={p0} stroke="rgba(255,255,255,0.16)" strokeWidth="1" />
-            : <line key={`l-${p0}`} x1={p0} y1="40" x2={p0} y2="680" stroke="rgba(255,255,255,0.16)" strokeWidth="1" />
-        ))}
-        {aisles.map((p) => (
-          horiz
-            ? <rect key={`a-${p}`} x={p - 5} y={from} width="10" height={span} fill="rgba(0,0,0,0.32)" />
-            : <rect key={`a-${p}`} x={from} y={p - 5} width={span} height="10" fill="rgba(0,0,0,0.32)" />
-        ))}
+        {layer === 'base' && (
+          <>
+            {bands.map(({ p0, opacity }) => (
+              <rect
+                key={p0}
+                x={horiz ? 40 : p0}
+                y={horiz ? p0 : 40}
+                width={horiz ? 920 : step}
+                height={horiz ? step : 640}
+                fill={`rgba(0,0,0,${opacity.toFixed(3)})`}
+              />
+            ))}
+          </>
+        )}
+        {layer === 'overlay' && (
+          <>
+            {bands.slice(1).map(({ p0 }) => (
+              horiz
+                ? <line key={`l-${p0}`} x1="40" y1={p0} x2="960" y2={p0} stroke="rgba(255,255,255,0.24)" strokeWidth="1" />
+                : <line key={`l-${p0}`} x1={p0} y1="40" x2={p0} y2="680" stroke="rgba(255,255,255,0.24)" strokeWidth="1" />
+            ))}
+            {aisles.map((p) => (
+              horiz
+                ? <rect key={`a-${p}`} x={p - ZONE_AISLE_WIDTH / 2} y={from} width={ZONE_AISLE_WIDTH} height={span} fill="rgba(0,0,0,0.46)" />
+                : <rect key={`a-${p}`} x={from} y={p - ZONE_AISLE_WIDTH / 2} width={span} height={ZONE_AISLE_WIDTH} fill="rgba(0,0,0,0.46)" />
+            ))}
+          </>
+        )}
       </g>
     </g>
   );
@@ -337,6 +346,17 @@ const ZONE_DOT_TAPER = {
   'lateral-oeste': { v: [12, 0] },
 };
 
+function seatAxisPosition(index, total, start, length) {
+  if (total <= 0 || length <= 0) return start;
+  const gapCount = ZONE_AISLE_FRACTIONS.length;
+  const gap = Math.min(ZONE_AISLE_WIDTH, Math.max(0, length / 18));
+  const usable = Math.max(length - gap * gapCount, length * 0.65);
+  const segment = usable / (gapCount + 1);
+  const u = (index + 0.5) / total * usable;
+  const gapsBefore = Math.min(gapCount, Math.floor(u / segment));
+  return start + Math.min(length, u + gapsBefore * gap);
+}
+
 /** Posiciones (coords del viewBox) de los dots de butacas de una zona. */
 export function seatDotLayout(zoneKey, asientos) {
   const bounds = ZONE_SEAT_BOUNDS[zoneKey];
@@ -370,13 +390,17 @@ export function seatDotLayout(zoneKey, asientos) {
     // La fila se acomoda a la silueta inclinada de la tribuna.
     const insetX = taper?.h ? taper.h[0] + (taper.h[1] - taper.h[0]) * tf : 0;
     const dropY = taper?.v ? taper.v[0] + (taper.v[1] - taper.v[0]) * tf : 0;
+    const rowX = x1 + insetX;
+    const rowW = w - insetX * 2;
+    const colY = y1 + dropY;
+    const colH = h - dropY;
     cols.forEach((a, ci) => {
       const cx = axis === 'h'
-        ? x1 + insetX + (ci + 0.5) / nCols * (w - insetX * 2)
+        ? seatAxisPosition(ci, nCols, rowX, rowW)
         : x1 + (fi + 0.5) / nFilas * w;
       const cy = axis === 'h'
         ? y1 + (fi + 0.5) / nFilas * h
-        : y1 + dropY + (ci + 0.5) / nCols * (h - dropY);
+        : seatAxisPosition(ci, nCols, colY, colH);
       dots.push({ a, cx, cy });
     });
   });
@@ -681,6 +705,7 @@ export function StadiumSvgERC({
   const ariaLabel = venueLabel
     ? `Mapa del ${venueLabel}`
     : 'Mapa del estadio';
+  const filasForZone = (key) => new Set((seatsByZoneKey[key] ?? []).map((a) => a.fila)).size;
 
   return (
     <svg
@@ -828,7 +853,7 @@ export function StadiumSvgERC({
             <ZoneGradas
               zoneKey={key}
               status={status}
-              filas={new Set((seatsByZoneKey[key] ?? []).map((a) => a.fila)).size}
+              filas={filasForZone(key)}
             />
           </g>
         );
@@ -842,6 +867,17 @@ export function StadiumSvgERC({
           asientos={asientos}
           selectedSeatIds={selectedSeatIds}
           onSeatClick={onSeatClick}
+        />
+      ))}
+
+      {/* Líneas de escalón y pasillos encima de las butacas para que no queden tapados. */}
+      {Object.keys(ERC_ZONE_PATHS_V2).map((key) => (
+        <ZoneGradas
+          key={`go-${key}`}
+          zoneKey={key}
+          status={zoneStatus(key)}
+          filas={filasForZone(key)}
+          layer="overlay"
         />
       ))}
 
