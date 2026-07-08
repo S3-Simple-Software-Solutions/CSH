@@ -3985,7 +3985,7 @@ function EventWorkspace({ eventId, navigate }) {
             <p className="eyebrow">Configuración directa</p>
             <h2>Mapa y zonas de venta</h2>
           </div>
-          <p>Tocá una zona para editar precio, estado o preventa. El aforo siempre suma 3.000 lugares.</p>
+          <p>Tocá una zona para editar precio, estado o preventa. Las tribunas reparten {VENUE_AFORO_DEFAULT.toLocaleString('es-CR')} lugares; al abrir la gramilla se suman ~{GRAMILLA_AFORO_DEFAULT.toLocaleString('es-CR')} lugares de pie.</p>
         </div>
         <VenueMapConfig evento={evento} autoSeed={autoSeed} onChanged={() => load(false)} />
       </section>
@@ -4281,11 +4281,23 @@ function WizardTandaRow({ tipo }) {
 // El mapa del estadio ES la interfaz de sectores: entra con todo el venue
 // activo (aforo fijo repartido) y cada ajuste se hace tocando una zona.
 
+// Aforo de tribunas (asientos y gradas del bowl).
 const VENUE_AFORO_DEFAULT = 3500;
 
-// Reparte un aforo fijo entre las zonas, proporcional a sus tamaños relativos
-// del catálogo; el residuo se ajusta en la zona más grande para sumar exacto.
-function repartirAforo(sectores, totalAforo = VENUE_AFORO_DEFAULT) {
+// Aforo de pie de la gramilla (cancha) para espectáculos. Una cancha de fútbol
+// 11 reglamentaria mide ≈ 105 × 68 m = 7.140 m². En conciertos se planifica
+// ~2 personas/m² en zona general de pie (densidad cómoda y segura); descontando
+// escenario, barreras y pasillos de evacuación queda ~50% de área útil, así que
+// ≈ 7.000 personas caben sobre la cancha. Este aforo SUMA al de las tribunas:
+// abrir la gramilla agranda el venue, no lo limita.
+const GRAMILLA_AFORO_DEFAULT = 7000;
+
+const esGramillaKey = (key) => typeof key === 'string' && key.startsWith('gramilla');
+
+// Reparte `totalAforo` entre `sectores` proporcional a su `.stock`; el residuo
+// se ajusta en la zona más grande para sumar exacto.
+function repartirProporcional(sectores, totalAforo) {
+  if (sectores.length === 0) return [];
   const base = sectores.reduce((s, x) => s + x.stock, 0) || 1;
   const cupos = sectores.map((s) => Math.max(1, Math.round((s.stock / base) * totalAforo)));
   const diff = totalAforo - cupos.reduce((a, b) => a + b, 0);
@@ -4294,41 +4306,72 @@ function repartirAforo(sectores, totalAforo = VENUE_AFORO_DEFAULT) {
   return cupos;
 }
 
-function calcularDistribucionAforo(tipos, catalogo, totalAforo = VENUE_AFORO_DEFAULT) {
-  // Los sectores numerados quedan fuera del reparto: su cupo lo define la
-  // grilla de butacas. Su aforo se descuenta del total a distribuir.
+// Reparte el aforo de un venue completo: las tribunas comparten VENUE_AFORO_DEFAULT
+// y la gramilla suma su propio aforo aparte (GRAMILLA_AFORO_DEFAULT). Devuelve los
+// cupos en el mismo orden de `sectores` (cada uno debe traer `.key` y `.stock`).
+function repartirAforo(sectores, totalAforo = VENUE_AFORO_DEFAULT, gramillaAforo = GRAMILLA_AFORO_DEFAULT) {
+  const cupos = new Array(sectores.length).fill(0);
+  const tribunas = [];
+  const gramilla = [];
+  sectores.forEach((s, i) => (esGramillaKey(s.key) ? gramilla : tribunas).push({ s, i }));
+  const asignar = (grupo, total) => {
+    const reparto = repartirProporcional(grupo.map(({ s }) => s), total);
+    grupo.forEach(({ i }, k) => { cupos[i] = reparto[k]; });
+  };
+  if (tribunas.length) asignar(tribunas, totalAforo);
+  if (gramilla.length) asignar(gramilla, gramillaAforo);
+  return cupos;
+}
+
+function calcularDistribucionAforo(tipos, catalogo, totalAforo = VENUE_AFORO_DEFAULT, gramillaAforo = GRAMILLA_AFORO_DEFAULT) {
   const todosActivos = (tipos || []).filter((tipo) => tipo.estado === 'activo');
-  const aforoNumerado = todosActivos.filter((t) => t.numerado).reduce((s, t) => s + (t.stockTotal || 0), 0);
-  const activos = todosActivos.filter((tipo) => !tipo.numerado);
-  totalAforo = Math.max(0, totalAforo - aforoNumerado);
-  if (activos.length === 0) return [];
   const catalogoByKey = new Map(catalogo.map((zona) => [zona.key, zona]));
-  const ponderados = activos.map((tipo) => {
-    const key = tipo.mapa?.points?.key ?? nombreToZoneKey(tipo.nombre);
-    const peso = catalogoByKey.get(key)?.stock ?? Math.max(1, tipo.stockTotal || 1);
-    return { tipo, stock: peso };
-  });
-  const cuposBase = repartirAforo(ponderados, totalAforo);
-  const cupos = cuposBase.map((cupo, index) => Math.max(cupo, ponderados[index].tipo.stockVendido || 0));
+  const keyDe = (tipo) => tipo.mapa?.points?.key ?? nombreToZoneKey(tipo.nombre);
 
-  let exceso = cupos.reduce((sum, cupo) => sum + cupo, 0) - totalAforo;
-  const indicesPorHolgura = cupos
-    .map((cupo, index) => ({ index, holgura: cupo - (ponderados[index].tipo.stockVendido || 0) }))
-    .sort((a, b) => b.holgura - a.holgura);
-  for (const item of indicesPorHolgura) {
-    if (exceso <= 0) break;
-    const recorte = Math.min(item.holgura, exceso);
-    cupos[item.index] -= recorte;
-    exceso -= recorte;
-  }
+  // Los sectores numerados (butacas) conservan su cupo: lo define la grilla de
+  // asientos. Su aforo se descuenta del total de tribunas a repartir.
+  const aforoNumerado = todosActivos.filter((t) => t.numerado).reduce((s, t) => s + (t.stockTotal || 0), 0);
+  const tribunaAforo = Math.max(0, totalAforo - aforoNumerado);
 
-  const faltante = totalAforo - cupos.reduce((sum, cupo) => sum + cupo, 0);
-  if (faltante > 0) {
-    const mayor = ponderados.reduce((best, item, index) => (item.stock > ponderados[best].stock ? index : best), 0);
-    cupos[mayor] += faltante;
-  }
+  // Dos pools independientes: tribunas (bowl) y gramilla (cancha). La gramilla
+  // no compite con las tribunas por el aforo; suma su propia capacidad de pie.
+  const noNumerados = todosActivos.filter((tipo) => !tipo.numerado);
+  const stands = noNumerados.filter((tipo) => !esGramillaKey(keyDe(tipo)));
+  const gramilla = noNumerados.filter((tipo) => esGramillaKey(keyDe(tipo)));
 
-  return ponderados.map(({ tipo }, index) => ({ tipo, cupo: cupos[index] }));
+  const resultado = [];
+  const distribuir = (grupo, total) => {
+    if (grupo.length === 0) return;
+    const ponderados = grupo.map((tipo) => {
+      const peso = catalogoByKey.get(keyDe(tipo))?.stock ?? Math.max(1, tipo.stockTotal || 1);
+      return { tipo, stock: peso };
+    });
+    const cuposBase = repartirProporcional(ponderados, total);
+    const cupos = cuposBase.map((cupo, i) => Math.max(cupo, ponderados[i].tipo.stockVendido || 0));
+
+    let exceso = cupos.reduce((sum, cupo) => sum + cupo, 0) - total;
+    const porHolgura = cupos
+      .map((cupo, i) => ({ i, holgura: cupo - (ponderados[i].tipo.stockVendido || 0) }))
+      .sort((a, b) => b.holgura - a.holgura);
+    for (const item of porHolgura) {
+      if (exceso <= 0) break;
+      const recorte = Math.min(item.holgura, exceso);
+      cupos[item.i] -= recorte;
+      exceso -= recorte;
+    }
+
+    const faltante = total - cupos.reduce((sum, cupo) => sum + cupo, 0);
+    if (faltante > 0) {
+      const mayor = ponderados.reduce((best, item, i) => (item.stock > ponderados[best].stock ? i : best), 0);
+      cupos[mayor] += faltante;
+    }
+
+    ponderados.forEach(({ tipo }, i) => resultado.push({ tipo, cupo: cupos[i] }));
+  };
+
+  distribuir(stands, tribunaAforo);
+  distribuir(gramilla, gramillaAforo);
+  return resultado;
 }
 
 // Variante admin de tiposByZoneKey: incluye sectores inactivos (para reactivarlos).
@@ -4414,7 +4457,13 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     }
     setBusy(false);
     const updated = await refresh();
-    if (aviso && creadas > 0) setMsg({ type: 'ok', text: `Venue listo: ${creadas} zonas creadas · aforo total ${VENUE_AFORO_DEFAULT} repartido en el mapa.` });
+    if (aviso && creadas > 0) {
+      const hayGramilla = zonas.some((z) => esGramillaKey(z.key));
+      const totalTxt = hayGramilla
+        ? `tribunas ${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')} + gramilla ${GRAMILLA_AFORO_DEFAULT.toLocaleString('es-CR')}`
+        : `${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')}`;
+      setMsg({ type: 'ok', text: `Venue listo: ${creadas} zonas creadas · aforo ${totalTxt} repartido en el mapa.` });
+    }
     return updated;
   }
 
@@ -4441,7 +4490,13 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
     }
     setBusy(false);
     const updated = await refresh();
-    if (aviso) setMsg({ type: 'ok', text: `Aforo redistribuido: ${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')} lugares entre las zonas activas.` });
+    if (aviso) {
+      const hayGramilla = (current || []).some((t) => t.estado === 'activo' && esGramillaKey(t.mapa?.points?.key ?? nombreToZoneKey(t.nombre)));
+      const totalTxt = hayGramilla
+        ? `${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')} en tribunas + ${GRAMILLA_AFORO_DEFAULT.toLocaleString('es-CR')} en gramilla`
+        : `${VENUE_AFORO_DEFAULT.toLocaleString('es-CR')} lugares`;
+      setMsg({ type: 'ok', text: `Aforo redistribuido: ${totalTxt} entre las zonas activas.` });
+    }
     return updated;
   }
 
