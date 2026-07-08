@@ -2271,6 +2271,7 @@ html[data-theme='light'] .stadium-panel--sidebar {
 /* Vista expandida de butacas por zona (debajo del mapa del venue) */
 .zone-seat-expand {
   margin-top: 10px;
+  scroll-margin-top: 104px;
   padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--line);

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StadiumSvgERC } from './StadiumSvgERC.jsx';
 import { SeatPickerPanel } from './SeatPicker.jsx';
 import {
@@ -127,6 +127,7 @@ function MapLegendChips({ tiposByKey, selectedKey, hoveredKey, onSelect, gramill
 function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {}, onSeatClick = null, onSeatBoxSelect = null }) {
   const [hoveredKey, setHoveredKey] = useState(null);
   const [panelTipo, setPanelTipo] = useState(null);
+  const seatDetailRef = useRef(null);
   const tiposMap = useMemo(() => tiposByZoneKey(tipos), [tipos]);
   // Zonas especiales (DJ, patrocinador…): tipos con mapa rectangular sobre la cancha.
   const specialZonesForMap = useMemo(
@@ -161,6 +162,15 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
     }
     return keys;
   }, [seatsByZoneKey, selectedSeatIds]);
+  const selectedHasSeatDetail = !!selectedKey && (seatsByZoneKey[selectedKey]?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (!selectedHasSeatDetail) return undefined;
+    const id = window.requestAnimationFrame(() => {
+      seatDetailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [selectedHasSeatDetail, selectedKey]);
 
   const fieldTemplate = evento?.fieldTemplate ?? null;
   const fieldSplits = evento?.fieldSplits ?? null;
@@ -214,8 +224,8 @@ function ErcVectorMap({ evento, tipos, qty, onUpdate, asientos = [], seats = {},
             <MapTooltip tipo={hoveredTipo} zoneKey={hoveredKey} meta={hoveredMeta} />
           )}
         </div>
-        {selectedKey && seatsByZoneKey[selectedKey]?.length > 0 && (
-          <div className="zone-seat-expand">
+        {selectedHasSeatDetail && (
+          <div ref={seatDetailRef} className="zone-seat-expand">
             <SeatPickerPanel
               tipo={tiposMap[selectedKey]}
               asientos={seatsByZoneKey[selectedKey]}
