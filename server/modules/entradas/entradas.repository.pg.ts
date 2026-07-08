@@ -293,7 +293,7 @@ export class PgEntradasRepository implements EntradasRepository {
     const rows = await query<any>("select * from entrada_eventos where slug = $1 and estado = 'publicado'", [slug]);
     if (!rows[0]) return null;
     const evento = toEvento(rows[0]);
-    const tipos = (await loadTipos(evento.id)).filter((t) => t.estado === 'activo');
+    const tipos = (await loadTipos(evento.id)).filter((t) => t.estado === 'activo' || t.mapa?.shape === 'rect');
     return { evento, tipos: await decorarPrecios(tipos) };
   }
 

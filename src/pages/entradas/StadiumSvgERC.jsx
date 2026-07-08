@@ -1141,7 +1141,7 @@ export function StadiumSvgERC({
         const hovered = hoveredKey === z.key;
         const { x, y, w, h, cx, cy, rot, corners, top, rotateHandle } = specialRectMetrics(z.rect).px;
         const color = z.color || '#f59e0b';
-        const canInteract = interactive;
+        const canInteract = interactive && (showInactive || z.estado !== 'inactivo');
         const canEdit = editableSpecialZones && selected && Boolean(onSpecialZoneChange);
         const handlers = canInteract
           ? {
