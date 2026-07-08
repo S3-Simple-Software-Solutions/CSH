@@ -2623,25 +2623,6 @@ function PublicEventDetail({ slug }) {
     if (!sel.includes(a.id) && a.estado !== 'disponible') return;
     toggleSeat(a.tipoId, a.id);
   };
-  // Selección en caja sobre el croquis (Shift/Ctrl suma). Máx 10 por sector.
-  const boxSelectSeats = (hits, additive) => {
-    const porTipo = new Map();
-    for (const a of hits) {
-      if (a.estado !== 'disponible') continue;
-      if (!porTipo.has(a.tipoId)) porTipo.set(a.tipoId, []);
-      porTipo.get(a.tipoId).push(a.id);
-    }
-    if (porTipo.size === 0) return;
-    setSeats((s) => {
-      const next = { ...s };
-      for (const [tipoId, ids] of porTipo) {
-        const merged = additive ? [...(next[tipoId] || [])] : [];
-        for (const id of ids) if (!merged.includes(id) && merged.length < 10) merged.push(id);
-        next[tipoId] = merged;
-      }
-      return next;
-    });
-  };
   const cantidadDe = (t) => (t.numerado ? (seats[t.id] || []).length : (qty[t.id] || 0));
   const lineas = tipos
     .filter((t) => cantidadDe(t) > 0)
@@ -2693,7 +2674,6 @@ function PublicEventDetail({ slug }) {
               asientos={asientos}
               seats={seats}
               onSeatClick={clickSeat}
-              onSeatBoxSelect={boxSelectSeats}
             />
           )
           : (
@@ -2745,7 +2725,7 @@ function PublicEventDetail({ slug }) {
                     )}
                     {t.numerado && expanded && !agotado && (
                       <div className="sector-card-body">
-                        <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} onBoxSelect={boxSelectSeats} />
+                        <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} />
                       </div>
                     )}
                   </div>
@@ -2762,7 +2742,7 @@ function PublicEventDetail({ slug }) {
             {tiposNumerados.map((t) => (
               <div key={t.id} className="sector">
                 <div className="sector-info"><b>{t.nombre}</b><span>{money(t.precioVigente ?? t.precioCrc)}</span></div>
-                <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} onBoxSelect={boxSelectSeats} />
+                <SeatGrid tipo={t} asientos={asientos.filter((a) => a.tipoId === t.id)} selected={seats[t.id] || []} onToggle={toggleSeat} />
               </div>
             ))}
           </section>
