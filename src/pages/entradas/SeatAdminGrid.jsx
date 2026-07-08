@@ -16,7 +16,6 @@ export function SeatAdminGrid({ tipo, onChanged }) {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const [zoom, setZoom] = useState(1);
   const load = async () => {
     const d = await api(`/admin/api/entradas/tipos/${tipo.id}/asientos`);
     if (d.ok) setAsientos(d.asientos);
@@ -76,11 +75,6 @@ export function SeatAdminGrid({ tipo, onChanged }) {
               <span className="sp-stat sp-stat--bloq">{stats.bloqueado || 0} bloq.</span>
               {(stats.reservado || 0) > 0 && <span className="sp-stat sp-stat--reservada">{stats.reservado} reserv.</span>}
             </div>
-            <div className="seatpicker-zoom" role="group" aria-label="Zoom">
-              <button type="button" onClick={() => setZoom((z) => Math.max(0.6, z / 1.25))} aria-label="Alejar">−</button>
-              <span>{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => setZoom((z) => Math.min(2.4, z * 1.25))} aria-label="Acercar">+</button>
-            </div>
           </div>
           <SeatCanvas
             asientos={asientos}
@@ -88,8 +82,6 @@ export function SeatAdminGrid({ tipo, onChanged }) {
             selectedIds={null}
             onSeatClick={toggleBloqueo}
             clickableStates={['disponible', 'bloqueado']}
-            zoom={zoom}
-            onZoomChange={setZoom}
           />
           <p className="seatpicker-hint">Click en una butaca para bloquear ↔ habilitar. Las vendidas no se pueden tocar.</p>
         </div>
