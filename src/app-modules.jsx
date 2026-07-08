@@ -257,6 +257,11 @@ const LEGACY_STALL_SIZES = [
 ];
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 const round4 = (n) => Math.round(n * 10000) / 10000;
+// Zonas especiales: rotación restringida a pasos de 90° (0, 90, 180, 270).
+const normalizeRot90 = (deg) => {
+  const n = Number.isFinite(Number(deg)) ? Number(deg) : 0;
+  return ((Math.round(n / 90) * 90) % 360 + 360) % 360;
+};
 
 function uniformSpotSize(vertical, aspect = 1.5) {
   const shortH = STALL_SHORT_W * aspect;
@@ -5045,12 +5050,15 @@ function VenueMapConfig({ evento, autoSeed = false, onChanged }) {
               <input inputMode="numeric" value={form.stockTotal} onChange={(e) => setForm({ ...form, stockTotal: e.target.value.replace(/\D/g, '') })} />
               <label>Color</label>
               <input type="color" value={form.color || '#f59e0b'} onChange={(e) => setForm({ ...form, color: e.target.value })} style={{ width: 56, height: 34, padding: 2 }} />
-              <label>Ancho · {form.rectW ?? 15}%</label>
-              <input type="range" min="4" max="66" step="1" value={form.rectW ?? 15} onChange={(e) => setForm({ ...form, rectW: Number(e.target.value) })} />
-              <label>Alto · {form.rectH ?? 12}%</label>
-              <input type="range" min="4" max="45" step="1" value={form.rectH ?? 12} onChange={(e) => setForm({ ...form, rectH: Number(e.target.value) })} />
+              <p className="stadium-panel-hint">Arrastrá la zona en el mapa para moverla y usá las esquinas para cambiar su tamaño.</p>
               <label>Rotación · {form.rot ?? 0}°</label>
-              <input type="range" min="-90" max="90" step="5" value={form.rot ?? 0} onChange={(e) => setForm({ ...form, rot: Number(e.target.value) })} />
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => setForm({ ...form, rot: normalizeRot90((form.rot ?? 0) + 90) })}
+              >
+                <RotateCw size={15} />Rotar 90°
+              </button>
               <div className="zone-capacity-summary">
                 <span>Vendidos</span>
                 <b>{seleccionado.stockVendido}</b>
