@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { query } from './core/db';
 import { errorHandler } from './core/middleware';
 import { DIST_DIR, PUBLIC_DIR } from './config/constants';
@@ -64,11 +65,20 @@ export function createApp() {
   app.use(express.static(PUBLIC_DIR, { maxAge: '1y' }));
   app.use(express.static(DIST_DIR, { index: false, maxAge: '1y' }));
 
-  // Fallback de la SPA: cualquier GET que no sea API ni asset sirve index.html.
+  // Fallback de la SPA: cualquier GET que no sea API ni asset sirve index.html,
+  // con las meta Open Graph resueltas al host de la petición (para el preview
+  // al compartir el link en WhatsApp/redes).
+  let indexHtmlTpl: string | null = null;
+  const getIndexHtml = () => {
+    if (indexHtmlTpl == null) indexHtmlTpl = fs.readFileSync(path.join(DIST_DIR, 'index.html'), 'utf8');
+    return indexHtmlTpl;
+  };
   app.use((req, res, next) => {
     if (req.method !== 'GET') return next();
     if (API_PREFIXES.some((p) => req.path === p || req.path.startsWith(p + '/') || req.path.startsWith(p))) return next();
-    res.sendFile(path.join(DIST_DIR, 'index.html'));
+    const host = req.get('host');
+    const origin = host ? `https://${host}` : 'https://herediano.milocalhost.work';
+    res.type('html').send(getIndexHtml().replace(/__OG_ORIGIN__/g, origin));
   });
 
   app.use(errorHandler);
