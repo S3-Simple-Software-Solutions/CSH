@@ -1697,6 +1697,25 @@ function AdminApp() {
   );
 }
 
+// Input de contraseña con botón de mostrar/ocultar integrado y estilizado.
+function PasswordInput({ value, onChange, ...rest }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="password-field">
+      <input type={show ? 'text' : 'password'} value={value} onChange={onChange} {...rest} />
+      <button
+        type="button"
+        className="password-toggle"
+        onClick={() => setShow((v) => !v)}
+        aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+        title={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+      >
+        {show ? <EyeOff size={18} /> : <Eye size={18} />}
+      </button>
+    </div>
+  );
+}
+
 function AdminLogin() {
   const [form, setForm] = useState({ usuario: '', clave: '' });
   const [error, setError] = useState('');
@@ -1713,7 +1732,7 @@ function AdminLogin() {
         <img src="/brand/logo-shield.png" alt="" />
         <h1>Club Sport Herediano</h1>
         <label>Usuario o correo</label><input value={form.usuario} onChange={(e) => setForm({ ...form, usuario: e.target.value })} autoFocus />
-        <label>Contrasena</label><input type="password" value={form.clave} onChange={(e) => setForm({ ...form, clave: e.target.value })} />
+        <label>Contrasena</label><PasswordInput value={form.clave} onChange={(e) => setForm({ ...form, clave: e.target.value })} />
         {error && <div className="error">{error}</div>}
         <button className="btn">Entrar</button>
       </form>
@@ -1970,7 +1989,7 @@ function PasswordModal({ user, onClose }) {
     if (!data.ok) return setMsg({ type: 'error', text: data.error });
     setMsg({ type: 'ok', text: `Clave actualizada para ${user.name}.` });
   }
-  return <Modal title="Cambiar clave" onClose={onClose}><p className="muted">{user.email}</p><label>Nueva contrasena</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /><label>Confirmar</label><input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />{msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}<button className="btn" onClick={save}>Guardar clave</button></Modal>;
+  return <Modal title="Cambiar clave" onClose={onClose}><p className="muted">{user.email}</p><label>Nueva contrasena</label><PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} /><label>Confirmar</label><PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)} />{msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}<button className="btn" onClick={save}>Guardar clave</button></Modal>;
 }
 
 const ANALYTICS_LOG_LABELS = { query_usuarios: 'Usuarios', query_entradas_log: 'Log de entradas', query_parqueo_eventos: 'Eventos de parqueo' };
