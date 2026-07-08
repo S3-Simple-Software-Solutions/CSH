@@ -3018,27 +3018,17 @@ function PromotorModal({ promotor, onClose, onSaved }) {
 }
 
 function AdminDescuentosTab() {
-  const [config, setConfig] = useState(null);
-  const [feeForm, setFeeForm] = useState({ feeTipoDefault: 'ninguno', feeValorDefault: 0 });
   const [descuentos, setDescuentos] = useState([]);
   const [eventos, setEventos] = useState([]);
   const [msg, setMsg] = useState(null);
   const [modal, setModal] = useState(null);
   const load = async () => {
-    const c = await api('/admin/api/entradas/config');
-    if (c.ok) { setConfig(c.config); setFeeForm({ feeTipoDefault: c.config.feeTipoDefault, feeValorDefault: c.config.feeValorDefault }); }
     const d = await api('/admin/api/entradas/descuentos');
     if (d.ok) setDescuentos(d.descuentos);
     const e = await api('/admin/api/entradas/eventos');
     if (e.ok) setEventos(e.eventos.map((x) => x.evento));
   };
   useEffect(() => { load(); }, []);
-  async function saveConfig() {
-    setMsg(null);
-    const d = await api('/admin/api/entradas/config', { method: 'PUT', body: JSON.stringify(feeForm) });
-    if (!d.ok) return setMsg({ type: 'error', text: d.error });
-    setConfig(d.config); setMsg({ type: 'ok', text: 'Cargo por servicio actualizado.' });
-  }
   async function del(id) {
     if (!window.confirm('¿Eliminar este código de descuento?')) return;
     const d = await api(`/admin/api/entradas/descuentos/${id}`, { method: 'DELETE' });
@@ -3048,26 +3038,6 @@ function AdminDescuentosTab() {
   return (
     <>
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
-      <section className="card" style={{ marginBottom: 18 }}>
-        <h3>Cargo por servicio (global)</h3>
-        <p className="muted" style={{ fontSize: '.85rem' }}>Se aplica a todas las compras salvo que un evento defina su propio cargo.</p>
-        <div className="two">
-          <div>
-            <label>Tipo</label>
-            <select value={feeForm.feeTipoDefault} onChange={(e) => setFeeForm({ ...feeForm, feeTipoDefault: e.target.value })}>
-              <option value="ninguno">Sin cargo</option>
-              <option value="pct">Porcentaje (%)</option>
-              <option value="crc">Monto fijo (CRC)</option>
-            </select>
-          </div>
-          <div>
-            <label>Valor</label>
-            <input type="number" min="0" value={feeForm.feeValorDefault} disabled={feeForm.feeTipoDefault === 'ninguno'} onChange={(e) => setFeeForm({ ...feeForm, feeValorDefault: Number(e.target.value) })} />
-          </div>
-        </div>
-        <button className="btn" onClick={saveConfig}>Guardar cargo</button>
-      </section>
-
       <div className="actions left"><button className="btn" onClick={() => setModal({})}><Plus size={16} />Nuevo código</button></div>
       <DataTable
         id="descuentos"
