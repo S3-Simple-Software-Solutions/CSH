@@ -508,6 +508,7 @@ export function StadiumSvgERC({
   showZoneDetails = false,
   seatsByZoneKey = {},
   selectedSeatIds = null,
+  selectedSeatZoneKeys = null,
   onSeatClick = null,
   onSeatBoxSelect = null,
 }) {
@@ -571,8 +572,10 @@ export function StadiumSvgERC({
   function zoneStatus(key) {
     const t = tiposByKey?.[key];
     if (!t || t.estado === 'inactivo') return 'inactive';
+    // Una zona con butacas seleccionadas queda marcada aunque su panel esté
+    // cerrado o ya no queden disponibles (las que tenés son tu selección).
+    if (selectedKey === key || selectedSeatZoneKeys?.has(key)) return 'selected';
     if (t.disponibles <= 0) return 'agotado';
-    if (selectedKey === key) return 'selected';
     if (hoveredKey === key) return 'hover';
     return 'available';
   }
