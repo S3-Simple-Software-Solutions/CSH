@@ -881,7 +881,8 @@ export function StadiumSvgERC({
 
       if (mode === 'rotate') {
         const angle = Math.atan2(current.y - metrics.cy, current.x - metrics.cx) * 180 / Math.PI + 90;
-        emit({ ...startRect, rot: normalizeAngle(angle) });
+        // Las zonas especiales solo rotan en pasos de 90°.
+        emit({ ...startRect, rot: normalizeAngle(Math.round(angle / 90) * 90) });
       }
     };
 
