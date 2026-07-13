@@ -44,7 +44,7 @@ function FieldMarkings() {
   const SPOT = 66;                // penal a ~11 m de la línea de meta
   const R = 56;                   // radio del círculo central y arcos penales
   const ARC_DY = 45;              // semicuerda del arco penal en el frente del área
-  const paTop = CY - PA_H / 2, paBot = CY + PA_H / 2;
+  const paTop = CY - PA_H / 2;
   const gaTop = CY - GA_H / 2;
   const GOAL_H = 34, GOAL_D = 7;  // porterías
   return (
