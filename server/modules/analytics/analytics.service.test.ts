@@ -34,6 +34,7 @@ function admin(overrides: Partial<AdminUser> = {}): AdminUser {
     parkingRole: 'admin',
     couponRole: 'admin',
     eventsRole: 'admin',
+    restaurantRole: 'ninguno',
     isSuperAdmin: true,
     ...overrides,
   };

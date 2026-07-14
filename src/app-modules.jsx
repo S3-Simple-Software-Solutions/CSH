@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, ImagePlus, LayoutGrid, Lock, Mail, Map as MapIcon, MapPin, MessageSquare, Moon, Newspaper, PanelLeftClose, PanelLeftOpen, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
+import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, ImagePlus, LayoutGrid, Lock, Mail, Map as MapIcon, MapPin, MessageSquare, Minus, Moon, Newspaper, PanelLeftClose, PanelLeftOpen, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Store, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import DataTable from './components/DataTable.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
@@ -1567,12 +1567,6 @@ function PaymentModal({ info, onClose, onDone }) {
 }
 
 const WIP_MODULES = {
-  '/admin/restaurantes': {
-    icon: UtensilsCrossed,
-    title: 'Gestion de restaurantes',
-    desc: 'Administracion de los puntos de comida del estadio: locales, menus, precios e inventario por evento.',
-    items: ['Catalogo de locales y menus por partido', 'Control de inventario y precios', 'Reportes de ventas por evento'],
-  },
   '/admin/proveedores': {
     icon: Truck,
     title: 'Gestion de proveedores',
@@ -1610,7 +1604,8 @@ function isAdminUser(user) {
     user.parkingRole === 'admin' ||
     user.couponRole === 'admin' ||
     user.couponRole === 'patrocinador' ||
-    (user.eventsRole && user.eventsRole !== 'ninguno')
+    (user.eventsRole && user.eventsRole !== 'ninguno') ||
+    (user.restaurantRole && user.restaurantRole !== 'ninguno')
   );
 }
 
@@ -1681,6 +1676,7 @@ function AdminApp() {
             <AdminNavButton active={route === '/admin/parqueo'} onClick={() => navigate('/admin/parqueo')} icon={Car} label="Gestion de parqueo" />
             {user.eventsRole && user.eventsRole !== 'ninguno' && <AdminNavButton active={route.startsWith('/admin/entradas')} onClick={() => navigate('/admin/entradas')} icon={CalendarDays} label="Gestion de entradas" />}
             <AdminNavButton active={route === '/admin/cuponera'} onClick={() => navigate('/admin/cuponera')} icon={Ticket} label="Cuponera" />
+            {user.restaurantRole && user.restaurantRole !== 'ninguno' && <AdminNavButton active={route.startsWith('/admin/restaurantes')} onClick={() => navigate('/admin/restaurantes')} icon={UtensilsCrossed} label="Restaurantes" />}
             <AdminNavButton active={route === '/admin/usuarios'} onClick={() => navigate('/admin/usuarios')} icon={Users} label="Gestion de usuarios" />
             {Object.entries(WIP_MODULES).map(([path, mod]) => {
               const Icon = mod.icon;
@@ -1697,7 +1693,7 @@ function AdminApp() {
       </aside>
       <section className="admin-main">
         <AdminTopBar user={user} onLogout={logout} onMenu={() => setMenuOpen(true)} />
-        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route.startsWith('/admin/entradas') ? <AdminEntradas user={user} route={route} navigate={navigate} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/analytics' ? <AdminAnalytics user={user} /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
+        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route.startsWith('/admin/entradas') ? <AdminEntradas user={user} route={route} navigate={navigate} /> : route.startsWith('/admin/restaurantes') ? <AdminRestaurantes user={user} route={route} navigate={navigate} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/analytics' ? <AdminAnalytics user={user} /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
   );
@@ -1756,6 +1752,7 @@ function AdminHome({ user, navigate }) {
         <button onClick={() => navigate('/admin/parqueo')}><Car />Gestion de parqueo</button>
         {user.eventsRole && user.eventsRole !== 'ninguno' && <button onClick={() => navigate('/admin/entradas')}><CalendarDays />Gestion de entradas</button>}
         <button onClick={() => navigate('/admin/cuponera')}><BadgePercent />Cuponera</button>
+        {user.restaurantRole && user.restaurantRole !== 'ninguno' && <button onClick={() => navigate('/admin/restaurantes')}><UtensilsCrossed />Restaurantes</button>}
         <button onClick={() => navigate('/admin/usuarios')}><Users />Gestion de usuarios</button>
         <button onClick={() => navigate('/admin/web')}><Globe />Gestion de la pagina web</button>
         {Object.entries(WIP_MODULES).map(([path, mod]) => {
@@ -5604,4 +5601,682 @@ function AdminPuertaTab() {
   );
 }
 
-export { PublicParking, PublicCoupons, PublicEntradas, AdminApp, ThemeToggle, applyTheme, THEME_KEY, isAdminUser };
+// ============================================================================
+// ---- Restaurantes: panel admin/owner ----
+// ============================================================================
+
+const REST_EST_LABEL = { pendiente: 'Pendiente', en_preparacion: 'En preparación', listo: 'Listo', entregada: 'Entregado', rechazada: 'Rechazado', cancelada: 'Cancelado' };
+
+function RestImageButton({ path, onDone, label }) {
+  const ref = useRef(null);
+  const [busy, setBusy] = useState(false);
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    const d = await uploadFile(path, file);
+    setBusy(false); e.target.value = '';
+    if (d.ok) onDone?.(d);
+  }
+  return (
+    <>
+      <input ref={ref} type="file" accept="image/*" hidden onChange={pick} />
+      <button className="btn ghost" onClick={() => ref.current?.click()} disabled={busy}><ImagePlus size={15} />{busy ? 'Subiendo…' : (label || 'Foto')}</button>
+    </>
+  );
+}
+
+function AdminRestaurantes({ user }) {
+  const [tab, setTab] = useState('pedidos');
+  const [data, setData] = useState(null); // { role, restaurantes, owners? }
+  const [error, setError] = useState('');
+  const load = () => api('/admin/api/restaurantes').then((d) => { if (d.ok) setData(d); else setError(d.error); });
+  useEffect(() => { load(); }, []);
+
+  if (error) return <main className="page"><p className="eyebrow">Restaurantes</p><h1>Error</h1><p className="sub">{error}</p></main>;
+  if (!data) return <main className="page"><p>Cargando…</p></main>;
+  const isAdmin = data.role === 'admin';
+
+  return (
+    <main className="page">
+      <p className="eyebrow">Comida en el estadio</p>
+      <h1>Restaurantes</h1>
+      <div className="admin-tabs">
+        <button className={tab === 'pedidos' ? 'active' : ''} onClick={() => setTab('pedidos')}>Pedidos</button>
+        <button className={tab === 'locales' ? 'active' : ''} onClick={() => setTab('locales')}>{isAdmin ? 'Restaurantes' : 'Mis restaurantes'}</button>
+        <button className={tab === 'menu' ? 'active' : ''} onClick={() => setTab('menu')}>Menú</button>
+        {isAdmin && <button className={tab === 'duenos' ? 'active' : ''} onClick={() => setTab('duenos')}>Dueños</button>}
+        {isAdmin && <button className={tab === 'config' ? 'active' : ''} onClick={() => setTab('config')}>Configuración</button>}
+      </div>
+
+      {tab === 'pedidos' && <RestOrdenes restaurantes={data.restaurantes} isAdmin={isAdmin} />}
+      {tab === 'locales' && <RestLocales data={data} isAdmin={isAdmin} reload={load} />}
+      {tab === 'menu' && <RestMenu restaurantes={data.restaurantes} />}
+      {tab === 'duenos' && isAdmin && <RestOwners />}
+      {tab === 'config' && isAdmin && <RestConfig />}
+    </main>
+  );
+}
+
+function RestOrdenes({ restaurantes, isAdmin }) {
+  const [restauranteId, setRestauranteId] = useState('');
+  const [soloActivas, setSoloActivas] = useState(true);
+  const [ordenes, setOrdenes] = useState([]);
+  const [rechazar, setRechazar] = useState(null); // orden a rechazar
+  const [motivo, setMotivo] = useState('');
+
+  const cargar = () => {
+    const qs = new URLSearchParams();
+    if (restauranteId) qs.set('restauranteId', restauranteId);
+    qs.set('filtro', soloActivas ? 'activas' : 'todas');
+    return api(`/admin/api/restaurantes/ordenes?${qs}`).then((d) => { if (d.ok) setOrdenes(d.ordenes); });
+  };
+  useEffect(() => {
+    cargar();
+    const t = setInterval(cargar, 5000); // tablero en vivo
+    return () => clearInterval(t);
+  }, [restauranteId, soloActivas]);
+
+  async function mover(orden, estado, motivoText = '') {
+    const d = await api(`/admin/api/restaurantes/ordenes/${orden.id}/estado`, { method: 'POST', body: JSON.stringify({ estado, motivo: motivoText }) });
+    if (d.ok) cargar();
+  }
+
+  return (
+    <section>
+      <div className="rest-toolbar">
+        {restaurantes.length > 1 && (
+          <select value={restauranteId} onChange={(e) => setRestauranteId(e.target.value)}>
+            <option value="">Todos mis restaurantes</option>
+            {restaurantes.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+          </select>
+        )}
+        <label className="check"><input type="checkbox" checked={!soloActivas} onChange={(e) => setSoloActivas(!e.target.checked)} /> Ver historial completo</label>
+      </div>
+
+      {ordenes.length === 0 && <div className="result empty">No hay pedidos {soloActivas ? 'activos' : ''} por ahora.</div>}
+
+      <div className="rest-orders">
+        {ordenes.map((o) => (
+          <div key={o.id} className={`rest-order est-${o.estado}`}>
+            <div className="rest-order-head">
+              <b>{o.codigo}</b>
+              <span className={`pill est-${o.estado}`}>{REST_EST_LABEL[o.estado] || o.estado}</span>
+            </div>
+            {isAdmin && <p className="muted" style={{ margin: '2px 0' }}>{o.restauranteNombre}</p>}
+            <p style={{ margin: '2px 0' }}>{o.clienteNombre}{o.clienteTelefono ? ` · ${o.clienteTelefono}` : ''}</p>
+            <p className="muted" style={{ margin: '2px 0' }}>
+              {o.entrega?.tipo === 'asiento' ? `Asiento: Sec ${o.entrega.seccion}, Fila ${o.entrega.fila}, #${o.entrega.asiento}` : 'Retiro en el local'}
+            </p>
+            <ul className="rest-order-lines">
+              {o.lineas.map((l, i) => <li key={i}>{l.cantidad}× {l.nombre}</li>)}
+            </ul>
+            {o.notas && <p className="muted" style={{ fontStyle: 'italic' }}>“{o.notas}”</p>}
+            <p style={{ fontWeight: 700 }}>{money(o.totalCrc)}</p>
+            {o.estado === 'rechazada' && o.rechazoMotivo && <p className="muted">Motivo: {o.rechazoMotivo}</p>}
+            <div className="rest-order-actions">
+              {o.estado === 'pendiente' && <button className="btn" onClick={() => mover(o, 'en_preparacion')}>Aceptar</button>}
+              {o.estado === 'en_preparacion' && <button className="btn" onClick={() => mover(o, 'listo')}>Marcar listo</button>}
+              {o.estado === 'listo' && <button className="btn" onClick={() => mover(o, 'entregada')}>Entregado</button>}
+              {(o.estado === 'pendiente' || o.estado === 'en_preparacion') && <button className="btn ghost danger" onClick={() => { setRechazar(o); setMotivo(''); }}>Rechazar</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {rechazar && (
+        <Modal title={`Rechazar pedido ${rechazar.codigo}`} onClose={() => setRechazar(null)}>
+          <label>Motivo (se le muestra al cliente)</label>
+          <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Sin stock, cierre de cocina…" autoFocus />
+          <p className="muted" style={{ fontSize: '.85rem' }}>Si el cliente ya pagó, coordiná el reembolso desde el panel de Stripe.</p>
+          <button className="btn danger" onClick={() => { mover(rechazar, 'rechazada', motivo.trim()); setRechazar(null); }}>Rechazar pedido</button>
+        </Modal>
+      )}
+    </section>
+  );
+}
+
+function RestLocales({ data, isAdmin, reload }) {
+  const confirm = useConfirm();
+  const [editing, setEditing] = useState(null); // restaurante o {} para nuevo
+  async function toggleAbierto(r) {
+    const d = await api(`/admin/api/restaurantes/${r.id}`, { method: 'PUT', body: JSON.stringify({ abierto: !r.abierto }) });
+    if (d.ok) reload();
+  }
+  async function eliminar(r) {
+    if (!(await confirm({ title: `¿Eliminar ${r.nombre}?`, message: 'Se borrará el restaurante y su menú.', danger: true, confirmLabel: 'Eliminar' }))) return;
+    const d = await api(`/admin/api/restaurantes/${r.id}`, { method: 'DELETE' });
+    if (d.ok) reload();
+  }
+  return (
+    <section>
+      <div className="rest-toolbar">
+        <button className="btn" onClick={() => setEditing({})}><Plus size={16} /> Nuevo restaurante</button>
+      </div>
+      {data.restaurantes.length === 0 && <div className="result empty">Aún no tenés restaurantes. Creá el primero.</div>}
+      <div className="rest-cards">
+        {data.restaurantes.map((r) => (
+          <div key={r.id} className="rest-card">
+            {r.imagenUrl ? <img className="rest-card-img" src={r.imagenUrl} alt={r.nombre} /> : <div className="rest-card-img empty"><UtensilsCrossed size={28} /></div>}
+            <div className="rest-card-body">
+              <div className="rest-card-title"><b>{r.nombre}</b>{r.estado === 'suspendido' && <span className="pill danger">Suspendido</span>}</div>
+              <p className="muted" style={{ margin: '2px 0' }}>{r.ubicacion || 'Estadio'} · ~{r.tiempoPrepMin} min</p>
+              <div className="rest-card-actions">
+                <button className={`btn ghost${r.abierto ? ' on' : ''}`} onClick={() => toggleAbierto(r)}>{r.abierto ? <><ToggleRight size={16} /> Abierto</> : <><ToggleLeft size={16} /> Cerrado</>}</button>
+                <button className="btn ghost" onClick={() => setEditing(r)}><Pencil size={15} /> Editar</button>
+                <RestImageButton path={`/admin/api/restaurantes/${r.id}/imagen`} onDone={reload} label="Foto" />
+                {isAdmin && <button className="btn ghost danger" onClick={() => eliminar(r)}><Trash2 size={15} /></button>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {editing && <RestauranteModal restaurante={editing} isAdmin={isAdmin} owners={data.owners || []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+    </section>
+  );
+}
+
+function RestauranteModal({ restaurante, isAdmin, owners, onClose, onSaved }) {
+  const nuevo = !restaurante.id;
+  const [form, setForm] = useState({
+    nombre: restaurante.nombre || '',
+    descripcion: restaurante.descripcion || '',
+    ubicacion: restaurante.ubicacion || '',
+    tiempoPrepMin: restaurante.tiempoPrepMin || 15,
+    ownerUserId: restaurante.ownerUserId || (owners[0]?.id || ''),
+    estado: restaurante.estado || 'activo',
+  });
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function submit() {
+    setError(''); setSaving(true);
+    const body = { nombre: form.nombre, descripcion: form.descripcion, ubicacion: form.ubicacion, tiempoPrepMin: Number(form.tiempoPrepMin) };
+    if (isAdmin && nuevo) body.ownerUserId = form.ownerUserId;
+    if (isAdmin && !nuevo) body.estado = form.estado;
+    const d = nuevo
+      ? await api('/admin/api/restaurantes', { method: 'POST', body: JSON.stringify(body) })
+      : await api(`/admin/api/restaurantes/${restaurante.id}`, { method: 'PUT', body: JSON.stringify(body) });
+    setSaving(false);
+    if (!d.ok) return setError(d.error);
+    onSaved();
+  }
+  return (
+    <Modal title={nuevo ? 'Nuevo restaurante' : 'Editar restaurante'} onClose={onClose}>
+      <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus />
+      <label>Descripción</label><input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+      <label>Ubicación en el estadio</label><input value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} placeholder="Gradería Norte, local 2" />
+      <label>Tiempo de preparación (min)</label><input type="number" min="1" value={form.tiempoPrepMin} onChange={(e) => setForm({ ...form, tiempoPrepMin: e.target.value })} />
+      {isAdmin && nuevo && owners.length > 0 && (
+        <><label>Dueño</label><select value={form.ownerUserId} onChange={(e) => setForm({ ...form, ownerUserId: e.target.value })}>{owners.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}</select></>
+      )}
+      {isAdmin && !nuevo && (
+        <><label>Estado</label><select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })}><option value="activo">Activo</option><option value="suspendido">Suspendido</option></select></>
+      )}
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit} disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</button>
+    </Modal>
+  );
+}
+
+function RestMenu({ restaurantes }) {
+  const [restauranteId, setRestauranteId] = useState(restaurantes[0]?.id || '');
+  const [menu, setMenu] = useState(null); // { categorias, items }
+  const [editCat, setEditCat] = useState(null);
+  const [editItem, setEditItem] = useState(null);
+  const confirm = useConfirm();
+  const load = () => { if (restauranteId) api(`/admin/api/restaurantes/${restauranteId}/menu`).then((d) => { if (d.ok) setMenu({ categorias: d.categorias, items: d.items }); }); };
+  useEffect(() => { load(); }, [restauranteId]);
+
+  if (!restaurantes.length) return <div className="result empty">Creá un restaurante primero.</div>;
+
+  async function borrarItem(it) {
+    if (!(await confirm({ title: `¿Eliminar ${it.nombre}?`, danger: true, confirmLabel: 'Eliminar' }))) return;
+    const d = await api(`/admin/api/restaurantes/items/${it.id}`, { method: 'DELETE' });
+    if (d.ok) load();
+  }
+  async function borrarCat(c) {
+    if (!(await confirm({ title: `¿Eliminar la categoría ${c.nombre}?`, message: 'Los productos quedarán sin categoría.', danger: true, confirmLabel: 'Eliminar' }))) return;
+    const d = await api(`/admin/api/restaurantes/categorias/${c.id}`, { method: 'DELETE' });
+    if (d.ok) load();
+  }
+  async function toggleDisp(it) {
+    const d = await api(`/admin/api/restaurantes/items/${it.id}`, { method: 'PUT', body: JSON.stringify({ disponible: !it.disponible }) });
+    if (d.ok) load();
+  }
+
+  return (
+    <section>
+      <div className="rest-toolbar">
+        {restaurantes.length > 1 && (
+          <select value={restauranteId} onChange={(e) => setRestauranteId(e.target.value)}>
+            {restaurantes.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+          </select>
+        )}
+        <button className="btn ghost" onClick={() => setEditCat({})}><Plus size={15} /> Categoría</button>
+        <button className="btn" onClick={() => setEditItem({})}><Plus size={16} /> Producto</button>
+      </div>
+      {!menu ? <p>Cargando…</p> : (
+        <>
+          {menu.categorias.map((c) => (
+            <div key={c.id} className="rest-menu-cat">
+              <div className="rest-menu-cat-head"><b>{c.nombre}</b><span><button className="btn ghost xs" onClick={() => setEditCat(c)}><Pencil size={13} /></button><button className="btn ghost xs danger" onClick={() => borrarCat(c)}><Trash2 size={13} /></button></span></div>
+              {menu.items.filter((i) => i.categoriaId === c.id).map((it) => <RestItemRow key={it.id} it={it} onEdit={() => setEditItem(it)} onToggle={() => toggleDisp(it)} onDelete={() => borrarItem(it)} onImage={load} />)}
+            </div>
+          ))}
+          {menu.items.filter((i) => !i.categoriaId).length > 0 && (
+            <div className="rest-menu-cat">
+              <div className="rest-menu-cat-head"><b>Sin categoría</b></div>
+              {menu.items.filter((i) => !i.categoriaId).map((it) => <RestItemRow key={it.id} it={it} onEdit={() => setEditItem(it)} onToggle={() => toggleDisp(it)} onDelete={() => borrarItem(it)} onImage={load} />)}
+            </div>
+          )}
+        </>
+      )}
+      {editCat && <RestCategoriaModal restauranteId={restauranteId} categoria={editCat} onClose={() => setEditCat(null)} onSaved={() => { setEditCat(null); load(); }} />}
+      {editItem && <RestItemModal restauranteId={restauranteId} categorias={menu?.categorias || []} item={editItem} onClose={() => setEditItem(null)} onSaved={() => { setEditItem(null); load(); }} />}
+    </section>
+  );
+}
+
+function RestItemRow({ it, onEdit, onToggle, onDelete, onImage }) {
+  return (
+    <div className={`rest-menu-item${it.disponible ? '' : ' off'}`}>
+      {it.imagenUrl ? <img src={it.imagenUrl} alt="" /> : <div className="rest-menu-item-noimg"><UtensilsCrossed size={16} /></div>}
+      <div style={{ flex: 1, minWidth: 0 }}><b>{it.nombre}</b><span className="muted" style={{ display: 'block', fontSize: '.85rem' }}>{money(it.precioCrc)}{it.disponible ? '' : ' · No disponible'}</span></div>
+      <RestImageButton path={`/admin/api/restaurantes/items/${it.id}/imagen`} onDone={onImage} label="" />
+      <button className="btn ghost xs" onClick={onToggle} title={it.disponible ? 'Ocultar' : 'Mostrar'}>{it.disponible ? <Eye size={14} /> : <EyeOff size={14} />}</button>
+      <button className="btn ghost xs" onClick={onEdit}><Pencil size={14} /></button>
+      <button className="btn ghost xs danger" onClick={onDelete}><Trash2 size={14} /></button>
+    </div>
+  );
+}
+
+function RestCategoriaModal({ restauranteId, categoria, onClose, onSaved }) {
+  const nuevo = !categoria.id;
+  const [nombre, setNombre] = useState(categoria.nombre || '');
+  const [error, setError] = useState('');
+  async function submit() {
+    setError('');
+    const d = nuevo
+      ? await api(`/admin/api/restaurantes/${restauranteId}/categorias`, { method: 'POST', body: JSON.stringify({ nombre }) })
+      : await api(`/admin/api/restaurantes/categorias/${categoria.id}`, { method: 'PUT', body: JSON.stringify({ nombre }) });
+    if (!d.ok) return setError(d.error);
+    onSaved();
+  }
+  return (
+    <Modal title={nuevo ? 'Nueva categoría' : 'Editar categoría'} onClose={onClose}>
+      <label>Nombre</label><input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Bocas, Bebidas…" />
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit}>Guardar</button>
+    </Modal>
+  );
+}
+
+function RestItemModal({ restauranteId, categorias, item, onClose, onSaved }) {
+  const nuevo = !item.id;
+  const [form, setForm] = useState({
+    nombre: item.nombre || '', descripcion: item.descripcion || '', precioCrc: item.precioCrc || 0,
+    categoriaId: item.categoriaId || (categorias[0]?.id || ''), disponible: item.disponible === undefined ? true : item.disponible,
+  });
+  const [error, setError] = useState('');
+  async function submit() {
+    setError('');
+    const body = { nombre: form.nombre, descripcion: form.descripcion, precioCrc: Number(form.precioCrc), categoriaId: form.categoriaId || null, disponible: form.disponible };
+    const d = nuevo
+      ? await api(`/admin/api/restaurantes/${restauranteId}/items`, { method: 'POST', body: JSON.stringify(body) })
+      : await api(`/admin/api/restaurantes/items/${item.id}`, { method: 'PUT', body: JSON.stringify(body) });
+    if (!d.ok) return setError(d.error);
+    onSaved();
+  }
+  return (
+    <Modal title={nuevo ? 'Nuevo producto' : 'Editar producto'} onClose={onClose}>
+      <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus />
+      <label>Descripción</label><input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+      <div className="two">
+        <div><label>Precio (₡)</label><input type="number" min="0" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value })} /></div>
+        <div><label>Categoría</label><select value={form.categoriaId} onChange={(e) => setForm({ ...form, categoriaId: e.target.value })}><option value="">Sin categoría</option>{categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+      </div>
+      <label className="check" style={{ marginTop: 8 }}><input type="checkbox" checked={form.disponible} onChange={(e) => setForm({ ...form, disponible: e.target.checked })} /> Disponible</label>
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit}>Guardar</button>
+    </Modal>
+  );
+}
+
+function RestOwners() {
+  const [usuarios, setUsuarios] = useState([]);
+  const [msg, setMsg] = useState(null);
+  const load = () => api('/admin/api/restaurantes/owners').then((d) => { if (d.ok) setUsuarios(d.usuarios); });
+  useEffect(() => { load(); }, []);
+  async function toggle(u) {
+    setMsg(null);
+    const d = u.esOwner
+      ? await api(`/admin/api/restaurantes/owners/${u.id}`, { method: 'DELETE' })
+      : await api('/admin/api/restaurantes/owners', { method: 'POST', body: JSON.stringify({ userId: u.id }) });
+    if (d.ok) load(); else setMsg({ type: 'error', text: d.error });
+  }
+  return (
+    <section>
+      <p className="muted">Marcá qué usuarios pueden crear y administrar sus propios restaurantes (rol “Mi restaurante”).</p>
+      {msg && <div className="error">{msg.text}</div>}
+      <div className="rest-owners">
+        {usuarios.map((u) => (
+          <div key={u.id} className="rest-owner-row">
+            <div><b>{u.nombre}</b><span className="muted" style={{ display: 'block', fontSize: '.85rem' }}>@{u.username}</span></div>
+            <button className={`btn ghost${u.esOwner ? ' on' : ''}`} onClick={() => toggle(u)}>
+              {u.esOwner ? <><ToggleRight size={16} /> Dueño</> : <><ToggleLeft size={16} /> No es dueño</>}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RestConfig() {
+  const [fee, setFee] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { api('/admin/api/restaurantes/config').then((d) => { if (d.ok) setFee(String(d.config.feeCrcDefault)); }); }, []);
+  async function save() {
+    setSaving(true); setMsg(null);
+    const d = await api('/admin/api/restaurantes/config', { method: 'PUT', body: JSON.stringify({ feeCrcDefault: Number(fee) }) });
+    setSaving(false);
+    setMsg(d.ok ? { type: 'ok', text: 'Cargo por servicio actualizado.' } : { type: 'error', text: d.error });
+  }
+  return (
+    <section className="card" style={{ maxWidth: 420 }}>
+      <h2 style={{ marginTop: 0 }}>Cargo por servicio</h2>
+      <p className="muted">Monto fijo que se agrega a cada pedido (en colones).</p>
+      <label>Cargo por servicio (₡)</label>
+      <input type="number" min="0" value={fee} onChange={(e) => setFee(e.target.value)} />
+      {msg && <div className={msg.type === 'error' ? 'error' : 'muted'}>{msg.text}</div>}
+      <button className="btn" onClick={save} disabled={saving} style={{ marginTop: 10 }}>{saving ? 'Guardando…' : 'Guardar'}</button>
+    </section>
+  );
+}
+
+// ============================================================================
+// ---- Restaurantes (Comida en el estadio, estilo Uber Eats) ----
+// ============================================================================
+
+// Etiquetas y orden de la máquina de estados para el tracking público.
+const COMIDA_ESTADOS = [
+  { key: 'pendiente', label: 'Pedido recibido' },
+  { key: 'en_preparacion', label: 'En preparación' },
+  { key: 'listo', label: 'Listo' },
+  { key: 'entregada', label: 'Entregado' },
+];
+const COMIDA_ESTADO_TERMINAL = ['entregada', 'rechazada', 'cancelada'];
+
+function PublicComida() {
+  const path = location.pathname;
+  const slug = path.startsWith('/comida/') ? decodeURIComponent(path.slice(8).replace(/\/$/, '')) : '';
+  return slug ? <PublicRestauranteMenu slug={slug} /> : <PublicComidaList />;
+}
+
+function PublicComidaList() {
+  const [restaurantes, setRestaurantes] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { api('/api/restaurantes/publico').then((d) => { if (d.ok) setRestaurantes(d.restaurantes); setLoaded(true); }); }, []);
+  return (
+    <main className="page">
+      <p className="eyebrow">Comida en el estadio</p>
+      <h1>Restaurantes</h1>
+      <p className="sub">Pedí comida y bebidas sin perderte el partido. Te la llevamos a tu asiento o la retirás en el local.</p>
+      <section className="event-list">
+        {loaded && restaurantes.length === 0 && <div className="result empty">No hay restaurantes disponibles en este momento.</div>}
+        {restaurantes.map((r) => (
+          <a key={r.slug} className="event-card" href={`/comida/${r.slug}`}>
+            <span className="event-card-poster">
+              {r.imagenUrl
+                ? <img src={r.imagenUrl} alt={`Foto de ${r.nombre}`} loading="lazy" />
+                : <span className="event-card-poster-empty"><UtensilsCrossed size={24} /></span>}
+            </span>
+            <div className="event-card-body">
+              <h2>{r.nombre}</h2>
+              <p className="event-card-meta"><MapPin size={13} />{r.ubicacion || 'Estadio'}</p>
+              <p className="event-card-meta"><Clock size={13} />~{r.tiempoPrepMin} min de preparación</p>
+              <span className={`chip${r.abierto ? ' chip-cta' : ''}`} style={{ marginTop: 6 }}>{r.abierto ? 'Abierto' : 'Cerrado'}</span>
+            </div>
+            <span className="event-card-cta">Ver menú <UtensilsCrossed size={16} /></span>
+          </a>
+        ))}
+      </section>
+    </main>
+  );
+}
+
+function PublicRestauranteMenu({ slug }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [cart, setCart] = useState({}); // { itemId: cantidad }
+  const [checkout, setCheckout] = useState(false);
+  const [banner, setBanner] = useState(null); // { type, text }
+  const [orden, setOrden] = useState(null); // orden en seguimiento
+
+  useEffect(() => {
+    api(`/api/restaurantes/publico/${encodeURIComponent(slug)}`).then((d) => {
+      if (d.ok) setData(d); else setError(d.error);
+    });
+  }, [slug]);
+
+  // Retorno desde la pasarela: ?orden=<id> (pago hecho) o ?pago=cancelado.
+  // El pago lo confirma el webhook, así que hacemos polling; luego seguimos
+  // refrescando en vivo el estado del pedido hasta que quede entregado/rechazado.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('pago') === 'cancelado') {
+      setBanner({ type: 'info', text: 'Pago cancelado. No se realizó ningún cobro.' });
+      window.history.replaceState({}, '', `/comida/${encodeURIComponent(slug)}`);
+      return;
+    }
+    const ref = params.get('orden');
+    if (!ref) return;
+    let stop = false;
+    let confirmando = true;
+    setBanner({ type: 'info', text: 'Confirmando tu pago…' });
+    const poll = async () => {
+      const d = await api(`/api/restaurantes/publico/orden/${encodeURIComponent(ref)}`);
+      if (stop) return;
+      if (d.ok && d.estado && d.estado !== 'pendiente_pago') {
+        if (confirmando) { setBanner(null); confirmando = false; window.history.replaceState({}, '', `/comida/${encodeURIComponent(slug)}`); }
+        setOrden(d);
+        setCart({});
+        if (COMIDA_ESTADO_TERMINAL.includes(d.estado)) return; // fin del seguimiento
+        setTimeout(poll, 5000);
+        return;
+      }
+      if (d.ok && d.estado === 'cancelada') { setBanner({ type: 'error', text: 'La orden se canceló o expiró. No hubo cobro.' }); return; }
+      setTimeout(poll, 2500);
+    };
+    poll();
+    return () => { stop = true; };
+  }, [slug]);
+
+  if (error) return <main className="page"><p className="eyebrow">Comida</p><h1>Restaurante no disponible</h1><p className="sub">{error}</p><a className="btn ghost" href="/comida">Volver</a></main>;
+  if (!data) return <main className="page"><p>Cargando…</p></main>;
+
+  const { restaurante, categorias, items, feeCrc } = data;
+  const setCantidad = (id, n) => setCart((c) => { const next = { ...c }; if (n <= 0) delete next[id]; else next[id] = Math.min(50, n); return next; });
+  const count = Object.values(cart).reduce((s, n) => s + n, 0);
+  const lineas = Object.entries(cart).map(([itemId, cantidad]) => {
+    const it = items.find((i) => i.id === itemId);
+    return { itemId, cantidad, nombre: it?.nombre || '', precioCrc: it?.precioCrc || 0 };
+  });
+  const subtotal = lineas.reduce((s, l) => s + l.precioCrc * l.cantidad, 0);
+  const sinCategoria = items.filter((i) => !i.categoriaId);
+  const grupos = [...categorias.map((c) => ({ nombre: c.nombre, items: items.filter((i) => i.categoriaId === c.id) })),
+    ...(sinCategoria.length ? [{ nombre: 'Otros', items: sinCategoria }] : [])].filter((g) => g.items.length);
+
+  return (
+    <main className="page" style={{ paddingBottom: count ? 96 : undefined }}>
+      {orden && <OrderTrackingCard orden={orden} onNuevo={() => setOrden(null)} />}
+      {banner && <div className={`result ${banner.type === 'error' ? 'empty' : ''}`} style={{ marginBottom: 12 }}>{banner.text}</div>}
+
+      <a className="btn ghost" href="/comida" style={{ marginBottom: 12 }}>← Restaurantes</a>
+      <p className="eyebrow">{restaurante.abierto ? 'Abierto' : 'Cerrado'} · ~{restaurante.tiempoPrepMin} min</p>
+      <h1>{restaurante.nombre}</h1>
+      <p className="sub">{restaurante.descripcion}</p>
+      <p className="event-card-meta"><MapPin size={13} />{restaurante.ubicacion || 'Estadio'}</p>
+
+      {!restaurante.abierto && <div className="result empty" style={{ marginTop: 12 }}>Este restaurante está cerrado ahora mismo. Volvé más tarde.</div>}
+
+      {grupos.map((g) => (
+        <section key={g.nombre} className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ marginTop: 0 }}>{g.nombre}</h2>
+          {g.items.map((it) => {
+            const qty = cart[it.id] || 0;
+            return (
+              <div key={it.id} className="menu-item">
+                {it.imagenUrl && <img className="menu-item-img" src={it.imagenUrl} alt={it.nombre} loading="lazy" />}
+                <div className="menu-item-body">
+                  <b>{it.nombre}</b>
+                  {it.descripcion && <p className="muted" style={{ margin: '2px 0' }}>{it.descripcion}</p>}
+                  <span className="menu-item-price">{money(it.precioCrc)}</span>
+                </div>
+                {restaurante.abierto && (
+                  <div className="menu-item-stepper">
+                    {qty > 0 && <button className="btn ghost icon" onClick={() => setCantidad(it.id, qty - 1)} aria-label="Quitar uno"><Minus size={15} /></button>}
+                    {qty > 0 && <span>{qty}</span>}
+                    <button className="btn ghost icon" onClick={() => setCantidad(it.id, qty + 1)} aria-label="Agregar uno"><Plus size={15} /></button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      ))}
+
+      {count > 0 && restaurante.abierto && (
+        <div className="cart-bar">
+          <div><b>{count}</b> producto(s) · {money(subtotal)}</div>
+          <button className="btn" onClick={() => setCheckout(true)}><ShoppingBag size={16} /> Continuar</button>
+        </div>
+      )}
+
+      {checkout && (
+        <CheckoutComidaModal
+          slug={slug}
+          restaurante={restaurante}
+          lineas={lineas}
+          subtotal={subtotal}
+          feeCrc={feeCrc}
+          onClose={() => setCheckout(false)}
+        />
+      )}
+    </main>
+  );
+}
+
+function CheckoutComidaModal({ slug, restaurante, lineas, subtotal, feeCrc, onClose }) {
+  const [cliente, setCliente] = useState({ nombre: '', email: '', telefono: '' });
+  const [entrega, setEntrega] = useState({ tipo: 'pickup', seccion: '', fila: '', asiento: '' });
+  const [notas, setNotas] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const total = subtotal + (subtotal > 0 ? feeCrc : 0);
+
+  async function submit() {
+    setError(''); setLoading(true);
+    const body = {
+      slug,
+      lineas: lineas.map((l) => ({ itemId: l.itemId, cantidad: l.cantidad })),
+      cliente,
+      entrega: entrega.tipo === 'asiento' ? entrega : { tipo: 'pickup' },
+      notas,
+    };
+    const d = await api('/api/restaurantes/publico/checkout', { method: 'POST', body: JSON.stringify(body) });
+    if (!d.ok) { setLoading(false); return setError(d.error); }
+    window.location.href = d.url;
+  }
+
+  return (
+    <Modal title="Confirmar pedido" onClose={onClose}>
+      <div className="pay-summary">{restaurante.nombre}<br />{lineas.reduce((s, l) => s + l.cantidad, 0)} producto(s)</div>
+
+      <label>Nombre completo</label>
+      <input name="name" autoComplete="name" value={cliente.nombre} onChange={(e) => setCliente({ ...cliente, nombre: e.target.value })} autoFocus />
+      <label>Correo (recibís la confirmación aquí)</label>
+      <input type="email" name="email" autoComplete="email" inputMode="email" value={cliente.email} onChange={(e) => setCliente({ ...cliente, email: e.target.value })} />
+      <label>Teléfono (opcional)</label>
+      <input type="tel" name="tel" autoComplete="tel" inputMode="tel" placeholder="8888 8888" value={cliente.telefono} onChange={(e) => setCliente({ ...cliente, telefono: e.target.value })} />
+
+      <label style={{ marginTop: 8 }}>¿Cómo lo querés recibir?</label>
+      <div className="entrega-opts">
+        <label className={`entrega-opt${entrega.tipo === 'pickup' ? ' active' : ''}`}>
+          <input type="radio" name="entrega" checked={entrega.tipo === 'pickup'} onChange={() => setEntrega({ ...entrega, tipo: 'pickup' })} />
+          <Store size={16} /> Retiro en el local
+        </label>
+        <label className={`entrega-opt${entrega.tipo === 'asiento' ? ' active' : ''}`}>
+          <input type="radio" name="entrega" checked={entrega.tipo === 'asiento'} onChange={() => setEntrega({ ...entrega, tipo: 'asiento' })} />
+          <MapPin size={16} /> En mi asiento
+        </label>
+      </div>
+      {entrega.tipo === 'asiento' && (
+        <div className="three">
+          <div><label>Sección</label><input value={entrega.seccion} onChange={(e) => setEntrega({ ...entrega, seccion: e.target.value })} placeholder="Norte" /></div>
+          <div><label>Fila</label><input value={entrega.fila} onChange={(e) => setEntrega({ ...entrega, fila: e.target.value })} placeholder="12" /></div>
+          <div><label>Asiento</label><input value={entrega.asiento} onChange={(e) => setEntrega({ ...entrega, asiento: e.target.value })} placeholder="8" /></div>
+        </div>
+      )}
+
+      <label style={{ marginTop: 8 }}>Notas (opcional)</label>
+      <input value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Sin cebolla, etc." maxLength={200} />
+
+      <div className="checkout-desglose" style={{ margin: '12px 0', fontSize: '.9rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>{money(subtotal)}</span></div>
+        {subtotal > 0 && feeCrc > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Cargo por servicio</span><span>{money(feeCrc)}</span></div>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #ddd', marginTop: 6, paddingTop: 6 }}><span>Total</span><span>{money(total)}</span></div>
+      </div>
+
+      <p className="muted" style={{ fontSize: '0.85rem' }}>Te llevaremos a la pasarela segura. Tus datos de tarjeta nunca pasan por este sitio.</p>
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit} disabled={loading}>{loading ? 'Redirigiendo…' : `Pagar ${money(total)}`}</button>
+    </Modal>
+  );
+}
+
+function OrderTrackingCard({ orden, onNuevo }) {
+  const rechazada = orden.estado === 'rechazada';
+  const cancelada = orden.estado === 'cancelada';
+  const activeIdx = COMIDA_ESTADOS.findIndex((s) => s.key === orden.estado);
+  return (
+    <section className="card order-track" style={{ marginBottom: 18 }}>
+      <p className="eyebrow">Tu pedido · {orden.restaurante}</p>
+      <div className="order-track-code">
+        <QRImage data={orden.codigo} size={120} />
+        <div>
+          <b style={{ fontSize: 22, letterSpacing: '.05em' }}>{orden.codigo}</b>
+          <p className="muted" style={{ margin: '4px 0' }}>
+            {orden.entrega?.tipo === 'asiento'
+              ? `Te lo llevamos a Sección ${orden.entrega.seccion}, Fila ${orden.entrega.fila}, Asiento ${orden.entrega.asiento}.`
+              : 'Mostrá este código en el local para retirar.'}
+          </p>
+        </div>
+      </div>
+
+      {rechazada
+        ? <div className="result empty">Tu pedido fue rechazado{orden.rechazoMotivo ? `: ${orden.rechazoMotivo}` : ''}. Si ya pagaste, se te reembolsará.</div>
+        : cancelada
+          ? <div className="result empty">Pedido cancelado.</div>
+          : (
+            <ol className="order-steps">
+              {COMIDA_ESTADOS.map((s, i) => (
+                <li key={s.key} className={i <= activeIdx ? 'done' : ''}>
+                  <span className="dot">{i <= activeIdx ? <Check size={13} /> : i + 1}</span>{s.label}
+                </li>
+              ))}
+            </ol>
+          )}
+
+      <div className="checkout-desglose" style={{ fontSize: '.9rem', marginTop: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>{money(orden.subtotalCrc)}</span></div>
+        {orden.feeCrc > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Cargo por servicio</span><span>{money(orden.feeCrc)}</span></div>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}><span>Total</span><span>{money(orden.totalCrc)}</span></div>
+      </div>
+      {COMIDA_ESTADO_TERMINAL.includes(orden.estado) && <button className="btn ghost" onClick={onNuevo} style={{ marginTop: 10 }}>Hacer otro pedido</button>}
+    </section>
+  );
+}
+
+export { PublicParking, PublicCoupons, PublicEntradas, PublicComida, AdminApp, ThemeToggle, applyTheme, THEME_KEY, isAdminUser };

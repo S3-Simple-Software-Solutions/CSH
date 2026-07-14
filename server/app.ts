@@ -10,6 +10,8 @@ import { parqueoRouter } from './modules/parqueo/parqueo.routes';
 import { cuponeraRouter } from './modules/cuponera/cuponera.routes';
 import { entradasRouter } from './modules/entradas/entradas.routes';
 import { entradasWebhookRouter } from './modules/entradas/entradas.webhook';
+import { restaurantesRouter } from './modules/restaurantes/restaurantes.routes';
+import { restaurantesWebhookRouter } from './modules/restaurantes/restaurantes.webhook';
 import { usuariosRouter } from './modules/usuarios/usuarios.routes';
 import { webRouter } from './modules/web/web.routes';
 import { contactoRouter } from './modules/contacto/contacto.routes';
@@ -29,6 +31,7 @@ export function createApp() {
   // El webhook de pagos necesita el body crudo para verificar la firma, así que
   // se monta ANTES del parser JSON global (usa su propio express.raw).
   app.use(entradasWebhookRouter);
+  app.use(restaurantesWebhookRouter);
 
   app.use(express.json({ limit: '64kb' }));
   app.use(express.urlencoded({ extended: false, limit: '64kb' }));
@@ -52,6 +55,7 @@ export function createApp() {
   app.use(parqueoRouter);
   app.use(cuponeraRouter);
   app.use(entradasRouter);
+  app.use(restaurantesRouter);
   app.use(usuariosRouter);
   app.use(webRouter);
   app.use(contactoRouter);

@@ -57,6 +57,7 @@ export const navMain = [
 // Módulos funcionales. `primary: true` → chip CTA destacado.
 export const navModules = [
   { label: 'Entradas', to: '/entradas', primary: true },
+  { label: 'Comida', to: '/comida' },
   { label: 'Cuponera', to: '/cuponera' },
   { label: 'Parqueo', to: '/parqueo' },
 ];

@@ -62,6 +62,8 @@ const ROLE_ROWS = [
   ['events:admin', 'Administrador de eventos', 'events', 'Administra eventos y entradas'],
   ['events:operador', 'Operador de puerta', 'events', 'Opera ingresos y ve ventas'],
   ['events:comercial', 'Comercial', 'events', 'Ve reportes de ventas'],
+  ['restaurant:admin', 'Administrador de restaurantes', 'restaurant', 'Administra todos los restaurantes y pedidos'],
+  ['restaurant:owner', 'Mi restaurante', 'restaurant', 'Administra sus propios restaurantes y pedidos'],
 ] as const;
 
 function defaultUsers(): SeedUser[] {
@@ -76,7 +78,7 @@ function defaultUsers(): SeedUser[] {
       area: 'Administracion',
       status: 'Activo',
       passwordManagedBy: 'env',
-      roles: ['system:admin', 'site:authenticated', 'parking:admin', 'coupon:admin', 'events:admin'],
+      roles: ['system:admin', 'site:authenticated', 'parking:admin', 'coupon:admin', 'events:admin', 'restaurant:admin'],
     },
     {
       id: 'demo-superadmin',
@@ -88,7 +90,19 @@ function defaultUsers(): SeedUser[] {
       area: 'Administracion',
       status: 'Demo',
       passwordManagedBy: 'database',
-      roles: ['system:demo', 'site:authenticated', 'parking:admin', 'coupon:admin', 'events:admin'],
+      roles: ['system:demo', 'site:authenticated', 'parking:admin', 'coupon:admin', 'events:admin', 'restaurant:admin'],
+    },
+    {
+      id: 'demo-restaurante',
+      name: 'Dueno de Restaurante',
+      username: 'restaurante',
+      email: 'restaurante@herediano.com',
+      password: 'restaurante1921',
+      role: 'Mi restaurante',
+      area: 'Restaurantes',
+      status: 'Demo',
+      passwordManagedBy: 'database',
+      roles: ['system:demo', 'site:authenticated', 'parking:invitado', 'coupon:socio', 'restaurant:owner'],
     },
     {
       id: 'demo-parqueo',

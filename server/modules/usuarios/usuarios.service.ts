@@ -45,6 +45,12 @@ function eventsRole(roles: string[]): AdminUser['eventsRole'] {
   return 'ninguno';
 }
 
+function restaurantRole(roles: string[]): AdminUser['restaurantRole'] {
+  if (hasRole(roles, 'restaurant:admin')) return 'admin';
+  if (hasRole(roles, 'restaurant:owner')) return 'owner';
+  return 'ninguno';
+}
+
 function toAdminUser(row: UserRow): AdminUser {
   const roles = roleIds(row);
   return {
@@ -58,6 +64,7 @@ function toAdminUser(row: UserRow): AdminUser {
     parkingRole: parkingRole(roles),
     couponRole: couponRole(roles),
     eventsRole: eventsRole(roles),
+    restaurantRole: restaurantRole(roles),
     sponsor: row.sponsor || undefined,
     passwordManagedByEnv: row.password_managed_by === 'env',
     isSuperAdmin: hasRole(roles, 'system:admin'),
@@ -134,6 +141,16 @@ export function canViewSales(user: AdminUser | null | undefined): boolean {
   return Boolean(user && (user.eventsRole === 'admin' || user.eventsRole === 'operador' || user.eventsRole === 'comercial'));
 }
 
+// Administra TODOS los restaurantes y pedidos (staff del club / superadmin).
+export function isRestaurantAdmin(user: AdminUser | null | undefined): boolean {
+  return Boolean(user && (user.isSuperAdmin || user.restaurantRole === 'admin'));
+}
+
+// Puede entrar al modulo de restaurantes: admin del club o dueno de su(s) local(es).
+export function canManageRestaurantes(user: AdminUser | null | undefined): boolean {
+  return Boolean(user && (isRestaurantAdmin(user) || user.restaurantRole === 'owner'));
+}
+
 export function isPasswordManagedByEnv(user: AdminUser | null | undefined): boolean {
   return Boolean(user && (user.passwordManagedByEnv || user.id === ENV_ADMIN_USER_ID));
 }
@@ -169,6 +186,7 @@ export async function listUsers() {
       parkingRole: user.parkingRole,
       couponRole: user.couponRole,
       eventsRole: user.eventsRole,
+      restaurantRole: user.restaurantRole,
       sponsor: user.sponsor,
       passwordManagedByEnv: isPasswordManagedByEnv(user),
       category: row.profile?.category ?? 'staff',

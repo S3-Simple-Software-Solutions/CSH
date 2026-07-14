@@ -26,6 +26,7 @@ function user(overrides: Partial<AdminUser> = {}): AdminUser {
     parkingRole: 'socio',
     couponRole: 'socio',
     eventsRole: 'ninguno',
+    restaurantRole: 'ninguno',
     ...overrides,
   };
 }
