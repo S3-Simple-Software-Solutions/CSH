@@ -106,6 +106,13 @@ restaurantesRouter.put('/admin/api/restaurantes/config', requireAdmin, async (re
   } catch (err) { next(err); }
 });
 
+// Detalle de un restaurante (owner/admin). Va tras los literales (config/owners/ordenes).
+restaurantesRouter.get('/admin/api/restaurantes/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, restaurante: await restaurantes.adminGetRestauranteEditable(String(req.params.id), req.adminUser!) });
+  } catch (err) { next(err); }
+});
+
 restaurantesRouter.put('/admin/api/restaurantes/:id', requireAdmin, async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await restaurantes.adminActualizarRestaurante(String(req.params.id), req.body, req.adminUser!)) });
