@@ -2505,3 +2505,77 @@ th.dt-sorted { color: var(--gold-bright); }
   .sector-card-head { flex-wrap: wrap; gap: 8px 12px; }
   .sector-card-right { order: 3; width: 100%; justify-content: space-between; }
 }
+
+/* ── Comida (restaurantes en el estadio) ─────────────────────────── */
+.menu-item { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.menu-item:last-child { border-bottom: none; }
+.menu-item-img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+.menu-item-body { flex: 1; min-width: 0; }
+.menu-item-price { color: var(--gold); font-weight: 700; font-size: .95rem; }
+.menu-item-stepper { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.menu-item-stepper span { min-width: 18px; text-align: center; font-weight: 700; }
+.btn.icon { padding: 6px; width: 34px; height: 34px; display: inline-grid; place-items: center; }
+
+.cart-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-width: 760px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 20px; background: var(--top-bg); border: 1px solid var(--line); border-bottom: none;
+  border-radius: 12px 12px 0 0; backdrop-filter: blur(8px); }
+.cart-bar .btn { white-space: nowrap; }
+
+.entrega-opts { display: flex; gap: 10px; margin: 4px 0 8px; }
+.entrega-opt { flex: 1; display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--line);
+  border-radius: 8px; cursor: pointer; font-size: .88rem; }
+.entrega-opt.active { border-color: var(--gold); color: var(--gold); background: rgba(201,169,97,.08); }
+.entrega-opt input { accent-color: var(--gold); margin: 0; }
+
+.three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+.order-track { border: 1px solid rgba(201,169,97,.4); }
+.order-track-code { display: flex; gap: 16px; align-items: center; margin: 8px 0 12px; }
+.order-track-code img { background: #fff; border-radius: 8px; padding: 4px; }
+.order-steps { list-style: none; padding: 0; margin: 12px 0; display: flex; flex-direction: column; gap: 10px; }
+.order-steps li { display: flex; align-items: center; gap: 10px; color: var(--muted); font-weight: 600; }
+.order-steps li.done { color: var(--paper); }
+.order-steps .dot { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line);
+  display: inline-grid; place-items: center; font-size: 12px; flex-shrink: 0; }
+.order-steps li.done .dot { background: var(--gold); color: #1a1410; border-color: var(--gold); }
+
+/* ── Restaurantes: panel admin ───────────────────────────────────── */
+.admin-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 18px; border-bottom: 1px solid var(--line); }
+.admin-tabs button { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 14px; cursor: pointer; font-weight: 600; font-size: .92rem; }
+.admin-tabs button.active { color: var(--gold); border-bottom-color: var(--gold); }
+.rest-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.rest-toolbar select, .rest-toolbar input { max-width: 260px; }
+
+.rest-orders { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.rest-order { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface); }
+.rest-order.est-pendiente { border-left: 3px solid #e0a500; }
+.rest-order.est-en_preparacion { border-left: 3px solid #2f80ed; }
+.rest-order.est-listo { border-left: 3px solid #0a7d3a; }
+.rest-order-head { display: flex; align-items: center; justify-content: space-between; }
+.rest-order-head b { font-size: 1.05rem; letter-spacing: .04em; }
+.rest-order-lines { margin: 6px 0; padding-left: 18px; font-size: .9rem; }
+.rest-order-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.pill.est-pendiente { background: rgba(224,165,0,.18); color: #e0a500; }
+.pill.est-en_preparacion { background: rgba(47,128,237,.18); color: #4a97f0; }
+.pill.est-listo, .pill.est-entregada { background: rgba(10,125,58,.18); color: #16a34a; }
+.pill.est-rechazada, .pill.est-cancelada, .pill.danger { background: rgba(200,50,50,.18); color: #e05555; }
+
+.rest-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.rest-card { display: flex; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface); }
+.rest-card-img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+.rest-card-img.empty { display: grid; place-items: center; color: var(--muted); background: rgba(255,255,255,.04); }
+.rest-card-body { flex: 1; min-width: 0; }
+.rest-card-title { display: flex; align-items: center; gap: 8px; }
+.rest-card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.btn.ghost.on { border-color: var(--gold); color: var(--gold); }
+
+.rest-menu-cat { margin: 14px 0; }
+.rest-menu-cat-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 6px; margin-bottom: 6px; }
+.rest-menu-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+.rest-menu-item.off { opacity: .55; }
+.rest-menu-item img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; }
+.rest-menu-item-noimg { width: 44px; height: 44px; border-radius: 6px; display: grid; place-items: center; background: rgba(255,255,255,.04); color: var(--muted); }
+.btn.xs { padding: 5px 7px; width: auto; height: auto; font-size: .8rem; }
+.rest-owners { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
+.rest-owner-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }

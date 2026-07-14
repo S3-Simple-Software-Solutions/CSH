@@ -9,6 +9,7 @@ export interface AdminUser {
   parkingRole: 'admin' | 'socio' | 'invitado';
   couponRole: 'admin' | 'patrocinador' | 'socio';
   eventsRole: 'admin' | 'operador' | 'comercial' | 'ninguno';
+  restaurantRole: 'admin' | 'owner' | 'ninguno';
   sponsor?: string;
   passwordManagedByEnv?: boolean;
   isSuperAdmin?: boolean;

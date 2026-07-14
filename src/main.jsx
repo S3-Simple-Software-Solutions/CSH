@@ -4,7 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import './styles.css';
 import './site.css';
 
-import { PublicParking, PublicCoupons, PublicEntradas, AdminApp, applyTheme, THEME_KEY } from './app-modules.jsx';
+import { PublicParking, PublicCoupons, PublicEntradas, PublicComida, AdminApp, applyTheme, THEME_KEY } from './app-modules.jsx';
 import { ConfirmProvider } from './utils/confirm.jsx';
 import PublicLayout from './layout/PublicLayout.jsx';
 import ServiceLayout from './layout/ServiceLayout.jsx';
@@ -72,6 +72,7 @@ const router = createBrowserRouter([
       { path: '/parqueo', element: <PublicParking /> },
       { path: '/cuponera', element: <PublicCoupons /> },
       { path: '/entradas/*', element: <PublicEntradas /> },
+      { path: '/comida/*', element: <PublicComida /> },
     ],
   },
   { path: '/admin/*', element: <ConfirmProvider><AdminApp /></ConfirmProvider> },

@@ -24,6 +24,7 @@ authRouter.get('/api/session', async (req, res, next) => {
             parkingRole: user.parkingRole,
             couponRole: user.couponRole,
             eventsRole: user.eventsRole,
+            restaurantRole: user.restaurantRole,
             sponsor: user.sponsor,
             isSuperAdmin: user.isSuperAdmin,
           }
@@ -57,7 +58,7 @@ authRouter.post('/admin/sign-in', async (req, res, next) => {
       cookieAttrs(req, ADMIN_COOKIE, '', 0, '/admin'),
       cookieAttrs(req, ADMIN_COOKIE, makeAdminToken(user), ADMIN_SESSION_HOURS * 3600, '/'),
     ]);
-    res.json({ ok: true, user: { id: user.id, name: user.name, role: user.role, parkingRole: user.parkingRole, couponRole: user.couponRole, eventsRole: user.eventsRole, sponsor: user.sponsor, isSuperAdmin: user.isSuperAdmin } });
+    res.json({ ok: true, user: { id: user.id, name: user.name, role: user.role, parkingRole: user.parkingRole, couponRole: user.couponRole, eventsRole: user.eventsRole, restaurantRole: user.restaurantRole, sponsor: user.sponsor, isSuperAdmin: user.isSuperAdmin } });
   } catch (err) {
     next(err);
   }

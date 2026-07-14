@@ -19,6 +19,7 @@ de datos al iniciar la app y se autentican desde `app_users` / `app_user_roles`.
 | `cuponera` | `cuponera1921` | cuponera@herediano.com | Administra cuponera |
 | `patrocinador` | `patrocinador1921` | patrocinador@herediano.com | Gestiona sus propios cupones |
 | `entradas` | `entradas1921` | entradas@herediano.com | Administra entradas/eventos |
+| `restaurante` | `restaurante1921` | restaurante@herediano.com | Dueño: crea y administra sus restaurantes y pedidos (Comida) |
 | `operador` | `operador1921` | operador@herediano.com | Valida puerta + ve ventas |
 | `comercial` | `comercial1921` | comercial@herediano.com | Solo ve reportes de ventas |
 | `taquilla` | `taquilla1921` | taquilla@herediano.com | Valida puerta; parqueo solo lectura |

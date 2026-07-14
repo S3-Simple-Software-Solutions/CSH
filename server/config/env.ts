@@ -50,6 +50,10 @@ export const env = {
   PAYMENTS_PROVIDER: process.env.HEREDIANO_PAYMENTS_PROVIDER || 'stripe',
   STRIPE_SECRET_KEY: process.env.HEREDIANO_STRIPE_SECRET_KEY || '',
   STRIPE_WEBHOOK_SECRET: process.env.HEREDIANO_STRIPE_WEBHOOK_SECRET || '',
+  // Webhook propio del módulo de restaurantes (endpoint separado en Stripe).
+  // Cae al secret de entradas si no se configura uno dedicado.
+  RESTAURANTES_STRIPE_WEBHOOK_SECRET:
+    process.env.HEREDIANO_RESTAURANTES_STRIPE_WEBHOOK_SECRET || process.env.HEREDIANO_STRIPE_WEBHOOK_SECRET || '',
   STRIPE_CURRENCY: process.env.HEREDIANO_STRIPE_CURRENCY || 'crc',
 };
 
