@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, Link } from 'react-router-dom';
-import { ExternalLink, LogIn, LogOut, Menu, ShieldCheck, User, X } from 'lucide-react';
+import { ExternalLink, LogIn, LogOut, Menu, ShieldCheck, SquareParking, Ticket, User, X } from 'lucide-react';
 import { ThemeToggle, isAdminUser } from '../app-modules.jsx';
 import { api } from '../utils/api.js';
 import { club, navMain, navModules, externalLinks } from '../data/club.js';
@@ -94,6 +94,27 @@ export default function SiteHeader() {
           <img src={club.logo} alt="Escudo Club Sport Herediano" />
           <span className="site-brand-name">Herediano</span>
         </Link>
+
+        {/* Accesos rápidos: Entradas + Parqueo siempre visibles en mobile
+            (en desktop se ocultan porque ya aparecen en el nav). */}
+        <div className="site-quick" role="group" aria-label="Accesos rápidos">
+          <NavLink
+            className={({ isActive }) => `chip chip-cta${isActive ? ' active' : ''}`}
+            to="/entradas"
+            onClick={close}
+          >
+            <Ticket size={13} />
+            Entradas
+          </NavLink>
+          <NavLink
+            className={({ isActive }) => `chip${isActive ? ' active' : ''}`}
+            to="/parqueo"
+            onClick={close}
+          >
+            <SquareParking size={13} />
+            Parqueo
+          </NavLink>
+        </div>
 
         {/* Burger (mobile) */}
         <button
