@@ -11,6 +11,9 @@
 /* Burger (solo mobile) */
 .site-burger { display: none; margin-left: auto; background: none; border: 0; color: var(--paper); cursor: pointer; padding: 4px; line-height: 0; }
 
+/* Accesos rápidos (Entradas/Parqueo): solo visibles en mobile (ver @media 900) */
+.site-quick { display: none; }
+
 /* Nav contenedor */
 .site-nav { display: flex; align-items: center; gap: 0; flex: 1; }
 /* Cabecera del drawer y backdrop: solo visibles en mobile (ver media query). */
@@ -302,7 +305,11 @@
   .site-nav-divider { margin: 0 10px; }
 }
 @media (max-width: 900px) {
-  .site-burger { display: inline-flex; }
+  .site-burger { display: inline-flex; margin-left: 8px; }
+
+  /* Entradas + Parqueo siempre visibles, pegados a la derecha antes del burger */
+  .site-quick { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+  .site-quick .chip { padding: 6px 11px; font-size: 11px; }
   /* Quitar backdrop-filter en mobile: si no, .site-top crea un bloque contenedor
      para position:fixed y atrapa el drawer dentro de los 68px del header. */
   .site-top { backdrop-filter: none; }
@@ -352,6 +359,12 @@
   .cal-team.right { align-items: flex-start; text-align: left; }
 }
 @media (max-width: 560px) {
+  /* Liberar ancho para los accesos rápidos: el escudo basta como marca */
+  .site-top-inner > .site-brand .site-brand-name { display: none; }
+  .site-top-inner { gap: 10px; padding: 0 16px; }
+  .site-quick { gap: 5px; }
+  .site-quick .chip { padding: 6px 10px; font-size: 10.5px; letter-spacing: .03em; }
+
   .site-foot-inner { grid-template-columns: 1fr; }
   .match-feature-body { grid-template-columns: 1fr; }
   .match-vs { flex-direction: row; gap: 10px; justify-content: center; }
