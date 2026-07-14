@@ -5626,56 +5626,203 @@ function RestImageButton({ path, onDone, label }) {
   );
 }
 
-function AdminRestaurantes({ user }) {
-  const [tab, setTab] = useState('pedidos');
+// ---- Página principal: métricas generales + lista de restaurantes ----
+function AdminRestaurantes({ user, route, navigate }) {
   const [data, setData] = useState(null); // { role, restaurantes, owners? }
   const [error, setError] = useState('');
+  const [creando, setCreando] = useState(false);
+  const [duenos, setDuenos] = useState(false);
   const load = () => api('/admin/api/restaurantes').then((d) => { if (d.ok) setData(d); else setError(d.error); });
   useEffect(() => { load(); }, []);
+
+  const m = route.match(/^\/admin\/restaurantes\/([^/]+)$/);
+  const detalleId = m ? m[1] : null;
 
   if (error) return <main className="page"><p className="eyebrow">Restaurantes</p><h1>Error</h1><p className="sub">{error}</p></main>;
   if (!data) return <main className="page"><p>Cargando…</p></main>;
   const isAdmin = data.role === 'admin';
 
+  if (detalleId) {
+    return <AdminRestauranteDetalle id={detalleId} isAdmin={isAdmin} owners={data.owners || []} onBack={() => navigate('/admin/restaurantes')} reloadList={load} />;
+  }
+
   return (
     <main className="page">
       <p className="eyebrow">Comida en el estadio</p>
       <h1>Restaurantes</h1>
-      <div className="admin-tabs">
-        <button className={tab === 'pedidos' ? 'active' : ''} onClick={() => setTab('pedidos')}>Pedidos</button>
-        <button className={tab === 'locales' ? 'active' : ''} onClick={() => setTab('locales')}>{isAdmin ? 'Restaurantes' : 'Mis restaurantes'}</button>
-        <button className={tab === 'menu' ? 'active' : ''} onClick={() => setTab('menu')}>Menú</button>
-        {isAdmin && <button className={tab === 'duenos' ? 'active' : ''} onClick={() => setTab('duenos')}>Dueños</button>}
-        {isAdmin && <button className={tab === 'config' ? 'active' : ''} onClick={() => setTab('config')}>Configuración</button>}
+      <RestMetrics restaurantes={data.restaurantes} />
+      <div className="rest-toolbar">
+        <button className="btn" onClick={() => setCreando(true)}><Plus size={16} /> Nuevo restaurante</button>
+        {isAdmin && <button className="btn ghost" onClick={() => setDuenos(true)}><Users size={15} /> Dueños</button>}
+        {isAdmin && <RestFeeInline />}
       </div>
-
-      {tab === 'pedidos' && <RestOrdenes restaurantes={data.restaurantes} isAdmin={isAdmin} />}
-      {tab === 'locales' && <RestLocales data={data} isAdmin={isAdmin} reload={load} />}
-      {tab === 'menu' && <RestMenu restaurantes={data.restaurantes} />}
-      {tab === 'duenos' && isAdmin && <RestOwners />}
-      {tab === 'config' && isAdmin && <RestConfig />}
+      {data.restaurantes.length === 0 && <div className="result empty">Aún no hay restaurantes. Creá el primero.</div>}
+      <div className="rest-cards">
+        {data.restaurantes.map((r) => (
+          <button key={r.id} className="rest-card as-link" onClick={() => navigate(`/admin/restaurantes/${r.id}`)}>
+            {r.imagenUrl ? <img className="rest-card-img" src={r.imagenUrl} alt="" /> : <div className="rest-card-img empty"><UtensilsCrossed size={28} /></div>}
+            <div className="rest-card-body">
+              <div className="rest-card-title"><b>{r.nombre}</b>{r.estado === 'suspendido' && <span className="pill danger">Suspendido</span>}<span className={`pill${r.abierto ? ' est-listo' : ''}`}>{r.abierto ? 'Abierto' : 'Cerrado'}</span></div>
+              <p className="muted" style={{ margin: '2px 0' }}>{r.ubicacion || 'Estadio'} · ~{r.tiempoPrepMin} min</p>
+            </div>
+            <span className="rest-card-cta">Ver detalle →</span>
+          </button>
+        ))}
+      </div>
+      {creando && <RestCrearModal isAdmin={isAdmin} owners={data.owners || []} onClose={() => setCreando(false)} onSaved={(id) => { setCreando(false); load(); navigate(`/admin/restaurantes/${id}`); }} />}
+      {duenos && <Modal title="Dueños de restaurante" onClose={() => setDuenos(false)}><RestOwners /></Modal>}
     </main>
   );
 }
 
-function RestOrdenes({ restaurantes, isAdmin }) {
-  const [restauranteId, setRestauranteId] = useState('');
+function RestMetrics({ restaurantes }) {
+  const [activos, setActivos] = useState(null);
+  useEffect(() => { api('/admin/api/restaurantes/ordenes?filtro=activas').then((d) => { if (d.ok) setActivos(d.ordenes.length); }); }, []);
+  const abiertos = restaurantes.filter((r) => r.abierto).length;
+  return (
+    <div className="rest-metrics">
+      <div className="rest-metric"><b>{restaurantes.length}</b><span>Restaurantes</span></div>
+      <div className="rest-metric"><b>{abiertos}</b><span>Abiertos ahora</span></div>
+      <div className="rest-metric"><b>{activos ?? '—'}</b><span>Pedidos activos</span></div>
+    </div>
+  );
+}
+
+// Cargo por servicio global (admin), editable inline en la barra de acciones.
+function RestFeeInline() {
+  const [fee, setFee] = useState(null);
+  const [edit, setEdit] = useState(false);
+  const [val, setVal] = useState('');
+  useEffect(() => { api('/admin/api/restaurantes/config').then((d) => { if (d.ok) setFee(d.config.feeCrcDefault); }); }, []);
+  async function save() { const d = await api('/admin/api/restaurantes/config', { method: 'PUT', body: JSON.stringify({ feeCrcDefault: Number(val) }) }); if (d.ok) { setFee(d.config.feeCrcDefault); setEdit(false); } }
+  if (fee == null) return null;
+  return edit
+    ? <span className="rest-fee-inline"><input type="number" min="0" value={val} onChange={(e) => setVal(e.target.value)} style={{ width: 90 }} /><button className="btn xs" onClick={save}>OK</button><button className="btn ghost xs" onClick={() => setEdit(false)}>×</button></span>
+    : <button className="btn ghost" onClick={() => { setVal(String(fee)); setEdit(true); }}>Cargo por servicio: {money(fee)} <Pencil size={13} /></button>;
+}
+
+function RestCrearModal({ isAdmin, owners, onClose, onSaved }) {
+  const [nombre, setNombre] = useState('');
+  const [ownerUserId, setOwnerUserId] = useState(owners[0]?.id || '');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function submit() {
+    setSaving(true); setError('');
+    const body = { nombre };
+    if (isAdmin && ownerUserId) body.ownerUserId = ownerUserId;
+    const d = await api('/admin/api/restaurantes', { method: 'POST', body: JSON.stringify(body) });
+    setSaving(false);
+    if (!d.ok) return setError(d.error);
+    onSaved(d.restaurante.id);
+  }
+  return (
+    <Modal title="Nuevo restaurante" onClose={onClose}>
+      <label>Nombre</label><input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Soda La Herediana" />
+      {isAdmin && owners.length > 0 && (
+        <><label>Dueño</label><select value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)}>{owners.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}</select></>
+      )}
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit} disabled={saving || !nombre.trim()}>{saving ? 'Creando…' : 'Crear y configurar'}</button>
+    </Modal>
+  );
+}
+
+// ---- Detalle de un restaurante: tabs Detalle / Menú / Pedidos ----
+function AdminRestauranteDetalle({ id, isAdmin, owners, onBack, reloadList }) {
+  const [tab, setTab] = useState('detalle');
+  const [restaurante, setRestaurante] = useState(null);
+  const [error, setError] = useState('');
+  const load = () => api(`/admin/api/restaurantes/${id}`).then((d) => { if (d.ok) setRestaurante(d.restaurante); else setError(d.error); });
+  useEffect(() => { load(); }, [id]);
+
+  if (error) return <main className="page"><button className="btn ghost" onClick={onBack}>← Restaurantes</button><h1>No disponible</h1><p className="sub">{error}</p></main>;
+  if (!restaurante) return <main className="page"><p>Cargando…</p></main>;
+
+  return (
+    <main className="page">
+      <button className="btn ghost" onClick={onBack} style={{ marginBottom: 10 }}>← Restaurantes</button>
+      <div className="rest-detail-head">
+        {restaurante.imagenUrl ? <img src={restaurante.imagenUrl} alt="" /> : <div className="rest-detail-noimg"><UtensilsCrossed size={30} /></div>}
+        <div>
+          <h1 style={{ margin: 0 }}>{restaurante.nombre}</h1>
+          <p className="muted" style={{ margin: '4px 0' }}>{restaurante.ubicacion || 'Estadio'} · ~{restaurante.tiempoPrepMin} min · <span className={restaurante.abierto ? 'txt-abierto' : ''}>{restaurante.abierto ? 'Abierto' : 'Cerrado'}</span></p>
+        </div>
+      </div>
+      <div className="admin-tabs">
+        <button className={tab === 'detalle' ? 'active' : ''} onClick={() => setTab('detalle')}>Detalle</button>
+        <button className={tab === 'menu' ? 'active' : ''} onClick={() => setTab('menu')}>Menú</button>
+        <button className={tab === 'pedidos' ? 'active' : ''} onClick={() => setTab('pedidos')}>Pedidos</button>
+      </div>
+      {tab === 'detalle' && <RestDetalleInfo restaurante={restaurante} isAdmin={isAdmin} reload={() => { load(); reloadList(); }} onDeleted={() => { reloadList(); onBack(); }} />}
+      {tab === 'menu' && <RestMenuPanel restauranteId={id} />}
+      {tab === 'pedidos' && <RestOrdenesPanel restauranteId={id} />}
+    </main>
+  );
+}
+
+// El detalle ES la vista de edición: al pulsar "Editar" los mismos campos se
+// vuelven inputs; el layout no cambia.
+function RestDetalleInfo({ restaurante, isAdmin, reload, onDeleted }) {
+  const confirm = useConfirm();
+  const [edit, setEdit] = useState(false);
+  const [form, setForm] = useState(restaurante);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { setForm(restaurante); }, [restaurante]);
+
+  async function toggleAbierto() {
+    const d = await api(`/admin/api/restaurantes/${restaurante.id}`, { method: 'PUT', body: JSON.stringify({ abierto: !restaurante.abierto }) });
+    if (d.ok) reload();
+  }
+  async function save() {
+    setSaving(true); setError('');
+    const body = { nombre: form.nombre, descripcion: form.descripcion, ubicacion: form.ubicacion, tiempoPrepMin: Number(form.tiempoPrepMin) };
+    if (isAdmin) body.estado = form.estado;
+    const d = await api(`/admin/api/restaurantes/${restaurante.id}`, { method: 'PUT', body: JSON.stringify(body) });
+    setSaving(false);
+    if (!d.ok) return setError(d.error);
+    setEdit(false); reload();
+  }
+  async function eliminar() {
+    if (!(await confirm({ title: `¿Eliminar ${restaurante.nombre}?`, message: 'Se borra el restaurante y su menú.', danger: true, confirmLabel: 'Eliminar' }))) return;
+    const d = await api(`/admin/api/restaurantes/${restaurante.id}`, { method: 'DELETE' });
+    if (d.ok) onDeleted();
+  }
+
+  const field = (label, view, input) => (
+    <div className="rest-field"><span className="rest-field-label">{label}</span>{edit ? input : view}</div>
+  );
+
+  return (
+    <section>
+      <div className="rest-detail-actions">
+        <button className={`btn ghost${restaurante.abierto ? ' on' : ''}`} onClick={toggleAbierto}>{restaurante.abierto ? <><ToggleRight size={16} /> Abierto</> : <><ToggleLeft size={16} /> Cerrado</>}</button>
+        <RestImageButton path={`/admin/api/restaurantes/${restaurante.id}/imagen`} onDone={reload} label="Cambiar foto" />
+        {!edit
+          ? <button className="btn" onClick={() => setEdit(true)}><Pencil size={15} /> Editar</button>
+          : <><button className="btn" onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</button><button className="btn ghost" onClick={() => { setEdit(false); setForm(restaurante); setError(''); }}>Cancelar</button></>}
+        {isAdmin && <button className="btn ghost danger" onClick={eliminar} title="Eliminar"><Trash2 size={15} /></button>}
+      </div>
+      {error && <div className="error">{error}</div>}
+      <div className="rest-fields">
+        {field('Nombre', <b>{restaurante.nombre}</b>, <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />)}
+        {field('Descripción', <span>{restaurante.descripcion || '—'}</span>, <input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />)}
+        {field('Ubicación', <span>{restaurante.ubicacion || '—'}</span>, <input value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} placeholder="Gradería Norte, local 2" />)}
+        {field('Tiempo de preparación', <span>~{restaurante.tiempoPrepMin} min</span>, <input type="number" min="1" value={form.tiempoPrepMin} onChange={(e) => setForm({ ...form, tiempoPrepMin: e.target.value })} />)}
+        {isAdmin && field('Estado', <span>{restaurante.estado === 'suspendido' ? 'Suspendido' : 'Activo'}</span>, <select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })}><option value="activo">Activo</option><option value="suspendido">Suspendido</option></select>)}
+      </div>
+    </section>
+  );
+}
+
+// ---- Pedidos de un restaurante (tablero en vivo) ----
+function RestOrdenesPanel({ restauranteId }) {
   const [soloActivas, setSoloActivas] = useState(true);
   const [ordenes, setOrdenes] = useState([]);
-  const [rechazar, setRechazar] = useState(null); // orden a rechazar
+  const [rechazar, setRechazar] = useState(null);
   const [motivo, setMotivo] = useState('');
-
-  const cargar = () => {
-    const qs = new URLSearchParams();
-    if (restauranteId) qs.set('restauranteId', restauranteId);
-    qs.set('filtro', soloActivas ? 'activas' : 'todas');
-    return api(`/admin/api/restaurantes/ordenes?${qs}`).then((d) => { if (d.ok) setOrdenes(d.ordenes); });
-  };
-  useEffect(() => {
-    cargar();
-    const t = setInterval(cargar, 5000); // tablero en vivo
-    return () => clearInterval(t);
-  }, [restauranteId, soloActivas]);
+  const cargar = () => api(`/admin/api/restaurantes/ordenes?restauranteId=${restauranteId}&filtro=${soloActivas ? 'activas' : 'todas'}`).then((d) => { if (d.ok) setOrdenes(d.ordenes); });
+  useEffect(() => { cargar(); const t = setInterval(cargar, 5000); return () => clearInterval(t); }, [restauranteId, soloActivas]);
 
   async function mover(orden, estado, motivoText = '') {
     const d = await api(`/admin/api/restaurantes/ordenes/${orden.id}/estado`, { method: 'POST', body: JSON.stringify({ estado, motivo: motivoText }) });
@@ -5685,32 +5832,16 @@ function RestOrdenes({ restaurantes, isAdmin }) {
   return (
     <section>
       <div className="rest-toolbar">
-        {restaurantes.length > 1 && (
-          <select value={restauranteId} onChange={(e) => setRestauranteId(e.target.value)}>
-            <option value="">Todos mis restaurantes</option>
-            {restaurantes.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-          </select>
-        )}
         <label className="check"><input type="checkbox" checked={!soloActivas} onChange={(e) => setSoloActivas(!e.target.checked)} /> Ver historial completo</label>
       </div>
-
       {ordenes.length === 0 && <div className="result empty">No hay pedidos {soloActivas ? 'activos' : ''} por ahora.</div>}
-
       <div className="rest-orders">
         {ordenes.map((o) => (
           <div key={o.id} className={`rest-order est-${o.estado}`}>
-            <div className="rest-order-head">
-              <b>{o.codigo}</b>
-              <span className={`pill est-${o.estado}`}>{REST_EST_LABEL[o.estado] || o.estado}</span>
-            </div>
-            {isAdmin && <p className="muted" style={{ margin: '2px 0' }}>{o.restauranteNombre}</p>}
+            <div className="rest-order-head"><b>{o.codigo}</b><span className={`pill est-${o.estado}`}>{REST_EST_LABEL[o.estado] || o.estado}</span></div>
             <p style={{ margin: '2px 0' }}>{o.clienteNombre}{o.clienteTelefono ? ` · ${o.clienteTelefono}` : ''}</p>
-            <p className="muted" style={{ margin: '2px 0' }}>
-              {o.entrega?.tipo === 'asiento' ? `Asiento: Sec ${o.entrega.seccion}, Fila ${o.entrega.fila}, #${o.entrega.asiento}` : 'Retiro en el local'}
-            </p>
-            <ul className="rest-order-lines">
-              {o.lineas.map((l, i) => <li key={i}>{l.cantidad}× {l.nombre}</li>)}
-            </ul>
+            <p className="muted" style={{ margin: '2px 0' }}>{o.entrega?.tipo === 'asiento' ? `Asiento: Sec ${o.entrega.seccion}, Fila ${o.entrega.fila}, #${o.entrega.asiento}` : 'Retiro en el local'}</p>
+            <ul className="rest-order-lines">{o.lineas.map((l, i) => <li key={i}>{l.cantidad}× {l.nombre}</li>)}</ul>
             {o.notas && <p className="muted" style={{ fontStyle: 'italic' }}>“{o.notas}”</p>}
             <p style={{ fontWeight: 700 }}>{money(o.totalCrc)}</p>
             {o.estado === 'rechazada' && o.rechazoMotivo && <p className="muted">Motivo: {o.rechazoMotivo}</p>}
@@ -5723,7 +5854,6 @@ function RestOrdenes({ restaurantes, isAdmin }) {
           </div>
         ))}
       </div>
-
       {rechazar && (
         <Modal title={`Rechazar pedido ${rechazar.codigo}`} onClose={() => setRechazar(null)}>
           <label>Motivo (se le muestra al cliente)</label>
@@ -5736,98 +5866,14 @@ function RestOrdenes({ restaurantes, isAdmin }) {
   );
 }
 
-function RestLocales({ data, isAdmin, reload }) {
-  const confirm = useConfirm();
-  const [editing, setEditing] = useState(null); // restaurante o {} para nuevo
-  async function toggleAbierto(r) {
-    const d = await api(`/admin/api/restaurantes/${r.id}`, { method: 'PUT', body: JSON.stringify({ abierto: !r.abierto }) });
-    if (d.ok) reload();
-  }
-  async function eliminar(r) {
-    if (!(await confirm({ title: `¿Eliminar ${r.nombre}?`, message: 'Se borrará el restaurante y su menú.', danger: true, confirmLabel: 'Eliminar' }))) return;
-    const d = await api(`/admin/api/restaurantes/${r.id}`, { method: 'DELETE' });
-    if (d.ok) reload();
-  }
-  return (
-    <section>
-      <div className="rest-toolbar">
-        <button className="btn" onClick={() => setEditing({})}><Plus size={16} /> Nuevo restaurante</button>
-      </div>
-      {data.restaurantes.length === 0 && <div className="result empty">Aún no tenés restaurantes. Creá el primero.</div>}
-      <div className="rest-cards">
-        {data.restaurantes.map((r) => (
-          <div key={r.id} className="rest-card">
-            {r.imagenUrl ? <img className="rest-card-img" src={r.imagenUrl} alt={r.nombre} /> : <div className="rest-card-img empty"><UtensilsCrossed size={28} /></div>}
-            <div className="rest-card-body">
-              <div className="rest-card-title"><b>{r.nombre}</b>{r.estado === 'suspendido' && <span className="pill danger">Suspendido</span>}</div>
-              <p className="muted" style={{ margin: '2px 0' }}>{r.ubicacion || 'Estadio'} · ~{r.tiempoPrepMin} min</p>
-              <div className="rest-card-actions">
-                <button className={`btn ghost${r.abierto ? ' on' : ''}`} onClick={() => toggleAbierto(r)}>{r.abierto ? <><ToggleRight size={16} /> Abierto</> : <><ToggleLeft size={16} /> Cerrado</>}</button>
-                <button className="btn ghost" onClick={() => setEditing(r)}><Pencil size={15} /> Editar</button>
-                <RestImageButton path={`/admin/api/restaurantes/${r.id}/imagen`} onDone={reload} label="Foto" />
-                {isAdmin && <button className="btn ghost danger" onClick={() => eliminar(r)}><Trash2 size={15} /></button>}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      {editing && <RestauranteModal restaurante={editing} isAdmin={isAdmin} owners={data.owners || []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
-    </section>
-  );
-}
-
-function RestauranteModal({ restaurante, isAdmin, owners, onClose, onSaved }) {
-  const nuevo = !restaurante.id;
-  const [form, setForm] = useState({
-    nombre: restaurante.nombre || '',
-    descripcion: restaurante.descripcion || '',
-    ubicacion: restaurante.ubicacion || '',
-    tiempoPrepMin: restaurante.tiempoPrepMin || 15,
-    ownerUserId: restaurante.ownerUserId || (owners[0]?.id || ''),
-    estado: restaurante.estado || 'activo',
-  });
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  async function submit() {
-    setError(''); setSaving(true);
-    const body = { nombre: form.nombre, descripcion: form.descripcion, ubicacion: form.ubicacion, tiempoPrepMin: Number(form.tiempoPrepMin) };
-    if (isAdmin && nuevo) body.ownerUserId = form.ownerUserId;
-    if (isAdmin && !nuevo) body.estado = form.estado;
-    const d = nuevo
-      ? await api('/admin/api/restaurantes', { method: 'POST', body: JSON.stringify(body) })
-      : await api(`/admin/api/restaurantes/${restaurante.id}`, { method: 'PUT', body: JSON.stringify(body) });
-    setSaving(false);
-    if (!d.ok) return setError(d.error);
-    onSaved();
-  }
-  return (
-    <Modal title={nuevo ? 'Nuevo restaurante' : 'Editar restaurante'} onClose={onClose}>
-      <label>Nombre</label><input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} autoFocus />
-      <label>Descripción</label><input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
-      <label>Ubicación en el estadio</label><input value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })} placeholder="Gradería Norte, local 2" />
-      <label>Tiempo de preparación (min)</label><input type="number" min="1" value={form.tiempoPrepMin} onChange={(e) => setForm({ ...form, tiempoPrepMin: e.target.value })} />
-      {isAdmin && nuevo && owners.length > 0 && (
-        <><label>Dueño</label><select value={form.ownerUserId} onChange={(e) => setForm({ ...form, ownerUserId: e.target.value })}>{owners.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}</select></>
-      )}
-      {isAdmin && !nuevo && (
-        <><label>Estado</label><select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })}><option value="activo">Activo</option><option value="suspendido">Suspendido</option></select></>
-      )}
-      {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={submit} disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</button>
-    </Modal>
-  );
-}
-
-function RestMenu({ restaurantes }) {
-  const [restauranteId, setRestauranteId] = useState(restaurantes[0]?.id || '');
+// ---- Menú de un restaurante ----
+function RestMenuPanel({ restauranteId }) {
   const [menu, setMenu] = useState(null); // { categorias, items }
   const [editCat, setEditCat] = useState(null);
   const [editItem, setEditItem] = useState(null);
   const confirm = useConfirm();
-  const load = () => { if (restauranteId) api(`/admin/api/restaurantes/${restauranteId}/menu`).then((d) => { if (d.ok) setMenu({ categorias: d.categorias, items: d.items }); }); };
+  const load = () => api(`/admin/api/restaurantes/${restauranteId}/menu`).then((d) => { if (d.ok) setMenu({ categorias: d.categorias, items: d.items }); });
   useEffect(() => { load(); }, [restauranteId]);
-
-  if (!restaurantes.length) return <div className="result empty">Creá un restaurante primero.</div>;
 
   async function borrarItem(it) {
     if (!(await confirm({ title: `¿Eliminar ${it.nombre}?`, danger: true, confirmLabel: 'Eliminar' }))) return;
@@ -5847,11 +5893,6 @@ function RestMenu({ restaurantes }) {
   return (
     <section>
       <div className="rest-toolbar">
-        {restaurantes.length > 1 && (
-          <select value={restauranteId} onChange={(e) => setRestauranteId(e.target.value)}>
-            {restaurantes.map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-          </select>
-        )}
         <button className="btn ghost" onClick={() => setEditCat({})}><Plus size={15} /> Categoría</button>
         <button className="btn" onClick={() => setEditItem({})}><Plus size={16} /> Producto</button>
       </div>
@@ -5869,6 +5910,7 @@ function RestMenu({ restaurantes }) {
               {menu.items.filter((i) => !i.categoriaId).map((it) => <RestItemRow key={it.id} it={it} onEdit={() => setEditItem(it)} onToggle={() => toggleDisp(it)} onDelete={() => borrarItem(it)} onImage={load} />)}
             </div>
           )}
+          {menu.categorias.length === 0 && menu.items.length === 0 && <div className="result empty">Todavía no hay productos. Agregá una categoría y productos.</div>}
         </>
       )}
       {editCat && <RestCategoriaModal restauranteId={restauranteId} categoria={editCat} onClose={() => setEditCat(null)} onSaved={() => { setEditCat(null); load(); }} />}
@@ -5968,29 +6010,6 @@ function RestOwners() {
           </div>
         ))}
       </div>
-    </section>
-  );
-}
-
-function RestConfig() {
-  const [fee, setFee] = useState('');
-  const [msg, setMsg] = useState(null);
-  const [saving, setSaving] = useState(false);
-  useEffect(() => { api('/admin/api/restaurantes/config').then((d) => { if (d.ok) setFee(String(d.config.feeCrcDefault)); }); }, []);
-  async function save() {
-    setSaving(true); setMsg(null);
-    const d = await api('/admin/api/restaurantes/config', { method: 'PUT', body: JSON.stringify({ feeCrcDefault: Number(fee) }) });
-    setSaving(false);
-    setMsg(d.ok ? { type: 'ok', text: 'Cargo por servicio actualizado.' } : { type: 'error', text: d.error });
-  }
-  return (
-    <section className="card" style={{ maxWidth: 420 }}>
-      <h2 style={{ marginTop: 0 }}>Cargo por servicio</h2>
-      <p className="muted">Monto fijo que se agrega a cada pedido (en colones).</p>
-      <label>Cargo por servicio (₡)</label>
-      <input type="number" min="0" value={fee} onChange={(e) => setFee(e.target.value)} />
-      {msg && <div className={msg.type === 'error' ? 'error' : 'muted'}>{msg.text}</div>}
-      <button className="btn" onClick={save} disabled={saving} style={{ marginTop: 10 }}>{saving ? 'Guardando…' : 'Guardar'}</button>
     </section>
   );
 }

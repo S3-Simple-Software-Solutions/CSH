@@ -2579,3 +2579,24 @@ th.dt-sorted { color: var(--gold-bright); }
 .btn.xs { padding: 5px 7px; width: auto; height: auto; font-size: .8rem; }
 .rest-owners { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
 .rest-owner-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+
+/* ── Restaurantes admin: métricas + detalle ─────────────────────── */
+.rest-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 14px 0 18px; }
+.rest-metric { border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: var(--surface); text-align: center; }
+.rest-metric b { display: block; font-family: var(--font-display); font-size: 1.9rem; color: var(--gold); line-height: 1; }
+.rest-metric span { color: var(--muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+.rest-card.as-link { width: 100%; text-align: left; cursor: pointer; align-items: center; background: var(--surface); color: inherit; font: inherit; }
+.rest-card.as-link:hover { border-color: var(--gold); }
+.rest-card-cta { margin-left: auto; color: var(--gold); font-weight: 600; font-size: .9rem; white-space: nowrap; align-self: center; }
+.rest-fee-inline { display: inline-flex; align-items: center; gap: 6px; }
+.txt-abierto { color: #16a34a; font-weight: 700; }
+
+.rest-detail-head { display: flex; gap: 14px; align-items: center; margin-bottom: 6px; }
+.rest-detail-head img { width: 76px; height: 76px; object-fit: cover; border-radius: 10px; }
+.rest-detail-noimg { width: 76px; height: 76px; border-radius: 10px; display: grid; place-items: center; background: rgba(255,255,255,.04); color: var(--muted); }
+.rest-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.rest-fields { display: flex; flex-direction: column; gap: 2px; max-width: 560px; }
+.rest-field { display: grid; grid-template-columns: 180px 1fr; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.rest-field-label { color: var(--muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; }
+.rest-field input, .rest-field select { width: 100%; }
+@media (max-width: 560px) { .rest-field { grid-template-columns: 1fr; gap: 3px; } }
