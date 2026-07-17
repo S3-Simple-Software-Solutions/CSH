@@ -28,9 +28,152 @@
 /* Separador vertical entre bloques */
 .site-nav-divider { display: block; width: 1px; height: 22px; background: var(--line); margin: 0 14px; flex-shrink: 0; }
 
-/* Bloque derecho: módulos + utilidades */
-.site-nav-modules { display: flex; align-items: center; gap: 8px; }
+/* Bloque derecho: módulos */
+.site-nav-modules { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .site-nav-util-sep { display: block; width: 1px; height: 18px; background: var(--line); margin: 0 4px; flex-shrink: 0; }
+.site-nav-drawer-util { display: none; }
+
+/* Acciones fijas en la barra superior (desktop) */
+.site-top-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.site-top-auth {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.site-top-auth-login {
+  color: var(--muted);
+  text-decoration: none;
+  font-family: var(--font-label);
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 8px 2px;
+  transition: color .15s;
+}
+.site-top-auth-login:hover { color: var(--paper); }
+.site-top-auth-register {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-family: var(--font-label);
+  font-size: 11.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #1a1208;
+  background: var(--gold);
+  border: 1px solid rgba(201,169,97,.7);
+  transition: background .15s, transform .15s;
+}
+.site-top-auth-register:hover {
+  background: #e0c989;
+  color: #120d06;
+}
+
+.site-top-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.site-top-user-link,
+.site-top-user-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-label);
+  font-size: 11.5px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 7px 12px;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.site-top-user-link {
+  color: var(--paper);
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.03);
+}
+.site-top-user-link:hover { border-color: var(--gold); color: var(--gold); }
+.site-top-user-admin { border-color: rgba(214,40,40,.45); color: #ff8a8a; }
+.site-top-user-admin:hover { border-color: var(--red); color: #ff8a8a; background: rgba(214,40,40,.1); }
+.site-top-user-logout {
+  color: var(--muted);
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+}
+.site-top-user-logout:hover { color: var(--paper); border-color: var(--line); }
+
+/* Acceso rapido en barra mobile */
+.site-quick-login {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  text-decoration: none;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.site-quick-login:hover { border-color: var(--gold); color: var(--gold); }
+.site-quick-login-user { color: var(--paper); background: rgba(255,255,255,.04); }
+
+/* Tarjeta de cuenta en drawer mobile */
+.site-auth-card {
+  display: none;
+  margin: 0;
+  padding: 18px 20px 20px;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(201,169,97,.12) 0%, rgba(201,169,97,.03) 100%),
+    var(--surface);
+}
+.site-auth-card-eyebrow {
+  margin: 0 0 6px;
+  font-family: var(--font-label);
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.site-auth-card-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.05;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+.site-auth-card-copy {
+  margin: 10px 0 16px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 28ch;
+}
+.site-auth-card-actions {
+  display: grid;
+  gap: 10px;
+}
+.site-auth-card-primary,
+.site-auth-card-secondary {
+  width: 100%;
+  justify-content: center;
+  margin-top: 0;
+}
 
 /* Chips base */
 .chip { display: inline-flex; align-items: center; gap: 5px; color: var(--paper); text-decoration: none; font-family: var(--font-label); font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; white-space: nowrap; transition: border-color .15s, color .15s, background .15s; }
@@ -53,8 +196,8 @@
 
 /* Sesión (usuario logueado en el navbar público) */
 .site-nav-user { display: inline-flex; align-items: center; gap: 6px; }
-.chip-user { border-color: var(--line); color: var(--paper); cursor: default; }
-.chip-user:hover { border-color: var(--line); color: var(--paper); }
+.chip-user { border-color: var(--line); color: var(--paper); }
+.chip-user:hover { border-color: var(--gold); color: var(--gold); }
 
 /* Hero */
 .hero { position: relative; min-height: 560px; display: flex; align-items: flex-end; background-size: cover; background-position: center 30%; background-color: #0a0908; }
@@ -307,8 +450,18 @@
 @media (max-width: 900px) {
   .site-burger { display: inline-flex; margin-left: 8px; }
 
-  /* Entradas + Parqueo siempre visibles, pegados a la derecha antes del burger */
-  .site-quick { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+  .site-top-actions { display: none; }
+
+  .site-quick {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+  .site-quick-login { display: inline-flex; }
+
+  .site-auth-card { display: block; }
+  .site-nav-drawer-util { display: flex; width: 100%; padding: 16px 20px; border-bottom: 1px solid var(--line); }
   .site-quick .chip { padding: 6px 11px; font-size: 11px; }
   /* Quitar backdrop-filter en mobile: si no, .site-top crea un bloque contenedor
      para position:fixed y atrapa el drawer dentro de los 68px del header. */
