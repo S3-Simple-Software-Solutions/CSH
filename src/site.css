@@ -180,10 +180,11 @@
 .chip:hover { border-color: var(--gold); color: var(--gold); }
 .chip.active { border-color: var(--gold); color: var(--gold); background: rgba(201,169,97,.1); }
 
-/* CTA principal: Entradas */
-.chip-cta { border-color: var(--gold); color: var(--gold); background: rgba(201,169,97,.1); font-weight: 600; }
-.chip-cta:hover { background: rgba(201,169,97,.2); color: var(--gold); }
-.chip-cta.active { background: rgba(201,169,97,.22); }
+/* CTA principal: Entradas — relleno dorado sólido para máxima visibilidad. */
+.chip-cta { border-color: var(--gold); color: #1a1206; background: var(--gold); font-weight: 700; letter-spacing: .06em; box-shadow: 0 2px 12px rgba(201,169,97,.32); }
+.chip-cta:hover { background: #dcc079; border-color: #dcc079; color: #1a1206; box-shadow: 0 3px 16px rgba(201,169,97,.45); }
+.chip-cta.active { background: #dcc079; border-color: #dcc079; color: #1a1206; }
+.chip-cta svg { color: #1a1206; }
 
 /* Ghost: Tienda */
 .chip-ghost { color: var(--muted); border-color: transparent; }
@@ -463,6 +464,8 @@
   .site-auth-card { display: block; }
   .site-nav-drawer-util { display: flex; width: 100%; padding: 16px 20px; border-bottom: 1px solid var(--line); }
   .site-quick .chip { padding: 6px 11px; font-size: 11px; }
+  /* El CTA de Entradas resalta más que el resto en el header mobile. */
+  .site-quick .chip-cta { padding: 8px 15px; font-size: 12px; }
   /* Quitar backdrop-filter en mobile: si no, .site-top crea un bloque contenedor
      para position:fixed y atrapa el drawer dentro de los 68px del header. */
   .site-top { backdrop-filter: none; }
@@ -517,6 +520,7 @@
   .site-top-inner { gap: 10px; padding: 0 16px; }
   .site-quick { gap: 5px; }
   .site-quick .chip { padding: 6px 10px; font-size: 10.5px; letter-spacing: .03em; }
+  .site-quick .chip-cta { padding: 8px 14px; font-size: 11.5px; letter-spacing: .05em; }
 
   .site-foot-inner { grid-template-columns: 1fr; }
   .match-feature-body { grid-template-columns: 1fr; }

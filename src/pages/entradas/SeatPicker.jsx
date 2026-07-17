@@ -219,11 +219,14 @@ function buildBowlLayout(asientos, orientation) {
 }
 
 function seatVisual(estado, selected, accent) {
-  if (selected) return { fill: '#c9a961', stroke: '#fff', strokeWidth: 1.6, num: '#181205', cls: 'sp-seat--selected' };
-  if (estado === 'vendido') return { fill: '#3c3230', stroke: '#2a2422', strokeWidth: 1, num: '#8a7570', cls: 'sp-seat--vendido' };
+  // Estados con colores de HUE distinto para máxima legibilidad de un vistazo:
+  // seleccionada = verde vívido, vendida = rojo oscuro apagado, disponible =
+  // tinte del color de zona (dorado/acento), en proceso = ámbar.
+  if (selected) return { fill: '#22c55e', stroke: '#eafff0', strokeWidth: 1.8, num: '#052e14', cls: 'sp-seat--selected' };
+  if (estado === 'vendido') return { fill: '#5b2b2b', stroke: '#3a1c1c', strokeWidth: 1, num: '#d99', cls: 'sp-seat--vendido' };
   if (estado === 'bloqueado') return { fill: 'url(#sp-hatch)', stroke: '#4a4a4a', strokeWidth: 1, num: '#888', cls: 'sp-seat--bloqueado' };
-  if (estado === 'reservado') return { fill: 'rgba(212,168,75,.28)', stroke: '#d4a84b', strokeWidth: 1.2, num: '#e8c987', cls: 'sp-seat--reservado' };
-  return { fill: hexToRgba(accent, 0.16), stroke: hexToRgba(accent, 0.85), strokeWidth: 1.2, num: hexToRgba(accent, 0.95), cls: 'sp-seat--libre' };
+  if (estado === 'reservado') return { fill: 'rgba(245,158,11,.35)', stroke: '#f59e0b', strokeWidth: 1.3, num: '#ffd98a', cls: 'sp-seat--reservado' };
+  return { fill: hexToRgba(accent, 0.24), stroke: hexToRgba(accent, 0.95), strokeWidth: 1.3, num: hexToRgba(accent, 0.98), cls: 'sp-seat--libre' };
 }
 
 const ZOOM_STEP = 1.25;
@@ -668,7 +671,7 @@ export function SeatPickerPanel({
 
       <div className="seatpicker-foot">
         <div className="seatpicker-legend" aria-hidden="true">
-          <span><i className="sp-lg" style={{ borderColor: accent, background: hexToRgba(accent, 0.16) }} /> Disponible</span>
+          <span><i className="sp-lg" style={{ borderColor: accent, background: hexToRgba(accent, 0.24) }} /> Disponible</span>
           <span><i className="sp-lg sp-lg--sel" /> Tu selección</span>
           <span><i className="sp-lg sp-lg--reservada" /> En proceso</span>
           <span><i className="sp-lg sp-lg--vendida" /> Vendida</span>

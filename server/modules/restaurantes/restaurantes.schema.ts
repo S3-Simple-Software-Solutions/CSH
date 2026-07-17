@@ -102,21 +102,21 @@ async function seedRestaurantes(): Promise<void> {
         'Soda La Herediana',
         'Comida típica y bocas para disfrutar el partido sin perderte un minuto.',
         'Gradería Norte, local 2',
-        '',
+        '/brand/restaurantes/seed-soda-herediana.jpg',
         owner.id,
       ],
     );
 
     const categorias = [
       { nombre: 'Bocas', orden: 0, items: [
-        { nombre: 'Nachos con queso', desc: 'Porción grande con queso cheddar y jalapeños.', precio: 3500 },
-        { nombre: 'Papas fritas', desc: 'Papas crocantes con salsa de la casa.', precio: 2500 },
-        { nombre: 'Alitas BBQ (8u)', desc: 'Alitas bañadas en salsa BBQ.', precio: 5000 },
+        { nombre: 'Nachos con queso', desc: 'Porción grande con queso cheddar y jalapeños.', precio: 3500, img: '/brand/restaurantes/seed-nachos.jpg' },
+        { nombre: 'Papas fritas', desc: 'Papas crocantes con salsa de la casa.', precio: 2500, img: '/brand/restaurantes/seed-papas.jpg' },
+        { nombre: 'Alitas BBQ (8u)', desc: 'Alitas bañadas en salsa BBQ.', precio: 5000, img: '/brand/restaurantes/seed-alitas.jpg' },
       ] },
       { nombre: 'Bebidas', orden: 1, items: [
-        { nombre: 'Refresco natural', desc: 'Cas, mora o tamarindo (500ml).', precio: 1500 },
-        { nombre: 'Agua', desc: 'Botella 600ml.', precio: 1000 },
-        { nombre: 'Gaseosa', desc: 'Lata 350ml.', precio: 1200 },
+        { nombre: 'Refresco natural', desc: 'Cas, mora o tamarindo (500ml).', precio: 1500, img: '/brand/restaurantes/seed-refresco.jpg' },
+        { nombre: 'Agua', desc: 'Botella 600ml.', precio: 1000, img: '/brand/restaurantes/seed-agua.jpg' },
+        { nombre: 'Gaseosa', desc: 'Lata 350ml.', precio: 1200, img: '/brand/restaurantes/seed-gaseosa.jpg' },
       ] },
     ];
     for (const cat of categorias) {
@@ -128,9 +128,9 @@ async function seedRestaurantes(): Promise<void> {
       let orden = 0;
       for (const it of cat.items) {
         await client.query(
-          `insert into restaurante_menu_items (id, restaurante_id, categoria_id, nombre, descripcion, precio_crc, disponible, orden)
-           values ($1,$2,$3,$4,$5,$6,true,$7)`,
-          [genId('RMI'), restId, catId, it.nombre, it.desc, it.precio, orden++],
+          `insert into restaurante_menu_items (id, restaurante_id, categoria_id, nombre, descripcion, precio_crc, imagen_url, disponible, orden)
+           values ($1,$2,$3,$4,$5,$6,$7,true,$8)`,
+          [genId('RMI'), restId, catId, it.nombre, it.desc, it.precio, it.img, orden++],
         );
       }
     }

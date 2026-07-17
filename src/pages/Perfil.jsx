@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, LogOut, Tag, Ticket, TrendingUp, Users, X } from 'lucide-react';
 import { api } from '../utils/api.js';
+import { Spinner, LoadingBlock } from '../components/Loading.jsx';
 
 function money(crc) {
   return new Intl.NumberFormat('es-CR', { style: 'currency', currency: 'CRC', maximumFractionDigits: 0 }).format(crc || 0);
@@ -60,7 +61,7 @@ function VenderModal({ boleto, onClose, onDone }) {
         </p>
         {error && <div className="error" style={{ marginTop: 10 }}>{error}</div>}
         <button className="btn" style={{ marginTop: 12 }} onClick={submit} disabled={loading}>
-          {loading ? 'Publicando…' : 'Publicar en reventa'}
+          {loading ? <><Spinner size={15} /> Publicando…</> : 'Publicar en reventa'}
         </button>
       </section>
     </div>
@@ -98,7 +99,7 @@ function MiCuentaEntradas() {
         <p className="eyebrow">Mis boletos</p>
         <h2 style={{ marginTop: 4 }}><Ticket size={18} /> Entradas a mi nombre</h2>
         {!loaded ? (
-          <p className="muted">Cargando…</p>
+          <LoadingBlock label="Cargando tus boletos…" />
         ) : boletos.length === 0 ? (
           <p className="muted">Todavía no tenés boletos. Cuando compres, aparecerán acá para revenderlos.</p>
         ) : (
@@ -130,7 +131,7 @@ function MiCuentaEntradas() {
         <p className="eyebrow">Mis reventas</p>
         <h2 style={{ marginTop: 4 }}><Tag size={18} /> Publicaciones</h2>
         {!loaded ? (
-          <p className="muted">Cargando…</p>
+          <LoadingBlock label="Cargando tus publicaciones…" />
         ) : reventas.length === 0 ? (
           <p className="muted">No tenés boletos publicados en reventa.</p>
         ) : (
@@ -200,7 +201,11 @@ export default function PerfilPage() {
   }
 
   if (loading) {
-    return <main className="page profile-page"><p>Cargando perfil...</p></main>;
+    return (
+      <main className="page profile-page">
+        <LoadingBlock label="Cargando perfil…" />
+      </main>
+    );
   }
 
   if (error || !user) {

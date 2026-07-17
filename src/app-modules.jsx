@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, Activity, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, ImagePlus, LayoutGrid, Lock, Mail, Map as MapIcon, MapPin, MessageSquare, Minus, Moon, Newspaper, PanelLeftClose, PanelLeftOpen, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Store, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
+import { Accessibility, Activity, AlertCircle, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, ImagePlus, LayoutGrid, Lock, Mail, Map as MapIcon, MapPin, MessageSquare, Minus, Moon, Newspaper, PanelLeftClose, PanelLeftOpen, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Store, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import DataTable from './components/DataTable.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
@@ -2318,17 +2318,71 @@ function PublicEntradas() {
   return slug ? <PublicEventDetail slug={slug} /> : <PublicEntradasList />;
 }
 
+// Eventos que el aficionado ya compró. Solo se muestra si hay sesión activa
+// (el endpoint responde 401 si no) y si tiene al menos un boleto a su nombre.
+function MisEventosComprados() {
+  const [grupos, setGrupos] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    api('/api/entradas/mis-boletos').then((d) => {
+      if (!alive) return;
+      if (!d.ok) { setGrupos([]); return; }
+      const map = new Map();
+      for (const b of (d.boletos || [])) {
+        const g = map.get(b.eventoId) || { eventoId: b.eventoId, eventoNombre: b.eventoNombre, eventoFecha: b.eventoFecha, eventoSlug: b.eventoSlug, boletos: [] };
+        g.boletos.push(b);
+        map.set(b.eventoId, g);
+      }
+      setGrupos([...map.values()]);
+    }).catch(() => { if (alive) setGrupos([]); });
+    return () => { alive = false; };
+  }, []);
+
+  if (!grupos || grupos.length === 0) return null;
+  return (
+    <section className="mis-eventos">
+      <p className="eyebrow">Mi cuenta</p>
+      <h2 className="mis-eventos-title"><Ticket size={20} /> Mis entradas</h2>
+      <p className="sub">Eventos que ya compraste. Gestioná o revendé tus boletos desde tu perfil.</p>
+      <div className="mis-eventos-grid">
+        {grupos.map((g) => {
+          const enReventa = g.boletos.filter((b) => b.reventa).length;
+          return (
+            <a key={g.eventoId} className="mis-evento-card" href={g.eventoSlug ? `/entradas/${g.eventoSlug}` : '/mi-cuenta'}>
+              <span className="mis-evento-date" aria-hidden="true">
+                <em>{diaSemana(g.eventoFecha).slice(0, 3)}</em>
+                <b>{pad(new Date(g.eventoFecha).getDate())}</b>
+                <span>{mesCorto(g.eventoFecha)}</span>
+              </span>
+              <span className="mis-evento-body">
+                <h3>{g.eventoNombre}</h3>
+                <p className="mis-evento-meta"><Clock size={13} />{diaSemana(g.eventoFecha)} {new Date(g.eventoFecha).getDate()} de {mesCorto(g.eventoFecha)} · {horaCorta(g.eventoFecha)}</p>
+                <span className="mis-evento-pills">
+                  <span className="pill"><Ticket size={13} /> {g.boletos.length} boleto{g.boletos.length === 1 ? '' : 's'}</span>
+                  {enReventa > 0 && <span className="pill reventa">{enReventa} en reventa</span>}
+                </span>
+              </span>
+              <span className="mis-evento-cta">Ver <Ticket size={15} /></span>
+            </a>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function PublicEntradasList() {
   const [eventos, setEventos] = useState([]);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { api('/api/entradas/publico/eventos').then((d) => { if (d.ok) setEventos(d.eventos); setLoaded(true); }); }, []);
   return (
     <>
-      
+
       <main className="page">
         <p className="eyebrow">Modulo de entradas</p>
         <h1>Eventos</h1>
         <p className="sub">Compra boletos para los proximos partidos. Recibis tu codigo QR al instante por correo.</p>
+        <MisEventosComprados />
         <section className="event-list">
           {loaded && eventos.length === 0 && <div className="result empty">No hay eventos a la venta en este momento.</div>}
           {eventos.map((ev) => (
@@ -2791,7 +2845,7 @@ function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose }) {
   const [loading, setLoading] = useState(false);
   const [codigo, setCodigo] = useState('');
   const [aplicado, setAplicado] = useState(null); // { codigo, descuento }
-  const [descMsg, setDescMsg] = useState('');
+  const [descMsg, setDescMsg] = useState(null); // { ok: boolean, text: string }
   const [descLoading, setDescLoading] = useState(false);
   const count = lineas.reduce((s, l) => s + l.cantidad, 0);
 
@@ -2802,14 +2856,14 @@ function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose }) {
   const grandTotal = base + feeCrc;
 
   async function aplicarCodigo() {
-    setDescMsg(''); setDescLoading(true);
+    setDescMsg(null); setDescLoading(true);
     const d = await api('/api/entradas/publico/validar-descuento', { method: 'POST', body: JSON.stringify({ slug, lineas, codigo }) });
     setDescLoading(false);
-    if (!d.ok) { setAplicado(null); return setDescMsg(d.error); }
+    if (!d.ok) { setAplicado(null); return setDescMsg({ ok: false, text: d.error || 'Código de descuento no encontrado.' }); }
     setAplicado({ codigo: d.codigo, descuento: d.descuento });
-    setDescMsg(d.descuento > 0 ? `Código ${d.codigo} aplicado` : `Código ${d.codigo} sin efecto en esta compra`);
+    setDescMsg({ ok: true, text: d.descuento > 0 ? `Código ${d.codigo} aplicado` : `Código ${d.codigo} sin efecto en esta compra` });
   }
-  function quitarCodigo() { setAplicado(null); setCodigo(''); setDescMsg(''); }
+  function quitarCodigo() { setAplicado(null); setCodigo(''); setDescMsg(null); }
 
   async function submit() {
     setError(''); setLoading(true);
@@ -2820,40 +2874,51 @@ function CheckoutModal({ slug, lineas, total, evento, fee, holdId, onClose }) {
     window.location.href = d.url;
   }
   return (
-    <Modal title="Finalizar compra" onClose={onClose}>
+    <Modal title="Finalizar compra" onClose={onClose} wide>
       <div className="pay-summary">{evento.nombre}<br />{count} boleto(s)</div>
-      <label>Nombre completo</label><input name="name" autoComplete="name" value={buyer.nombre} onChange={(e) => setBuyer({ ...buyer, nombre: e.target.value })} autoFocus />
-      <label>Correo (recibis el QR aqui)</label><input type="email" name="email" autoComplete="email" inputMode="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} />
+      <div className="checkout-grid">
+        <div className="checkout-col">
+          <label>Nombre completo</label><input name="name" autoComplete="name" value={buyer.nombre} onChange={(e) => setBuyer({ ...buyer, nombre: e.target.value })} autoFocus />
+          <label>Correo (recibis el QR aqui)</label><input type="email" name="email" autoComplete="email" inputMode="email" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} />
 
-      <label className="check" style={{ margin: '8px 0 4px' }}>
-        <input type="checkbox" checked={buyer.notifWhatsapp} onChange={(e) => setBuyer({ ...buyer, notifWhatsapp: e.target.checked })} />
-        {' '}Quiero recibir mis entradas también por WhatsApp
-      </label>
-      {buyer.notifWhatsapp && (
-        <>
-          <label>Teléfono (WhatsApp)</label>
-          <input type="tel" name="tel" autoComplete="tel" inputMode="tel" placeholder="8888 8888" value={buyer.telefono} onChange={(e) => setBuyer({ ...buyer, telefono: e.target.value })} />
-        </>
-      )}
+          <label className="checkout-check">
+            <input type="checkbox" checked={buyer.notifWhatsapp} onChange={(e) => setBuyer({ ...buyer, notifWhatsapp: e.target.checked })} />
+            <span>Quiero recibir mis entradas también por WhatsApp</span>
+          </label>
+          {buyer.notifWhatsapp && (
+            <>
+              <label>Teléfono (WhatsApp)</label>
+              <input type="tel" name="tel" autoComplete="tel" inputMode="tel" placeholder="8888 8888" value={buyer.telefono} onChange={(e) => setBuyer({ ...buyer, telefono: e.target.value })} />
+            </>
+          )}
 
-      <label>¿Tenés un código de descuento?</label>
-      {aplicado ? (
-        <div className="two"><div><input value={aplicado.codigo} disabled /></div><div><button className="btn ghost" onClick={quitarCodigo}>Quitar</button></div></div>
-      ) : (
-        <div className="two"><div><input value={codigo} placeholder="CODIGO" onChange={(e) => setCodigo(e.target.value.toUpperCase())} /></div><div><button className="btn ghost" onClick={aplicarCodigo} disabled={descLoading || codigo.trim().length < 3}>{descLoading ? '...' : 'Aplicar'}</button></div></div>
-      )}
-      {descMsg && <div className="muted" style={{ fontSize: '.85rem' }}>{descMsg}</div>}
+          <label>¿Tenés un código de descuento?</label>
+          {aplicado ? (
+            <div className="two"><div><input value={aplicado.codigo} disabled /></div><div><button className="btn ghost" onClick={quitarCodigo}>Quitar</button></div></div>
+          ) : (
+            <div className="two"><div><input value={codigo} placeholder="CODIGO" onChange={(e) => setCodigo(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!descLoading && codigo.trim().length >= 3) aplicarCodigo(); } }} /></div><div><button className="btn ghost" onClick={aplicarCodigo} disabled={descLoading || codigo.trim().length < 3}>{descLoading ? '...' : 'Aplicar'}</button></div></div>
+          )}
+          {descMsg && (
+            <div className={`disc-msg ${descMsg.ok ? 'ok' : 'bad'}`} role={descMsg.ok ? 'status' : 'alert'}>
+              {descMsg.ok ? <Check size={16} /> : <AlertCircle size={16} />}
+              <span>{descMsg.text}</span>
+            </div>
+          )}
+        </div>
 
-      <div className="checkout-desglose" style={{ margin: '12px 0', fontSize: '.9rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>{money(subtotal)}</span></div>
-        {descuento > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0a7d3a' }}><span>Descuento</span><span>−{money(descuento)}</span></div>}
-        {feeCrc > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Cargo por servicio</span><span>{money(feeCrc)}</span></div>}
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #ddd', marginTop: 6, paddingTop: 6 }}><span>Total</span><span>{money(grandTotal)}</span></div>
+        <div className="checkout-col checkout-aside">
+          <div className="checkout-desglose">
+            <div className="desglose-row"><span>Subtotal</span><span>{money(subtotal)}</span></div>
+            {descuento > 0 && <div className="desglose-row disc"><span>Descuento</span><span>−{money(descuento)}</span></div>}
+            {feeCrc > 0 && <div className="desglose-row"><span>Cargo por servicio</span><span>{money(feeCrc)}</span></div>}
+            <div className="desglose-row total"><span>Total</span><span>{money(grandTotal)}</span></div>
+          </div>
+
+          <p className="muted checkout-disclaimer">Te llevaremos a la pasarela segura para completar el pago. Tus datos de tarjeta nunca pasan por este sitio.</p>
+          {error && <div className="error">{error}</div>}
+          <button className="btn checkout-pay" onClick={submit} disabled={loading}>{loading ? 'Redirigiendo...' : `Pagar ${money(grandTotal)}`}</button>
+        </div>
       </div>
-
-      <p className="muted" style={{ fontSize: '0.85rem', marginTop: '0.75rem' }}>Te llevaremos a la pasarela segura para completar el pago. Tus datos de tarjeta nunca pasan por este sitio.</p>
-      {error && <div className="error">{error}</div>}
-      <button className="btn" onClick={submit} disabled={loading}>{loading ? 'Redirigiendo...' : `Pagar ${money(grandTotal)}`}</button>
     </Modal>
   );
 }
