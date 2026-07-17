@@ -82,6 +82,23 @@ export async function ensureParqueoSchema(): Promise<void> {
       plan text primary key,
       show_plan boolean not null default true
     );
+    -- Cada "parqueo" es un croquis (una imagen) con su nombre, precio y modo de
+    -- cobro. Se identifica por piso (int) para reutilizar el resto del andamiaje
+    -- (parking_spaces.floor, flechas/rutas keyed por plan).
+    create table if not exists parqueos (
+      id text primary key,
+      piso integer not null unique,
+      nombre text not null,
+      slug text not null,
+      croquis_url text not null default '',
+      aspect double precision not null default 1.5,
+      precio_crc integer not null default 0,
+      modo_cobro text not null default 'hora',
+      estado text not null default 'activo',
+      orden integer not null default 0,
+      creado_at timestamptz not null default now()
+    );
+    alter table parking_spaces add column if not exists parqueo_id text;
   `);
   for (const arrow of DEFAULT_FLOW_ARROWS) {
     await pool.query(
@@ -89,4 +106,27 @@ export async function ensureParqueoSchema(): Promise<void> {
       [arrow.id, arrow.plan, arrow.x, arrow.y, arrow.r, arrow.kind || 'straight'],
     );
   }
+  await seedParqueos();
+}
+
+// Migra los dos pisos históricos (Sótano -1/-2) a filas de la tabla parqueos con
+// su croquis (imagen ya copiada a public) y un precio inicial = tarifa por hora
+// vigente. Solo corre una vez (cuando la tabla está vacía) para no pisar edits.
+async function seedParqueos(): Promise<void> {
+  const { rows } = await pool.query('select count(*)::int as n from parqueos');
+  if (Number(rows[0].n) > 0) return;
+  const aspect = 1700 / 1134;
+  const seed = [
+    { piso: 1, nombre: 'Sótano -1', slug: 'sotano-1', croquis: '/brand/parqueos/sotano-1.png' },
+    { piso: 2, nombre: 'Sótano -2', slug: 'sotano-2', croquis: '/brand/parqueos/sotano-2.png' },
+  ];
+  for (const [i, p] of seed.entries()) {
+    await pool.query(
+      `insert into parqueos (id, piso, nombre, slug, croquis_url, aspect, precio_crc, modo_cobro, estado, orden)
+       values ($1,$2,$3,$4,$5,$6,1000,'hora','activo',$7) on conflict (piso) do nothing`,
+      [`PKO-${p.slug}`, p.piso, p.nombre, p.slug, p.croquis, aspect, i],
+    );
+  }
+  // Vincula los espacios existentes a su parqueo por piso.
+  await pool.query('update parking_spaces set parqueo_id = (select id from parqueos where piso = parking_spaces.floor) where parqueo_id is null');
 }

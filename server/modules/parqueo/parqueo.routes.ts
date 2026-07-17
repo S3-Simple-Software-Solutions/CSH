@@ -1,8 +1,38 @@
-import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
+import { Router, raw } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { requireAdmin } from '../auth/auth.middleware';
+import { PUBLIC_DIR } from '../../config/constants';
+import { IMG_EXT } from '../../core/id';
+import { ApiError } from '../../core/errors';
 import * as parqueo from './parqueo.service';
 
 export const parqueoRouter = Router();
+
+// Subida del croquis (imagen del plano) de un parqueo. Mismo patrón que
+// restaurantes: cuerpo binario, límite por IP, y se guarda en public/.
+const imgUpload = raw({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/avif'], limit: '8mb' });
+const imgRateLimit = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
+const PARQUEO_IMG_DIR = path.join(PUBLIC_DIR, 'brand', 'parqueos');
+
+function guardarCroquis(prefix: string, contentType: string, body: unknown): string {
+  const ext = IMG_EXT[contentType];
+  if (!ext) throw new ApiError(415, 'Formato no permitido. Usá JPG, PNG, WebP o AVIF');
+  if (!Buffer.isBuffer(body) || !body.length) throw new ApiError(400, 'Enviá la imagen como cuerpo binario');
+  fs.mkdirSync(PARQUEO_IMG_DIR, { recursive: true });
+  const filename = `${prefix}-${Date.now()}${ext}`;
+  fs.writeFileSync(path.join(PARQUEO_IMG_DIR, filename), body);
+  return `/brand/parqueos/${filename}`;
+}
+
+function borrarCroquisAnterior(url: string | undefined, exceptoUrl: string): void {
+  const prev = String(url || '').split('?')[0];
+  // Solo borra archivos subidos; nunca los croquis semilla compartidos.
+  if (prev.startsWith('/brand/parqueos/') && prev !== exceptoUrl && /-\d{10,}\.(jpg|png|webp|avif)$/.test(prev)) {
+    fs.rmSync(path.join(PARQUEO_IMG_DIR, path.basename(prev)), { force: true });
+  }
+}
 
 // ---- Rutas publicas ----
 parqueoRouter.get('/api/parqueo/publico/estado', async (_req, res, next) => {
@@ -164,6 +194,49 @@ parqueoRouter.get('/admin/api/parqueo/estado', requireAdmin, async (_req, res, n
   } catch (err) {
     next(err);
   }
+});
+
+// ---- Administración de parqueos (croquis + precio) ----
+parqueoRouter.get('/admin/api/parqueo/parqueos', requireAdmin, async (_req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.listParqueos()) });
+  } catch (err) { next(err); }
+});
+
+parqueoRouter.post('/admin/api/parqueo/parqueos', requireAdmin, async (req, res, next) => {
+  try {
+    res.status(201).json({ ok: true, ...(await parqueo.crearParqueo(req.body, req.adminUser!)) });
+  } catch (err) { next(err); }
+});
+
+parqueoRouter.put('/admin/api/parqueo/parqueos/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.actualizarParqueo(String(req.params.id), req.body, req.adminUser!)) });
+  } catch (err) { next(err); }
+});
+
+parqueoRouter.delete('/admin/api/parqueo/parqueos/:id', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await parqueo.eliminarParqueo(String(req.params.id), req.adminUser!)) });
+  } catch (err) { next(err); }
+});
+
+parqueoRouter.post('/admin/api/parqueo/parqueos/:id/croquis', imgRateLimit, requireAdmin, imgUpload, async (req, res, next) => {
+  try {
+    const id = String(req.params.id);
+    const current = await parqueo.getParqueoById(id, req.adminUser!);
+    const contentType = String(req.headers['content-type'] || '').split(';')[0].toLowerCase();
+    const url = guardarCroquis(id, contentType, req.body);
+    try {
+      const aspect = Number(req.query.aspect);
+      const result = await parqueo.setParqueoCroquis(id, url, aspect, req.adminUser!);
+      borrarCroquisAnterior(current?.croquisUrl, url);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      fs.rmSync(path.join(PARQUEO_IMG_DIR, path.basename(url)), { force: true });
+      throw err;
+    }
+  } catch (err) { next(err); }
 });
 
 parqueoRouter.get('/admin/api/parqueo/eventos', requireAdmin, async (req, res, next) => {

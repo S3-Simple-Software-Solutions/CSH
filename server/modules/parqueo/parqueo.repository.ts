@@ -3,6 +3,7 @@ import {
   EventActor,
   OccupyPublicInput,
   ParkingEvent,
+  Parqueo,
   PaymentRecord,
   PublicSpace,
   Reservation,
@@ -98,7 +99,27 @@ export interface AddRoadInput {
   points: RoadPoint[];
 }
 
+export interface CreateParqueoInput {
+  nombre: string;
+  precioCrc: number;
+  modoCobro: 'hora' | 'fijo';
+}
+
+export interface UpdateParqueoInput {
+  nombre?: string;
+  precioCrc?: number;
+  modoCobro?: 'hora' | 'fijo';
+  estado?: 'activo' | 'inactivo';
+}
+
 export interface ParqueoRepository {
+  listParqueos(): Promise<Parqueo[]>;
+  getParqueoById(id: string): Promise<Parqueo | null>;
+  getParqueoForEspacio(espacioId: string): Promise<Parqueo | null>;
+  createParqueo(input: CreateParqueoInput): Promise<Parqueo>;
+  updateParqueo(id: string, patch: UpdateParqueoInput): Promise<Parqueo>;
+  setParqueoCroquis(id: string, croquisUrl: string, aspect: number): Promise<Parqueo>;
+  deleteParqueo(id: string): Promise<void>;
   publicEstado(): Promise<PublicSpace[]>;
   adminEstado(): Promise<{ espacios: Space[]; reservas: Reservation[] }>;
   listEventos(opts: ListEventosOptions): Promise<{ total: number; eventos: ParkingEvent[] }>;

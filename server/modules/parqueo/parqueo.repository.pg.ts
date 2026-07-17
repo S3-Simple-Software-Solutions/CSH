@@ -6,12 +6,14 @@ import {
   EventActor,
   OccupyPublicInput,
   ParkingEvent,
+  Parqueo,
   PaymentRecord,
   PublicSpace,
   Reservation,
   Space,
 } from './parqueo.types';
-import { AddEspacioInput, AddFlowArrowInput, AddRoadInput, CroquisDot, FlowArrow, ListEventosOptions, LogEventoInput, ParkingSpaceStatus, ParqueoRepository, Road, UpdateEspacioInput, UpdateFlowArrowInput } from './parqueo.repository';
+import { AddEspacioInput, AddFlowArrowInput, AddRoadInput, CreateParqueoInput, CroquisDot, FlowArrow, ListEventosOptions, LogEventoInput, ParkingSpaceStatus, ParqueoRepository, Road, UpdateEspacioInput, UpdateFlowArrowInput, UpdateParqueoInput } from './parqueo.repository';
+import { genId, slugify } from '../../core/id';
 
 const activeWhere = "status in ('reservado','ocupado')";
 const activeReservationWhere = "r.status in ('reservado','ocupado')";
@@ -109,7 +111,118 @@ async function logEvento(client: Pool | PoolClient, type: string, { espacioId, u
   ]);
 }
 
+function toParqueo(row: any): Parqueo {
+  return {
+    id: row.id,
+    piso: Number(row.piso),
+    nombre: row.nombre,
+    slug: row.slug,
+    croquisUrl: row.croquis_url || '',
+    aspect: Number(row.aspect) || 1.5,
+    precioCrc: Number(row.precio_crc) || 0,
+    modoCobro: (row.modo_cobro === 'fijo' ? 'fijo' : 'hora'),
+    estado: (row.estado === 'inactivo' ? 'inactivo' : 'activo'),
+    orden: Number(row.orden) || 0,
+  };
+}
+
 export class PgParqueoRepository implements ParqueoRepository {
+  async listParqueos(): Promise<Parqueo[]> {
+    const rows = await query<any>('select * from parqueos order by orden, piso');
+    return rows.map(toParqueo);
+  }
+
+  async getParqueoById(id: string): Promise<Parqueo | null> {
+    const rows = await query<any>('select * from parqueos where id = $1 limit 1', [id]);
+    return rows[0] ? toParqueo(rows[0]) : null;
+  }
+
+  async getParqueoForEspacio(espacioId: string): Promise<Parqueo | null> {
+    const rows = await query<any>(
+      `select p.* from parqueos p
+         join parking_spaces s on (s.parqueo_id = p.id or s.floor = p.piso)
+        where s.id = $1 limit 1`,
+      [espacioId],
+    );
+    return rows[0] ? toParqueo(rows[0]) : null;
+  }
+
+  async createParqueo(input: CreateParqueoInput): Promise<Parqueo> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const pisoRows = await client.query('select coalesce(max(piso), 0) + 1 as next, coalesce(max(orden), -1) + 1 as ord from parqueos');
+      const piso = Number(pisoRows.rows[0].next);
+      const orden = Number(pisoRows.rows[0].ord);
+      let slug = slugify(input.nombre) || `parqueo-${piso}`;
+      const clash = await client.query('select 1 from parqueos where slug = $1', [slug]);
+      if (clash.rowCount) slug = `${slug}-${piso}`;
+      const id = genId('PKO');
+      const rows = await client.query(
+        `insert into parqueos (id, piso, nombre, slug, croquis_url, aspect, precio_crc, modo_cobro, estado, orden)
+         values ($1,$2,$3,$4,'',1.5,$5,$6,'activo',$7) returning *`,
+        [id, piso, input.nombre, slug, input.precioCrc, input.modoCobro, orden],
+      );
+      await client.query('commit');
+      return toParqueo(rows.rows[0]);
+    } catch (err) {
+      try { await client.query('rollback'); } catch { /* noop */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateParqueo(id: string, patch: UpdateParqueoInput): Promise<Parqueo> {
+    const rows = await query<any>(
+      `update parqueos set
+         nombre = coalesce($2, nombre),
+         precio_crc = coalesce($3, precio_crc),
+         modo_cobro = coalesce($4, modo_cobro),
+         estado = coalesce($5, estado)
+       where id = $1 returning *`,
+      [id, patch.nombre ?? null, patch.precioCrc ?? null, patch.modoCobro ?? null, patch.estado ?? null],
+    );
+    if (!rows[0]) throw new ApiError(404, 'El parqueo no existe');
+    return toParqueo(rows[0]);
+  }
+
+  async setParqueoCroquis(id: string, croquisUrl: string, aspect: number): Promise<Parqueo> {
+    const rows = await query<any>(
+      'update parqueos set croquis_url = $2, aspect = $3 where id = $1 returning *',
+      [id, croquisUrl, aspect],
+    );
+    if (!rows[0]) throw new ApiError(404, 'El parqueo no existe');
+    return toParqueo(rows[0]);
+  }
+
+  async deleteParqueo(id: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const parq = await client.query('select piso from parqueos where id = $1 for update', [id]);
+      if (!parq.rowCount) { await client.query('rollback'); throw new ApiError(404, 'El parqueo no existe'); }
+      const piso = Number(parq.rows[0].piso);
+      const active = await client.query(
+        `select 1 from parking_reservations r join parking_spaces s on s.id = r.space_id
+          where s.floor = $1 and r.status in ('reservado','ocupado') limit 1`,
+        [piso],
+      );
+      if (active.rowCount) { await client.query('rollback'); throw new ApiError(409, 'No se puede eliminar: hay reservas activas en este parqueo'); }
+      await client.query("delete from parking_reservations where space_id in (select id from parking_spaces where floor = $1)", [piso]);
+      await client.query('delete from parking_spaces where floor = $1', [piso]);
+      await client.query('delete from parking_flow_arrows where plan = (select slug from parqueos where id = $1)', [id]);
+      await client.query('delete from parking_roads where plan = (select slug from parqueos where id = $1)', [id]);
+      await client.query('delete from parqueos where id = $1', [id]);
+      await client.query('commit');
+    } catch (err) {
+      try { await client.query('rollback'); } catch { /* noop */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async publicEstado(): Promise<PublicSpace[]> {
     const rows = await query<any>(`
       select s.*, r.starts_at, r.ends_at
@@ -463,9 +576,11 @@ export class PgParqueoRepository implements ParqueoRepository {
       const num = Number(nextRows.rows[0].next);
       const idRows = await client.query("select coalesce(max(nullif(regexp_replace(id, '\\D', '', 'g'), '')::bigint), 0) + 1 as next from parking_spaces");
       const id = `P-${String(Number(idRows.rows[0].next)).padStart(4, '0')}`;
+      const parqRows = await client.query('select id from parqueos where piso = $1 limit 1', [piso]);
+      const parqueoId = parqRows.rows[0]?.id ?? null;
       await client.query(
-        'insert into parking_spaces (id, floor, zone, num, type, status, reservation_id, pos_x, pos_y, utilizado, accessible) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-        [id, piso, zona, num, 'regular', 'disponible', null, x, y, true, false],
+        'insert into parking_spaces (id, floor, zone, num, type, status, reservation_id, pos_x, pos_y, utilizado, accessible, parqueo_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+        [id, piso, zona, num, 'regular', 'disponible', null, x, y, true, false, parqueoId],
       );
       await client.query('commit');
       return { id, piso, zona, num, tipo: 'regular', estado: 'disponible', reservaId: null, utilizado: true, nombre: null, ancho: null, alto: null, discapacitado: false };
