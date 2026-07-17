@@ -12,10 +12,12 @@ export function maskedReservaEmail(reserva: Reservation, ownerEmail = ''): strin
   return `${email.slice(0, Math.min(3, at))}***@${email.slice(at + 1)}`;
 }
 
-export function montoDe(reserva: Reservation): { horas: number; monto: number } {
+// El monto depende del parqueo: por hora (precio × horas) o tarifa fija (precio
+// único por reserva). Si no se pasa parqueo, cae a la tarifa global por hora.
+export function montoDe(reserva: Reservation, precio = TARIFA_HORA, modo: 'hora' | 'fijo' = 'hora'): { horas: number; monto: number } {
   const ms = Date.now() - new Date(reserva.inicio).getTime();
   const horas = Math.max(1, Math.ceil(ms / 3600000));
-  return { horas, monto: horas * TARIFA_HORA };
+  return { horas, monto: modo === 'fijo' ? precio : horas * precio };
 }
 
 export function ensureReservaQrData(reserva: Reservation): string {

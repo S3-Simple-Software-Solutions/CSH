@@ -4,8 +4,7 @@ import { getParqueoRepository } from './parqueo.repository';
 import type { ParkingSpaceStatus } from './parqueo.repository';
 import { sendParkingQrEmail, sendPaymentReceiptEmail } from './parqueo.mail';
 import { maskedReservaEmail, montoDe, reservaEmail } from './parqueo.helpers';
-import { floorPlanMeta } from './parqueo.layout';
-import { PaymentRecord, Recibo } from './parqueo.types';
+import { PaymentRecord, Parqueo, Recibo } from './parqueo.types';
 import { FLOW_ARROW_KINDS, FlowArrowKind } from './parqueo.flow';
 import { findUserEmailById } from '../usuarios/usuarios.service';
 
@@ -60,16 +59,20 @@ function validPoint(x: unknown, y: unknown): { x: number; y: number } {
   return { x: clamp01(px), y: clamp01(py) };
 }
 
-function validFloor(piso: unknown): number {
+async function parqueoForFloor(piso: number): Promise<Parqueo> {
+  const parqueo = (await getParqueoRepository().listParqueos()).find((p) => p.piso === piso);
+  if (!parqueo) throw new ApiError(400, 'Piso invalido');
+  return parqueo;
+}
+
+async function validFloor(piso: unknown): Promise<number> {
   const p = Number(piso);
-  if (!floorPlanMeta().some((m) => m.piso === p)) throw new ApiError(400, 'Piso invalido');
+  await parqueoForFloor(p);
   return p;
 }
 
-function planForFloor(piso: number): string {
-  const plan = floorPlanMeta().find((m) => m.piso === piso)?.plan;
-  if (!plan) throw new ApiError(400, 'Piso invalido');
-  return plan;
+async function planForFloor(piso: number): Promise<string> {
+  return (await parqueoForFloor(piso)).slug;
 }
 
 function validRotation(value: unknown, fallback = 0): number {
@@ -123,20 +126,26 @@ function validBatchSpaceStatus(value: unknown): ParkingSpaceStatus {
 
 export async function getCroquis() {
   const repo = getParqueoRepository();
-  const [dots, arrows, roads, visibility] = await Promise.all([repo.croquisDots(), repo.flowArrows(), repo.roads(), repo.planVisibility()]);
-  const floors = floorPlanMeta().map((m) => ({
+  const [parqueos, dots, arrows, roads, visibility] = await Promise.all([repo.listParqueos(), repo.croquisDots(), repo.flowArrows(), repo.roads(), repo.planVisibility()]);
+  const floors = parqueos.map((m) => ({
     piso: m.piso,
-    plan: m.plan,
+    plan: m.slug,
+    parqueoId: m.id,
+    nombre: m.nombre,
+    croquisUrl: m.croquisUrl,
+    precioCrc: m.precioCrc,
+    modoCobro: m.modoCobro,
+    estado: m.estado,
     aspect: m.aspect,
-    showPlan: visibility[m.plan] !== false,
-    arrows: arrows.filter((a) => a.plan === m.plan).map((a) => ({
+    showPlan: visibility[m.slug] !== false,
+    arrows: arrows.filter((a) => a.plan === m.slug).map((a) => ({
       id: a.id,
       x: a.x,
       y: a.y,
       r: a.r,
       kind: a.kind,
     })),
-    roads: roads.filter((r) => r.plan === m.plan).map((r) => ({
+    roads: roads.filter((r) => r.plan === m.slug).map((r) => ({
       id: r.id,
       points: r.points,
     })),
@@ -161,7 +170,7 @@ export async function getCroquis() {
 
 export async function addEspacio(body: { piso: unknown; x: unknown; y: unknown; zona?: unknown }, actor: Actor) {
   requireParkingAdmin(actor);
-  const piso = validFloor(body.piso);
+  const piso = await validFloor(body.piso);
   const { x, y } = validPoint(body.x, body.y);
   const zona = String(body.zona || 'A').trim().slice(0, 12) || 'A';
   const espacio = await getParqueoRepository().addEspacio({ piso, zona, x, y });
@@ -184,10 +193,10 @@ export async function moveFlecha(id: string, body: { x: unknown; y: unknown }, a
 
 export async function addFlecha(body: { piso: unknown; x: unknown; y: unknown; r?: unknown; kind?: unknown }, actor: Actor) {
   requireParkingAdmin(actor);
-  const piso = validFloor(body.piso);
+  const piso = await validFloor(body.piso);
   const { x, y } = validPoint(body.x, body.y);
   const flecha = await getParqueoRepository().addFlowArrow({
-    plan: planForFloor(piso),
+    plan: await planForFloor(piso),
     x,
     y,
     r: validRotation(body.r),
@@ -214,9 +223,9 @@ export async function removeFlecha(id: string, actor: Actor) {
 
 export async function addRuta(body: { piso: unknown; points: unknown }, actor: Actor) {
   requireParkingAdmin(actor);
-  const piso = validFloor(body.piso);
+  const piso = await validFloor(body.piso);
   const ruta = await getParqueoRepository().addRoad({
-    plan: planForFloor(piso),
+    plan: await planForFloor(piso),
     points: validRoadPoints(body.points),
   });
   return { ruta };
@@ -230,9 +239,9 @@ export async function removeRuta(id: string, actor: Actor) {
 
 export async function setPlanVisibilidad(body: { piso: unknown; showPlan: unknown }, actor: Actor) {
   requireParkingAdmin(actor);
-  const piso = validFloor(body.piso);
+  const piso = await validFloor(body.piso);
   const show = body.showPlan !== false && String(body.showPlan).toLowerCase() !== 'false';
-  await getParqueoRepository().setPlanVisibility(planForFloor(piso), show);
+  await getParqueoRepository().setPlanVisibility(await planForFloor(piso), show);
   return { piso, showPlan: show };
 }
 
@@ -278,13 +287,82 @@ export async function clearCroquis(actor: Actor) {
   return getCroquis();
 }
 
+// ---- Administración de parqueos (croquis + precio) ----
+function validParqueoNombre(value: unknown): string {
+  const nombre = String(value || '').trim();
+  if (nombre.length < 2 || nombre.length > 60) throw new ApiError(400, 'El nombre debe tener entre 2 y 60 caracteres');
+  return nombre;
+}
+
+function validPrecio(value: unknown): number {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n) || n < 0 || n > 1_000_000) throw new ApiError(400, 'Precio invalido');
+  return n;
+}
+
+function validModoCobro(value: unknown): 'hora' | 'fijo' {
+  const modo = String(value || 'hora').trim();
+  if (modo !== 'hora' && modo !== 'fijo') throw new ApiError(400, 'Modo de cobro invalido');
+  return modo;
+}
+
+export async function listParqueos() {
+  return { parqueos: await getParqueoRepository().listParqueos() };
+}
+
+export async function crearParqueo(body: { nombre?: unknown; precioCrc?: unknown; modoCobro?: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const parqueo = await getParqueoRepository().createParqueo({
+    nombre: validParqueoNombre(body.nombre),
+    precioCrc: validPrecio(body.precioCrc),
+    modoCobro: validModoCobro(body.modoCobro),
+  });
+  return { parqueo };
+}
+
+export async function actualizarParqueo(id: string, body: { nombre?: unknown; precioCrc?: unknown; modoCobro?: unknown; estado?: unknown }, actor: Actor) {
+  requireParkingAdmin(actor);
+  const patch: { nombre?: string; precioCrc?: number; modoCobro?: 'hora' | 'fijo'; estado?: 'activo' | 'inactivo' } = {};
+  if (body.nombre !== undefined) patch.nombre = validParqueoNombre(body.nombre);
+  if (body.precioCrc !== undefined) patch.precioCrc = validPrecio(body.precioCrc);
+  if (body.modoCobro !== undefined) patch.modoCobro = validModoCobro(body.modoCobro);
+  if (body.estado !== undefined) {
+    const estado = String(body.estado).trim();
+    if (estado !== 'activo' && estado !== 'inactivo') throw new ApiError(400, 'Estado invalido');
+    patch.estado = estado;
+  }
+  const parqueo = await getParqueoRepository().updateParqueo(id, patch);
+  return { parqueo };
+}
+
+export async function eliminarParqueo(id: string, actor: Actor) {
+  requireParkingAdmin(actor);
+  await getParqueoRepository().deleteParqueo(id);
+  return { id };
+}
+
+export async function getParqueoById(id: string, actor: Actor) {
+  requireParkingAdmin(actor);
+  return getParqueoRepository().getParqueoById(id);
+}
+
+export async function setParqueoCroquis(id: string, croquisUrl: string, aspect: number, actor: Actor) {
+  requireParkingAdmin(actor);
+  const a = Number.isFinite(aspect) && aspect > 0.2 && aspect < 5 ? aspect : 1.5;
+  const parqueo = await getParqueoRepository().setParqueoCroquis(id, croquisUrl, a);
+  return { parqueo };
+}
+
 export async function consultaPublica(rawPlate: unknown) {
   const plate = normalizePlate(rawPlate);
   if (!plate || plate.length > 12) throw new ApiError(400, 'Ingresa una placa valida');
   const repo = getParqueoRepository();
   const reserva = await repo.getActiveReservationByPlate(plate);
   if (!reserva) throw new ApiError(404, 'No hay parqueo activo para esa placa');
-  const { horas, monto } = montoDe(reserva);
+  const parqueo = await repo.getParqueoForEspacio(reserva.espacioId);
+  const precio = parqueo?.precioCrc ?? TARIFA_HORA;
+  const modo = parqueo?.modoCobro ?? 'hora';
+  const { horas, monto } = montoDe(reserva, precio, modo);
   const correo = await maskedReservaEmailFor(reserva);
   return {
     espacioId: reserva.espacioId,
@@ -295,7 +373,8 @@ export async function consultaPublica(rawPlate: unknown) {
     correo,
     horas,
     monto,
-    tarifa: TARIFA_HORA,
+    tarifa: precio,
+    modoCobro: modo,
   };
 }
 
@@ -358,7 +437,8 @@ export async function pagarPublico(body: { placa: unknown; pago?: any }): Promis
   if (!/^\d{2}\/\d{2}$/.test(String(pago.exp || '').trim())) throw new ApiError(400, 'Fecha de expiracion invalida');
   if (String(pago.cvv || '').replace(/\D/g, '').length < 3) throw new ApiError(400, 'CVV invalido');
   if (cardNumber.endsWith('0000')) throw new ApiError(402, 'La transaccion fue rechazada por el emisor');
-  const { horas, monto } = montoDe(reserva);
+  const parqueo = await repo.getParqueoForEspacio(reserva.espacioId);
+  const { horas, monto } = montoDe(reserva, parqueo?.precioCrc ?? TARIFA_HORA, parqueo?.modoCobro ?? 'hora');
   const recibo: Recibo = { espacioId: reserva.espacioId, placa: reserva.placa, horas, monto, transaccion: `CSH-PAY-${Date.now().toString(36).toUpperCase()}`, correo: await maskedReservaEmailFor(reserva) };
   await sendPaymentReceiptEmail({ to: email, reserva, recibo });
   const payment: PaymentRecord = { transaccion: recibo.transaccion, monto, horas, timestamp: new Date().toISOString(), metodo: `****${cardNumber.slice(-4)}` };

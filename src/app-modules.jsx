@@ -19,6 +19,7 @@ import { entradasFaq } from './data/entradasInfo.js';
 import { contacto as clubContacto } from './data/club.js';
 import QRCode from 'qrcode';
 import { uploadFile } from './utils/api.js';
+import { Spinner } from './components/Loading.jsx';
 import { useEscClose } from './utils/useEscClose.js';
 import { useConfirm } from './utils/confirm.jsx';
 import sotano1Img from './croquis/sotano-1.png';
@@ -570,7 +571,7 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
   return (
     <div className="plano-wrap">
       <div className={`plano${fl.showPlan === false ? ' no-plan' : ''}`} style={{ aspectRatio: String(fl.aspect) }}>
-        {fl.showPlan !== false && <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />}
+        {fl.showPlan !== false && <img src={fl.croquisUrl || PLAN_IMG[fl.plan]} alt={`Plano ${fl.nombre || fl.plan}`} draggable="false" />}
         <div className="plano-overlay">
           {visibleStalls.map((st) => {
             const space = spaceById.get(st.id);
@@ -1131,7 +1132,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     <div className="plano-editor">
       <div className="editor-bar">
         {editMode ? (
-          <div className="editor-bar-title"><Pencil size={15} /><span>Editando croquis — Sótano -{floor}</span></div>
+          <div className="editor-bar-title"><Pencil size={15} /><span>Editando croquis — {fl?.nombre || `Sótano -${floor}`}</span></div>
         ) : (
           <button type="button" className="btn ghost editar-toggle" onClick={enterEditMode} disabled={busy} title="Editar el croquis">
             <Pencil size={16} />Editar
@@ -1144,7 +1145,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
       <div className="plano-wrap">
         <div className={`plano${showPlan ? '' : ' no-plan'}`} style={{ aspectRatio: String(fl.aspect) }}>
-          {showPlan && <img src={PLAN_IMG[fl.plan]} alt={`Plano ${fl.plan}`} draggable="false" />}
+          {showPlan && <img src={fl.croquisUrl || PLAN_IMG[fl.plan]} alt={`Plano ${fl.nombre || fl.plan}`} draggable="false" />}
           <div
             ref={overlayRef}
             className={`plano-overlay${editMode ? ' editing' : ''}${editMode && addingArrow ? ' adding-arrow' : ''}${editMode && drawingRoad ? ' drawing-road' : ''}`}
@@ -1228,7 +1229,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
       )}
       {confirmSave && (
         <Modal title="Guardar cambios" onClose={() => !busy && setConfirmSave(false)}>
-          <p className="muted">¿Querés guardar los cambios del croquis en Sótano -{floor}?</p>
+          <p className="muted">¿Querés guardar los cambios del croquis en {fl?.nombre || `Sótano -${floor}`}?</p>
           <div className="actions left">
             <button className="btn" onClick={guardarCambios} disabled={busy}>{busy ? 'Guardando…' : 'Guardar cambios'}</button>
             <button className="btn ghost" onClick={() => setConfirmSave(false)} disabled={busy}>Cancelar</button>
@@ -1358,6 +1359,7 @@ function ParkingGrid({ spaces, floor, onSpace, admin = false, reservations = [],
 
 function PublicParking() {
   const [spaces, setSpaces] = useState([]);
+  const [parqueos, setParqueos] = useState([]);
   const [floor, setFloor] = useState(1);
   const [selected, setSelected] = useState(null);
   const [showFlow, setShowFlow] = useState(true);
@@ -1373,10 +1375,18 @@ function PublicParking() {
   };
   useEffect(() => {
     refresh();
+    api('/api/parqueo/croquis').then((d) => {
+      if (!d.ok) return;
+      const activos = (d.floors || []).filter((f) => f.estado !== 'inactivo');
+      setParqueos(activos);
+      setFloor((cur) => (activos.some((f) => f.piso === cur) ? cur : (activos[0]?.piso ?? 1)));
+    });
     const id = setInterval(refresh, 60000);
     return () => clearInterval(id);
   }, []);
 
+  const parqueoActual = parqueos.find((p) => p.piso === floor);
+  const nombreActual = parqueoActual?.nombre || `Sótano -${floor}`;
   const available = spaces.filter((s) => s.piso === floor && s.estado === 'disponible').length;
   const total = spaces.filter((s) => s.piso === floor).length;
 
@@ -1417,7 +1427,10 @@ function PublicParking() {
           <ReservationResult lookup={lookup} onResend={resend} onPay={() => setPaying(true)} />
         </section>
 
-        <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`} counts={legendCounts(spaces, floor)} />
+        <Toolbar floor={floor} setFloor={setFloor} parqueos={parqueos} stats={`${available}/${total} libres en ${nombreActual}`} counts={legendCounts(spaces, floor)} />
+        {parqueoActual && (
+          <p className="parqueo-precio-pub">Tarifa en {nombreActual}: <b>{money0(parqueoActual.precioCrc)}</b> {parqueoActual.modoCobro === 'fijo' ? 'por reserva' : 'por hora'}</p>
+        )}
         <PlanoCroquis spaces={spaces} floor={floor} showFlow={showFlow} onSpace={(space) => space.estado === 'disponible' && setSelected(space)} />
       </main>
       {selected && <TakeSpaceModal space={selected} onClose={() => setSelected(null)} onDone={(m) => { setModal(m); setSelected(null); refresh(); }} />}
@@ -1476,12 +1489,15 @@ function legendCounts(spaces, floor, reservations = []) {
   return counts;
 }
 
-function Toolbar({ floor, setFloor, stats, counts, children }) {
+function Toolbar({ floor, setFloor, stats, counts, children, parqueos }) {
   const n = (key) => (counts ? <b className="legend-count">{counts[key]}</b> : null);
+  const tabs = (parqueos && parqueos.length)
+    ? parqueos.map((p) => ({ piso: p.piso, label: p.nombre }))
+    : [{ piso: 1, label: 'Sótano -1' }, { piso: 2, label: 'Sótano -2' }];
   return (
     <div className="toolbar">
       <div className="tabs">
-        {[1, 2].map((p) => <button key={p} className={floor === p ? 'active' : ''} onClick={() => setFloor(p)}>Sótano -{p}</button>)}
+        {tabs.map((t) => <button key={t.piso} className={floor === t.piso ? 'active' : ''} onClick={() => setFloor(t.piso)}>{t.label}</button>)}
       </div>
       <div className="legend">
         <span><i className="green" />Disponible{n('disponible')}</span>
@@ -2019,8 +2035,166 @@ function AdminAnalytics() {
   );
 }
 
+function money0(crc) {
+  return new Intl.NumberFormat('es-CR', { style: 'currency', currency: 'CRC', maximumFractionDigits: 0 }).format(crc || 0);
+}
+
+// Lee el aspecto (ancho/alto) de un archivo de imagen para dibujar el overlay.
+function readImageAspect(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { resolve(img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1.5); URL.revokeObjectURL(url); };
+    img.onerror = () => { resolve(1.5); URL.revokeObjectURL(url); };
+    img.src = url;
+  });
+}
+
+// Modal para crear o editar un parqueo: nombre, croquis (imagen del plano),
+// precio y modo de cobro (por hora o tarifa fija).
+function ParqueoModal({ parqueo, onClose, onSaved }) {
+  const isEdit = Boolean(parqueo?.id);
+  const [form, setForm] = useState({
+    nombre: parqueo?.nombre || '',
+    precioCrc: String(parqueo?.precioCrc ?? 1000),
+    modoCobro: parqueo?.modoCobro || 'hora',
+  });
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(parqueo?.croquisUrl || '');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  function onFile(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+  }
+
+  async function submit() {
+    setError('');
+    if (form.nombre.trim().length < 2) return setError('Escribí un nombre válido (mínimo 2 caracteres)');
+    const precio = Number(form.precioCrc);
+    if (!Number.isFinite(precio) || precio < 0) return setError('Precio inválido');
+    if (!isEdit && !file) return setError('Subí el croquis (imagen del plano) del parqueo');
+    setLoading(true);
+    try {
+      const body = { nombre: form.nombre.trim(), precioCrc: precio, modoCobro: form.modoCobro };
+      let id = parqueo?.id;
+      if (isEdit) {
+        const d = await api(`/admin/api/parqueo/parqueos/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+        if (!d.ok) throw new Error(d.error || 'No se pudo guardar');
+      } else {
+        const d = await api('/admin/api/parqueo/parqueos', { method: 'POST', body: JSON.stringify(body) });
+        if (!d.ok) throw new Error(d.error || 'No se pudo crear');
+        id = d.parqueo.id;
+      }
+      if (file) {
+        const aspect = await readImageAspect(file);
+        const up = await uploadFile(`/admin/api/parqueo/parqueos/${id}/croquis?aspect=${aspect}`, file);
+        if (!up.ok) throw new Error(up.error || 'No se pudo subir el croquis');
+      }
+      onSaved();
+    } catch (err) {
+      setError(err.message || 'Error al guardar');
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal title={isEdit ? 'Editar parqueo' : 'Nuevo parqueo'} onClose={onClose}>
+      <label>Nombre del parqueo</label>
+      <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Ej: Parqueo Norte" autoFocus />
+
+      <label>Croquis (imagen del plano)</label>
+      {preview && <img src={preview} alt="" className="parqueo-croquis-preview" />}
+      <input type="file" accept="image/png,image/jpeg,image/webp,image/avif" onChange={onFile} />
+      {isEdit && !file && <p className="auth-hint" style={{ textAlign: 'left' }}>Dejalo vacío para conservar el croquis actual.</p>}
+
+      <div className="two" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <div>
+          <label>Precio (CRC)</label>
+          <input type="number" min="0" value={form.precioCrc} onChange={(e) => setForm({ ...form, precioCrc: e.target.value })} />
+        </div>
+        <div>
+          <label>Modo de cobro</label>
+          <select value={form.modoCobro} onChange={(e) => setForm({ ...form, modoCobro: e.target.value })}>
+            <option value="hora">Por hora</option>
+            <option value="fijo">Tarifa fija</option>
+          </select>
+        </div>
+      </div>
+      <p className="auth-hint" style={{ textAlign: 'left' }}>
+        {form.modoCobro === 'hora' ? 'Se cobra el precio por cada hora de uso.' : 'Se cobra un precio único por reserva.'}
+      </p>
+
+      {error && <div className="error">{error}</div>}
+      <button className="btn" onClick={submit} disabled={loading}>
+        {loading ? <><Spinner size={15} /> Guardando…</> : (isEdit ? 'Guardar cambios' : 'Crear parqueo')}
+      </button>
+    </Modal>
+  );
+}
+
+// Panel de administración de parqueos: lista, crear, editar, eliminar y
+// seleccionar el parqueo activo para editar sus plazoletas.
+function ParqueosManager({ parqueos, floor, setFloor, onChanged, spaces }) {
+  const [modal, setModal] = useState(null); // { parqueo } | 'nuevo'
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+
+  async function eliminar(p) {
+    if (!window.confirm(`¿Eliminar el parqueo "${p.nombre}" y todas sus plazoletas? Esta acción no se puede deshacer.`)) return;
+    setError(''); setBusy(p.id);
+    const d = await api(`/admin/api/parqueo/parqueos/${p.id}`, { method: 'DELETE' });
+    setBusy('');
+    if (!d.ok) return setError(d.error || 'No se pudo eliminar');
+    onChanged();
+  }
+
+  return (
+    <section className="parqueos-manager">
+      <div className="parqueos-manager-head">
+        <h2><Car size={18} /> Parqueos</h2>
+        <button className="btn" onClick={() => setModal('nuevo')}><Plus size={15} /> Nuevo parqueo</button>
+      </div>
+      {error && <div className="error">{error}</div>}
+      <div className="parqueos-grid">
+        {parqueos.map((p) => {
+          const plazas = spaces.filter((s) => s.piso === p.piso).length;
+          return (
+            <div key={p.id} className={`parqueo-card${floor === p.piso ? ' active' : ''}`}>
+              <div className="parqueo-card-thumb" onClick={() => setFloor(p.piso)}>
+                {p.croquisUrl ? <img src={p.croquisUrl} alt="" /> : <span className="parqueo-card-noimg"><Car size={24} /></span>}
+              </div>
+              <div className="parqueo-card-body">
+                <b>{p.nombre}</b>
+                <span className="muted">{money0(p.precioCrc)} · {p.modoCobro === 'fijo' ? 'tarifa fija' : 'por hora'}</span>
+                <span className="pill">{plazas} plazoleta{plazas === 1 ? '' : 's'}</span>
+              </div>
+              <div className="parqueo-card-actions">
+                <button className="btn ghost xs" onClick={() => setFloor(p.piso)} disabled={floor === p.piso}>{floor === p.piso ? 'Seleccionado' : 'Ver / editar'}</button>
+                <button className="btn ghost xs" onClick={() => setModal({ parqueo: p })}><Pencil size={13} /></button>
+                <button className="btn ghost xs danger" onClick={() => eliminar(p)} disabled={busy === p.id}><Trash2 size={13} /></button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {modal && (
+        <ParqueoModal
+          parqueo={modal === 'nuevo' ? null : modal.parqueo}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); onChanged(); }}
+        />
+      )}
+    </section>
+  );
+}
+
 function AdminParking({ user }) {
   const [state, setState] = useState({ espacios: [], reservas: [] });
+  const [parqueos, setParqueos] = useState([]);
   const [events, setEvents] = useState([]);
   const [floor, setFloor] = useState(1);
   const [modal, setModal] = useState(null);
@@ -2031,11 +2205,20 @@ function AdminParking({ user }) {
     const data = await api('/admin/api/parqueo/estado');
     if (data.ok) setState({ espacios: data.espacios, reservas: data.reservas });
   };
+  const loadParqueos = async () => {
+    const data = await api('/admin/api/parqueo/parqueos');
+    if (data.ok) {
+      setParqueos(data.parqueos);
+      setFloor((cur) => (data.parqueos.some((p) => p.piso === cur) ? cur : (data.parqueos[0]?.piso ?? 1)));
+    }
+  };
   const loadEvents = async () => {
     const data = await api('/admin/api/parqueo/eventos?limit=50');
     if (data.ok) setEvents(data.eventos);
   };
-  useEffect(() => { refresh(); loadEvents(); const id = setInterval(refresh, 60000); return () => clearInterval(id); }, []);
+  useEffect(() => { refresh(); loadParqueos(); loadEvents(); const id = setInterval(refresh, 60000); return () => clearInterval(id); }, []);
+  const parqueoActual = parqueos.find((p) => p.piso === floor);
+  const nombreActual = parqueoActual?.nombre || `Sótano -${floor}`;
   const available = state.espacios.filter((s) => s.piso === floor && s.estado === 'disponible').length;
   const total = state.espacios.filter((s) => s.piso === floor).length;
   async function afterAction(promise) {
@@ -2046,7 +2229,8 @@ function AdminParking({ user }) {
   return (
     <main className="page">
       <p className="eyebrow">Zonas y reservas</p><h1>Gestion de parqueo</h1>
-      <Toolbar floor={floor} setFloor={setFloor} stats={`${available}/${total} libres en Sótano -${floor}`} counts={legendCounts(state.espacios, floor, state.reservas)}>
+      {canEdit && <ParqueosManager parqueos={parqueos} floor={floor} setFloor={setFloor} spaces={state.espacios} onChanged={() => { loadParqueos(); refresh(); }} />}
+      <Toolbar floor={floor} setFloor={setFloor} parqueos={parqueos} stats={`${available}/${total} libres en ${nombreActual}`} counts={legendCounts(state.espacios, floor, state.reservas)}>
         {canEdit && !editing && <button className="btn ghost" onClick={() => setEditing(true)}>Editar plazas</button>}
       </Toolbar>
       {editing

@@ -1,3 +1,18 @@
+export type ParqueoModoCobro = 'hora' | 'fijo';
+
+export interface Parqueo {
+  id: string;
+  piso: number;
+  nombre: string;
+  slug: string;
+  croquisUrl: string;
+  aspect: number;
+  precioCrc: number;
+  modoCobro: ParqueoModoCobro;
+  estado: 'activo' | 'inactivo';
+  orden: number;
+}
+
 export interface Space {
   id: string;
   piso: number;
