@@ -14,6 +14,7 @@ import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
 import AdminSponsors from './pages/admin/AdminSponsors.jsx';
 import AdminMensajes from './pages/admin/AdminMensajes.jsx';
+import { LoginPage, isAdminUser } from './pages/Auth.jsx';
 import { entradasFaq } from './data/entradasInfo.js';
 import { contacto as clubContacto } from './data/club.js';
 import QRCode from 'qrcode';
@@ -1594,21 +1595,6 @@ function UnderConstruction({ modulo }) {
   );
 }
 
-// Un usuario tiene acceso al panel admin si tiene algún rol operativo elevado.
-// Los socios (todos sus roles en 'socio'/'ninguno') solo navegan el sitio público autenticados.
-function isAdminUser(user) {
-  if (!user) return false;
-  return (
-    user.isSuperAdmin ||
-    user.role === 'admin' ||
-    user.parkingRole === 'admin' ||
-    user.couponRole === 'admin' ||
-    user.couponRole === 'patrocinador' ||
-    (user.eventsRole && user.eventsRole !== 'ninguno') ||
-    (user.restaurantRole && user.restaurantRole !== 'ninguno')
-  );
-}
-
 function AdminNavButton({ active, icon: Icon, label, onClick }) {
   return (
     <button
@@ -1651,7 +1637,7 @@ function AdminApp() {
   });
   async function logout() { await api('/admin/logout', { method: 'POST', body: '{}' }); location.href = '/'; }
   if (loading) return <main className="page"><p>Cargando...</p></main>;
-  if (!user) return <AdminLogin />;
+  if (!user) return <LoginPage />;
   // Un socio autenticado no entra al panel: se le devuelve al sitio público ya logueado.
   if (!isAdminUser(user)) { location.replace('/'); return <main className="page"><p>Redirigiendo...</p></main>; }
   return (
@@ -1696,49 +1682,6 @@ function AdminApp() {
         {route === '/admin/parqueo' ? <AdminParking user={user} /> : route.startsWith('/admin/entradas') ? <AdminEntradas user={user} route={route} navigate={navigate} /> : route.startsWith('/admin/restaurantes') ? <AdminRestaurantes user={user} route={route} navigate={navigate} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/analytics' ? <AdminAnalytics user={user} /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
-  );
-}
-
-// Input de contraseña con botón de mostrar/ocultar integrado y estilizado.
-function PasswordInput({ value, onChange, ...rest }) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="password-field">
-      <input type={show ? 'text' : 'password'} value={value} onChange={onChange} {...rest} />
-      <button
-        type="button"
-        className="password-toggle"
-        onClick={() => setShow((v) => !v)}
-        aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-        title={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-      >
-        {show ? <EyeOff size={18} /> : <Eye size={18} />}
-      </button>
-    </div>
-  );
-}
-
-function AdminLogin() {
-  const [form, setForm] = useState({ usuario: '', clave: '' });
-  const [error, setError] = useState('');
-  async function submit(e) {
-    e.preventDefault();
-    const data = await api('/admin/sign-in', { method: 'POST', body: JSON.stringify(form) });
-    if (!data.ok) return setError(data.error);
-    // Admin → panel de administración; socio → de vuelta al sitio público, ya autenticado.
-    location.href = isAdminUser(data.user) ? '/admin' : '/';
-  }
-  return (
-    <main className="login">
-      <form onSubmit={submit}>
-        <img src="/brand/logo-shield.png" alt="" />
-        <h1>Club Sport Herediano</h1>
-        <label>Usuario o correo</label><input value={form.usuario} onChange={(e) => setForm({ ...form, usuario: e.target.value })} autoFocus />
-        <label>Contrasena</label><PasswordInput value={form.clave} onChange={(e) => setForm({ ...form, clave: e.target.value })} />
-        {error && <div className="error">{error}</div>}
-        <button className="btn">Entrar</button>
-      </form>
-    </main>
   );
 }
 

@@ -5,6 +5,7 @@ import './styles.css';
 import './site.css';
 
 import { PublicParking, PublicCoupons, PublicEntradas, PublicComida, AdminApp, applyTheme, THEME_KEY } from './app-modules.jsx';
+import { LoginPage, RegistroPage } from './pages/Auth.jsx';
 import { ConfirmProvider } from './utils/confirm.jsx';
 import PublicLayout from './layout/PublicLayout.jsx';
 import ServiceLayout from './layout/ServiceLayout.jsx';
@@ -17,6 +18,7 @@ import Noticias from './pages/Noticias.jsx';
 import NoticiaDetalle from './pages/NoticiaDetalle.jsx';
 import Socios from './pages/Socios.jsx';
 import Contacto from './pages/Contacto.jsx';
+import PerfilPage from './pages/Perfil.jsx';
 
 function ReleaseBadge() {
   const [release, setRelease] = React.useState(null);
@@ -64,6 +66,9 @@ const router = createBrowserRouter([
       { path: '/noticias/:slug', element: <NoticiaDetalle /> },
       { path: '/socios', element: <Socios /> },
       { path: '/contacto', element: <Contacto /> },
+      { path: '/login', element: <LoginPage /> },
+      { path: '/registro', element: <RegistroPage /> },
+      { path: '/mi-cuenta', element: <PerfilPage /> },
     ],
   },
   {

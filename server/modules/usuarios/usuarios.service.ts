@@ -171,26 +171,154 @@ export async function setAdminUserPassword(userId: string, password: string): Pr
   return { ...user, passwordManagedByEnv: false };
 }
 
+const AFICIONADO_ROLES = ['site:authenticated', 'parking:invitado', 'coupon:socio'] as const;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
+
+export interface RegisterAficionadoInput {
+  nombre: unknown;
+  email: unknown;
+  username: unknown;
+  clave: unknown;
+}
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildAficionadoProfile(): UserProfile {
+  const today = todayIsoDate();
+  return {
+    category: 'aficionado',
+    personal: { telefono: '', cedula: '', nacimiento: '', provincia: '', genero: '' },
+    app: { registrado: today, ultimoAcceso: today, plataforma: 'Web', notificaciones: true, sesiones30d: 0 },
+    metricas: {
+      antiguedadMeses: 0,
+      partidosAsistidos: 0,
+      entradasCompradas: 0,
+      gastoTotalCrc: 0,
+      cuponesUsados: 0,
+      reservasParqueo: 0,
+      puntosFidelidad: 0,
+      asistenciaPct: 0,
+    },
+  };
+}
+
+function validateRegisterInput(input: RegisterAficionadoInput) {
+  const nombre = String(input.nombre || '').trim();
+  const email = String(input.email || '').trim().toLowerCase();
+  const username = String(input.username || '').trim().toLowerCase();
+  const clave = String(input.clave || '');
+
+  if (nombre.length < 2 || nombre.length > 80) {
+    throw new ApiError(400, 'El nombre debe tener entre 2 y 80 caracteres');
+  }
+  if (!EMAIL_RE.test(email)) {
+    throw new ApiError(400, 'Correo electronico invalido');
+  }
+  if (!USERNAME_RE.test(username)) {
+    throw new ApiError(400, 'El usuario debe tener entre 3 y 32 caracteres (letras, numeros y _)');
+  }
+  if (clave.length < 8) {
+    throw new ApiError(400, 'La contrasena debe tener al menos 8 caracteres');
+  }
+
+  return { nombre, email, username, clave };
+}
+
+export async function isEmailTaken(email: string): Promise<boolean> {
+  const rows = await query<{ id: string }>(
+    'select id from app_users where lower(email) = $1 limit 1',
+    [email.trim().toLowerCase()],
+  );
+  return rows.length > 0;
+}
+
+export async function isUsernameTaken(username: string): Promise<boolean> {
+  const rows = await query<{ id: string }>(
+    'select id from app_users where lower(username) = $1 limit 1',
+    [username.trim().toLowerCase()],
+  );
+  return rows.length > 0;
+}
+
+export async function registerAficionado(input: RegisterAficionadoInput): Promise<AdminUser> {
+  const { nombre, email, username, clave } = validateRegisterInput(input);
+
+  if (await isEmailTaken(email)) {
+    throw new ApiError(409, 'Ya existe una cuenta con ese correo');
+  }
+  if (await isUsernameTaken(username)) {
+    throw new ApiError(409, 'Ese nombre de usuario ya esta en uso');
+  }
+
+  const id = `fan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const passwordHash = hashPassword(clave);
+  const profile = buildAficionadoProfile();
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query(
+      `insert into app_users (
+         id, username, email, password_hash, full_name, display_role, area, status,
+         sponsor, password_managed_by, profile, created_at, updated_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now())`,
+      [id, username, email, passwordHash, nombre, 'Aficionado', 'Aficionados', 'Activo', null, 'database', JSON.stringify(profile)],
+    );
+    for (const roleId of AFICIONADO_ROLES) {
+      await client.query('insert into app_user_roles (user_id, role_id) values ($1, $2)', [id, roleId]);
+    }
+    await client.query('commit');
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  const user = await findUserById(id);
+  if (!user) throw new ApiError(500, 'No se pudo crear la cuenta');
+  return user;
+}
+
+function rowToProfile(row: UserRow) {
+  const user = toAdminUser(row);
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    area: user.area,
+    status: user.status,
+    parkingRole: user.parkingRole,
+    couponRole: user.couponRole,
+    eventsRole: user.eventsRole,
+    restaurantRole: user.restaurantRole,
+    sponsor: user.sponsor,
+    category: row.profile?.category ?? 'staff',
+    profile: row.profile ?? null,
+  };
+}
+
+export async function getUserProfile(userId: string) {
+  const id = String(userId || '').trim();
+  if (!id) throw new ApiError(404, 'Usuario no encontrado');
+  const rows = await userRows('where u.id = $1', [id]);
+  if (!rows[0]) throw new ApiError(404, 'Usuario no encontrado');
+  return rowToProfile(rows[0]);
+}
+
 export async function listUsers() {
   const rows = await userRows('', [], 'order by u.area, u.full_name');
   return rows.map((row) => {
+    const profile = rowToProfile(row);
     const user = toAdminUser(row);
     return {
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      area: user.area,
-      status: user.status,
-      parkingRole: user.parkingRole,
-      couponRole: user.couponRole,
-      eventsRole: user.eventsRole,
-      restaurantRole: user.restaurantRole,
-      sponsor: user.sponsor,
+      ...profile,
       passwordManagedByEnv: isPasswordManagedByEnv(user),
-      category: row.profile?.category ?? 'staff',
-      profile: row.profile ?? null,
     };
   });
 }
