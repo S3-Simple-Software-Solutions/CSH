@@ -3,7 +3,7 @@ import { env } from '../../config/env';
 import type { AdminUser } from '../usuarios/usuarios.data';
 import { canManageEvents, canOperateGate, canViewSales } from '../usuarios/usuarios.service';
 import { getEntradasRepository, EntradasRepository } from './entradas.repository';
-import { sendEntradasEmail } from './entradas.mail';
+import { sendEntradasEmail, sendReventaVendidaEmail } from './entradas.mail';
 import { sendEntradasWhatsApp } from './entradas.whatsapp';
 import { aplicarTemplate, serializeEvento, validatePayload } from './entradas.templates';
 import { isWhatsAppEnabled, normalizePhone } from '../../core/whatsapp';
@@ -249,12 +249,40 @@ export async function procesarWebhook(rawBody: Buffer, signature: string | undef
   const repo = getEntradasRepository();
 
   if (evento.type === 'paid' && evento.ordenId && evento.pago) {
+    // La orden puede ser una compra primaria o una reventa (mercado secundario).
+    const kind = await repo.getOrdenKind(evento.ordenId);
+    if (kind?.reventaId) {
+      const rev = await repo.confirmarReventa(evento.ordenId, evento.pago);
+      if (rev) await tryNotifyReventa(rev);
+      return;
+    }
     const resultado = await repo.confirmarOrden(evento.ordenId, evento.pago);
     if (resultado) await trySendEntradas(resultado.orden.compradorEmail, resultado);
     return;
   }
   if (evento.type === 'expired' && evento.ordenId) {
+    const kind = await repo.getOrdenKind(evento.ordenId);
+    if (kind?.reventaId) {
+      await repo.expirarReventaOrden(evento.ordenId);
+      return;
+    }
     await repo.expirarOrden(evento.ordenId);
+  }
+}
+
+// Notifica al comprador (nuevo QR) y al vendedor (venta + saldo). Best-effort.
+async function tryNotifyReventa(rev: { evento: Evento; boleto: Boleto; compradorEmail: string; sellerEmail: string; precioCrc: number }): Promise<void> {
+  try {
+    await sendEntradasEmail({ to: rev.compradorEmail, evento: rev.evento, boletos: [rev.boleto] });
+  } catch (err) {
+    console.error(`[mail] Error enviando reventa a ${safeLogValue(rev.compradorEmail)}: ${safeLogValue((err as Error).message)}`);
+  }
+  if (rev.sellerEmail) {
+    try {
+      await sendReventaVendidaEmail({ to: rev.sellerEmail, evento: rev.evento, precioCrc: rev.precioCrc });
+    } catch (err) {
+      console.error(`[mail] Error notificando venta a ${safeLogValue(rev.sellerEmail)}: ${safeLogValue((err as Error).message)}`);
+    }
   }
 }
 
@@ -756,15 +784,86 @@ export async function adminGetConfig(user: AdminUser) {
   return { config: await getEntradasRepository().getConfig() };
 }
 
+function parsePct(raw: unknown, label: string): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 100) throw new ApiError(400, `${label} inválido (0-100)`);
+  return n;
+}
+
 export async function adminSetConfig(body: any, user: AdminUser) {
   if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
   const fee = parseFee({ feeTipo: body?.feeTipoDefault, feeValor: body?.feeValorDefault });
   const config = await getEntradasRepository().setConfig({
     feeTipoDefault: (fee.tipo ?? 'ninguno') as FeeTipo,
     feeValorDefault: fee.valor ?? 0,
+    reventaActiva: body?.reventaActiva === undefined ? undefined : Boolean(body.reventaActiva),
+    reventaTopeNominal: body?.reventaTopeNominal === undefined ? undefined : Boolean(body.reventaTopeNominal),
+    reventaFeeCompradorPct: parsePct(body?.reventaFeeCompradorPct, 'Fee comprador'),
+    reventaFeeVendedorPct: parsePct(body?.reventaFeeVendedorPct, 'Fee vendedor'),
   });
-  await getEntradasRepository().logEvento('config_fee', { user: actorOf(user), notas: `${config.feeTipoDefault} ${config.feeValorDefault}` });
+  await getEntradasRepository().logEvento('config_fee', { user: actorOf(user), notas: `${config.feeTipoDefault} ${config.feeValorDefault} · reventa ${config.reventaActiva ? 'on' : 'off'}` });
   return { config };
+}
+
+// ── Reventa (mercado secundario) ─────────────────────────────────
+
+export async function getMisBoletos(user: AdminUser) {
+  return { boletos: await getEntradasRepository().listMisBoletos(user.id, user.email) };
+}
+
+export async function crearReventa(body: { boletoId?: unknown; precioCrc?: unknown }, user: AdminUser) {
+  const boletoId = String(body?.boletoId || '').trim();
+  if (!boletoId) throw new ApiError(400, 'Falta el boleto');
+  const precio = Number(body?.precioCrc);
+  if (!Number.isFinite(precio) || precio <= 0) throw new ApiError(400, 'Ingresá un precio válido');
+  const reventa = await getEntradasRepository().crearReventa(user.id, user.email, boletoId, Math.round(precio));
+  return { reventa };
+}
+
+export async function getMisReventas(user: AdminUser) {
+  return { reventas: await getEntradasRepository().listMisReventas(user.id) };
+}
+
+export async function cancelarReventa(id: string, user: AdminUser) {
+  await getEntradasRepository().cancelarReventa(user.id, String(id));
+  return { ok: true };
+}
+
+export async function getReventasPublicas(slug: string) {
+  return { reventas: await getEntradasRepository().listReventasPublicas(String(slug || '').trim()) };
+}
+
+export async function iniciarReventaCheckout(id: string, user: AdminUser) {
+  const repo = getEntradasRepository();
+  const gateway = getPaymentGateway();
+  const reventaId = String(id || '').trim();
+  if (!reventaId) throw new ApiError(400, 'Falta la publicación');
+  const { ordenId, total, evento, lineItems } = await repo.iniciarReventaOrden(user.id, user.email, user.name, reventaId, gateway.id);
+  try {
+    const successUrl = `${appBaseUrl()}/entradas/${encodeURIComponent(evento.slug)}?orden=${encodeURIComponent(ordenId)}`;
+    const cancelUrl = `${appBaseUrl()}/entradas/${encodeURIComponent(evento.slug)}?pago=cancelado`;
+    const { url, providerRef } = await gateway.createCheckout({ ordenId, lineas: lineItems, comprador: { nombre: user.name, email: user.email }, successUrl, cancelUrl });
+    await repo.setProviderRef(ordenId, providerRef);
+    return { url, ordenId, total };
+  } catch (err) {
+    await repo.expirarReventaOrden(ordenId).catch(() => { /* noop */ });
+    console.error(`[pagos] Error creando checkout de reventa para orden ${ordenId}: ${(err as Error).message}`);
+    throw new ApiError(502, 'No se pudo iniciar el pago. Intenta de nuevo.');
+  }
+}
+
+export async function adminListReventas(user: AdminUser) {
+  if (!canViewSales(user)) throw new ApiError(403, 'Sin permiso');
+  return getEntradasRepository().adminListReventas();
+}
+
+export async function adminMarcarPayout(id: string, body: { metodo?: unknown; referencia?: unknown }, user: AdminUser) {
+  if (!canManageEvents(user)) throw new ApiError(403, 'Sin permiso');
+  const metodo = body?.metodo ? String(body.metodo).trim().slice(0, 60) : undefined;
+  const referencia = body?.referencia ? String(body.referencia).trim().slice(0, 120) : undefined;
+  const payout = await getEntradasRepository().marcarPayoutPagado(String(id), actorOf(user), metodo, referencia);
+  return { payout };
 }
 
 // ── Códigos de descuento ─────────────────────────────────────────

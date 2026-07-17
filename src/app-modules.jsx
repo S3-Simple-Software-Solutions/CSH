@@ -2708,6 +2708,8 @@ function PublicEventDetail({ slug }) {
         )}
         {seatError && <div className="error">{seatError}</div>}
 
+        <ReventaDisponible slug={slug} />
+
         <div className={`checkout-bar${viewMode === 'mapa' && hasMapa ? ' checkout-bar--mapa' : ''}`}>
           <div><span>{count} boleto(s)</span><b>{money(total)}</b></div>
           <button className="btn" disabled={count === 0} onClick={continuar}>Continuar</button>
@@ -2716,6 +2718,65 @@ function PublicEventDetail({ slug }) {
       {checkout && <CheckoutModal slug={slug} lineas={lineas} total={total} evento={evento} fee={data.fee} holdId={hold} onClose={() => setCheckout(false)} />}
       {done && <TicketsModal result={done} onClose={() => { setDone(null); location.reload(); }} />}
     </>
+  );
+}
+
+// Reventa oficial (mercado secundario): listings de otros aficionados. Comprar
+// exige sesión — si no hay, mandamos al login y volvemos al evento.
+function ReventaDisponible({ slug }) {
+  const [reventas, setReventas] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState('');
+  const load = () => api(`/api/entradas/publico/eventos/${encodeURIComponent(slug)}/reventa`).then((d) => {
+    if (d.ok) setReventas(d.reventas || []);
+    setLoaded(true);
+  });
+  useEffect(() => { load(); }, [slug]);
+
+  async function comprar(r) {
+    setError(''); setBusy(r.id);
+    const d = await api(`/api/entradas/reventa/${encodeURIComponent(r.id)}/checkout`, { method: 'POST', body: '{}' });
+    if (!d.ok) {
+      setBusy('');
+      if (/autenticad|sesi[oó]n|401/i.test(d.error || '')) {
+        location.href = `/login?next=${encodeURIComponent(`/entradas/${slug}`)}`;
+        return;
+      }
+      setError(d.error || 'No se pudo iniciar la compra.');
+      load();
+      return;
+    }
+    window.location.href = d.url;
+  }
+
+  if (!loaded || reventas.length === 0) return null;
+  return (
+    <section className="card" style={{ marginTop: 18 }}>
+      <p className="eyebrow">Reventa oficial</p>
+      <h2 style={{ marginTop: 4 }}>Boletos en reventa</h2>
+      <p className="muted" style={{ marginTop: 2 }}>
+        Boletos de otros aficionados. Al comprar, se te reemite un QR nuevo a tu nombre. Necesitás iniciar sesión.
+      </p>
+      {error && <div className="error">{error}</div>}
+      <div className="sector-list" style={{ marginTop: 8 }}>
+        {reventas.map((r) => (
+          <div key={r.id} className="sector" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div className="sector-info">
+              <b>{r.tipoNombre}</b>
+              <span>{r.asientoLabel || 'Entrada general'}</span>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontWeight: 700 }}>{money(r.totalCrc)}</div>
+              {r.feeCompradorCrc > 0 && <div className="muted" style={{ fontSize: '.78rem' }}>incluye cargo {money(r.feeCompradorCrc)}</div>}
+            </div>
+            <button className="btn" disabled={busy === r.id} onClick={() => comprar(r)}>
+              {busy === r.id ? '…' : 'Comprar'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -2842,6 +2903,7 @@ function AdminEntradas({ user, route = '/admin/entradas', navigate }) {
         {canSales && <button className={tab === 'ventas' ? 'active' : ''} onClick={() => setTab('ventas')}>Ventas</button>}
         {canManage && <button className={tab === 'descuentos' ? 'active' : ''} onClick={() => setTab('descuentos')}>Descuentos</button>}
         {canSales && <button className={tab === 'promotores' ? 'active' : ''} onClick={() => setTab('promotores')}>Promotores</button>}
+        {canSales && <button className={tab === 'reventas' ? 'active' : ''} onClick={() => setTab('reventas')}>Reventas</button>}
         {canGate && <button className={tab === 'puerta' ? 'active' : ''} onClick={() => setTab('puerta')}><ScanLine size={15} />Puerta</button>}
       </div>
       {tab === 'eventos' && canManage && (
@@ -2859,8 +2921,124 @@ function AdminEntradas({ user, route = '/admin/entradas', navigate }) {
       {tab === 'ventas' && canSales && <AdminVentasTab />}
       {tab === 'descuentos' && canManage && <AdminDescuentosTab />}
       {tab === 'promotores' && canSales && <AdminPromotoresTab canManage={canManage} />}
+      {tab === 'reventas' && canSales && <AdminReventasTab canManage={canManage} />}
       {tab === 'puerta' && canGate && <AdminPuertaTab />}
     </main>
+  );
+}
+
+function AdminReventasTab({ canManage }) {
+  const [data, setData] = useState({ reventas: [], payouts: [] });
+  const [config, setConfig] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const load = async () => {
+    const d = await api('/admin/api/entradas/reventas');
+    if (d.ok) setData({ reventas: d.reventas || [], payouts: d.payouts || [] });
+    const c = await api('/admin/api/entradas/config');
+    if (c.ok) setConfig(c.config);
+  };
+  useEffect(() => { load(); }, []);
+
+  async function pagar(id) {
+    setMsg(null);
+    const referencia = window.prompt('Referencia del pago (opcional):') || '';
+    const metodo = window.prompt('Método de pago (SINPE, transferencia…):') || '';
+    const d = await api(`/admin/api/entradas/reventas/payouts/${encodeURIComponent(id)}/pagar`, {
+      method: 'POST', body: JSON.stringify({ metodo, referencia }),
+    });
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setMsg({ type: 'ok', text: 'Saldo marcado como pagado.' });
+    load();
+  }
+
+  async function saveConfig() {
+    setMsg(null);
+    const d = await api('/admin/api/entradas/config', { method: 'PUT', body: JSON.stringify(config) });
+    if (!d.ok) return setMsg({ type: 'error', text: d.error });
+    setConfig(d.config);
+    setMsg({ type: 'ok', text: 'Configuración guardada.' });
+  }
+
+  const pendientes = data.payouts.filter((p) => p.estado === 'pendiente');
+  const totalPendiente = pendientes.reduce((s, p) => s + p.montoNetoCrc, 0);
+
+  return (
+    <div className="admin-reventas">
+      {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+
+      {canManage && config && (
+        <section className="card" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Configuración de reventa</h3>
+          <label className="check">
+            <input type="checkbox" checked={config.reventaActiva} onChange={(e) => setConfig({ ...config, reventaActiva: e.target.checked })} />
+            {' '}Reventa habilitada
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={config.reventaTopeNominal} onChange={(e) => setConfig({ ...config, reventaTopeNominal: e.target.checked })} />
+            {' '}Limitar precio al valor nominal
+          </label>
+          <div className="two" style={{ marginTop: 8 }}>
+            <div>
+              <label>Fee comprador (%)</label>
+              <input type="number" min="0" max="100" value={config.reventaFeeCompradorPct}
+                onChange={(e) => setConfig({ ...config, reventaFeeCompradorPct: Number(e.target.value) })} />
+            </div>
+            <div>
+              <label>Fee vendedor (%)</label>
+              <input type="number" min="0" max="100" value={config.reventaFeeVendedorPct}
+                onChange={(e) => setConfig({ ...config, reventaFeeVendedorPct: Number(e.target.value) })} />
+            </div>
+          </div>
+          <button className="btn" style={{ marginTop: 10 }} onClick={saveConfig}>Guardar configuración</button>
+        </section>
+      )}
+
+      <section className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Saldos por pagar a vendedores</h3>
+        <p className="muted">Pendiente total: <b>{money(totalPendiente)}</b> ({pendientes.length})</p>
+        {data.payouts.length === 0 ? (
+          <p className="muted">Sin saldos registrados.</p>
+        ) : (
+          <table className="admin-table">
+            <thead><tr><th>Evento</th><th>Sector</th><th>Vendedor</th><th>Neto</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              {data.payouts.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.eventoNombre}</td>
+                  <td>{p.tipoNombre}</td>
+                  <td>{p.sellerEmail}</td>
+                  <td>{money(p.montoNetoCrc)}</td>
+                  <td><span className={`pill ${p.estado === 'pagado' ? 'publicado' : ''}`}>{p.estado}</span></td>
+                  <td>{canManage && p.estado === 'pendiente' && <button className="btn ghost" onClick={() => pagar(p.id)}>Marcar pagado</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="card">
+        <h3 style={{ marginTop: 0 }}>Publicaciones de reventa</h3>
+        {data.reventas.length === 0 ? (
+          <p className="muted">No hay publicaciones.</p>
+        ) : (
+          <table className="admin-table">
+            <thead><tr><th>Evento</th><th>Sector</th><th>Vendedor</th><th>Precio</th><th>Estado</th></tr></thead>
+            <tbody>
+              {data.reventas.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.eventoNombre}</td>
+                  <td>{r.tipoNombre}{r.asientoLabel ? ` · ${r.asientoLabel}` : ''}</td>
+                  <td>{r.sellerEmail}</td>
+                  <td>{money(r.precioCrc)}</td>
+                  <td><span className="pill">{r.estado}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
   );
 }
 

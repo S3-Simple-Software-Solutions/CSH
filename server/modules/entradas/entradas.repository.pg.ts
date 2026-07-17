@@ -23,6 +23,7 @@ import {
   MapaBatchInput,
   MapaEventoInput,
   MapaTipoInput,
+  MiBoleto,
   OrdenLineaSnapshot,
   OrdenPublica,
   PagoEntrada,
@@ -30,6 +31,9 @@ import {
   PromotorInput,
   PromotorRanking,
   ReservaAsientos,
+  Reventa,
+  ReventaPayout,
+  ReventaPublica,
   Tanda,
   TandaInput,
   TicketType,
@@ -194,6 +198,47 @@ function toBoleto(row: any): Boleto {
     eventoNombre: row.evento_nombre,
     asientoId: row.asiento_id ?? null,
     asientoLabel: row.asiento_fila ? asientoLabel(row.asiento_fila, Number(row.asiento_numero)) : null,
+  };
+}
+
+function toReventa(row: any): Reventa {
+  return {
+    id: row.id,
+    boletoId: row.boleto_id,
+    eventoId: row.evento_id,
+    eventoNombre: row.evento_nombre,
+    eventoFecha: row.evento_fecha ? row.evento_fecha.toISOString() : undefined,
+    tipoNombre: row.tipo_nombre,
+    asientoLabel: row.asiento_fila ? asientoLabel(row.asiento_fila, Number(row.asiento_numero)) : null,
+    sellerUserId: row.seller_user_id,
+    sellerEmail: row.seller_email ?? '',
+    precioCrc: Number(row.precio_crc),
+    feeCompradorCrc: Number(row.fee_comprador_crc),
+    feeVendedorCrc: Number(row.fee_vendedor_crc),
+    estado: row.estado,
+    buyerUserId: row.buyer_user_id ?? null,
+    ordenReventaId: row.orden_reventa_id ?? null,
+    createdAt: row.created_at ? row.created_at.toISOString() : new Date().toISOString(),
+    vendidaAt: row.vendida_at ? row.vendida_at.toISOString() : null,
+  };
+}
+
+function toPayout(row: any): ReventaPayout {
+  return {
+    id: row.id,
+    reventaId: row.reventa_id,
+    sellerUserId: row.seller_user_id,
+    sellerEmail: row.seller_email ?? '',
+    montoNetoCrc: Number(row.monto_neto_crc),
+    estado: row.estado,
+    metodo: row.metodo ?? null,
+    referencia: row.referencia ?? null,
+    createdAt: row.created_at ? row.created_at.toISOString() : new Date().toISOString(),
+    pagadoAt: row.pagado_at ? row.pagado_at.toISOString() : null,
+    pagadoPor: row.pagado_por ?? null,
+    eventoNombre: row.evento_nombre,
+    tipoNombre: row.tipo_nombre,
+    precioCrc: row.precio_crc == null ? undefined : Number(row.precio_crc),
   };
 }
 
@@ -538,6 +583,28 @@ export class PgEntradasRepository implements EntradasRepository {
     if (!rows[0]) return null;
     const estado = rows[0].estado;
     if (estado !== 'pagada') return { estado, boletos: [] };
+    // Compra secundaria (reventa): el boleto transferido conserva su orden_id
+    // original, así que se resuelve por el listing en vez de por la orden.
+    if (rows[0].reventa_id) {
+      const rv = await query<any>(
+        `select b.codigo, b.qr_data, t.nombre as tipo_nombre, a.fila as asiento_fila, a.numero as asiento_numero
+           from entrada_reventas r
+           join entrada_boletos b on b.id = r.boleto_id
+           join entrada_tipos t on t.id = b.tipo_id
+           left join entrada_asientos a on a.id = b.asiento_id
+          where r.id = $1`,
+        [rows[0].reventa_id],
+      );
+      return {
+        estado,
+        boletos: rv.map((b) => ({
+          codigo: b.codigo,
+          qrData: b.qr_data,
+          tipoNombre: b.tipo_nombre,
+          asientoLabel: b.asiento_fila ? asientoLabel(b.asiento_fila, Number(b.asiento_numero)) : null,
+        })),
+      };
+    }
     const boletos = await this.getOrdenBoletos(ref);
     return { estado, boletos: boletos.map((b) => ({ codigo: b.codigo, qrData: b.qrData, tipoNombre: b.tipoNombre, asientoLabel: b.asientoLabel ?? null })) };
   }
@@ -1205,11 +1272,17 @@ export class PgEntradasRepository implements EntradasRepository {
   // ── Fee + descuentos (P1) ────────────────────────────────────────
 
   async getConfig(): Promise<EntradaConfig> {
-    const rows = await query<any>('select fee_tipo_default, fee_valor_default from entrada_config where id = 1');
+    const rows = await query<any>(
+      'select fee_tipo_default, fee_valor_default, reventa_activa, reventa_tope_nominal, reventa_fee_comprador_pct, reventa_fee_vendedor_pct from entrada_config where id = 1',
+    );
     const r = rows[0];
     return {
       feeTipoDefault: (r?.fee_tipo_default ?? 'ninguno') as FeeTipo,
       feeValorDefault: Number(r?.fee_valor_default ?? 0),
+      reventaActiva: r?.reventa_activa ?? true,
+      reventaTopeNominal: r?.reventa_tope_nominal ?? true,
+      reventaFeeCompradorPct: Number(r?.reventa_fee_comprador_pct ?? 0),
+      reventaFeeVendedorPct: Number(r?.reventa_fee_vendedor_pct ?? 0),
     };
   }
 
@@ -1217,12 +1290,24 @@ export class PgEntradasRepository implements EntradasRepository {
     const current = await this.getConfig();
     const tipo = input.feeTipoDefault ?? current.feeTipoDefault;
     const valor = input.feeValorDefault ?? current.feeValorDefault;
+    const reventaActiva = input.reventaActiva ?? current.reventaActiva;
+    const reventaTope = input.reventaTopeNominal ?? current.reventaTopeNominal;
+    const feeComprador = input.reventaFeeCompradorPct ?? current.reventaFeeCompradorPct;
+    const feeVendedor = input.reventaFeeVendedorPct ?? current.reventaFeeVendedorPct;
     await query(
-      `insert into entrada_config (id, fee_tipo_default, fee_valor_default) values (1, $1, $2)
-       on conflict (id) do update set fee_tipo_default = $1, fee_valor_default = $2`,
-      [tipo, valor],
+      `insert into entrada_config (id, fee_tipo_default, fee_valor_default, reventa_activa, reventa_tope_nominal, reventa_fee_comprador_pct, reventa_fee_vendedor_pct)
+       values (1, $1, $2, $3, $4, $5, $6)
+       on conflict (id) do update set fee_tipo_default = $1, fee_valor_default = $2, reventa_activa = $3, reventa_tope_nominal = $4, reventa_fee_comprador_pct = $5, reventa_fee_vendedor_pct = $6`,
+      [tipo, valor, reventaActiva, reventaTope, feeComprador, feeVendedor],
     );
-    return { feeTipoDefault: tipo, feeValorDefault: valor };
+    return {
+      feeTipoDefault: tipo,
+      feeValorDefault: valor,
+      reventaActiva,
+      reventaTopeNominal: reventaTope,
+      reventaFeeCompradorPct: feeComprador,
+      reventaFeeVendedorPct: feeVendedor,
+    };
   }
 
   async listDescuentos(eventoId?: string): Promise<Descuento[]> {
@@ -1410,5 +1495,340 @@ export class PgEntradasRepository implements EntradasRepository {
     } finally {
       client.release();
     }
+  }
+
+  // ── Reventa (mercado secundario) ─────────────────────────────────
+
+  // Boletos del usuario: backfill perezoso del vínculo cuenta<->orden por email
+  // y devuelve los boletos que le pertenecen (por owner explícito o por la orden
+  // original), con su listing de reventa si existe.
+  async listMisBoletos(userId: string, email: string): Promise<MiBoleto[]> {
+    const mail = String(email || '').trim().toLowerCase();
+    if (mail) {
+      // Vincula las órdenes anónimas del usuario por coincidencia de correo.
+      await query(
+        'update entrada_ordenes set comprador_user_id = $1 where comprador_user_id is null and lower(comprador_email) = $2',
+        [userId, mail],
+      );
+    }
+    const rows = await query<any>(
+      `select b.*, t.nombre as tipo_nombre, t.precio_crc as tipo_precio, e.nombre as evento_nombre,
+              e.fecha as evento_fecha, e.slug as evento_slug, e.estado as evento_estado,
+              a.fila as asiento_fila, a.numero as asiento_numero,
+              r.id as reventa_id, r.precio_crc as reventa_precio, r.estado as reventa_estado
+         from entrada_boletos b
+         join entrada_tipos t on t.id = b.tipo_id
+         join entrada_eventos e on e.id = b.evento_id
+         join entrada_ordenes o on o.id = b.orden_id
+         left join entrada_asientos a on a.id = b.asiento_id
+         left join entrada_reventas r on r.boleto_id = b.id and r.estado in ('activa','reservada')
+        where (b.owner_user_id = $1 or (b.owner_user_id is null and o.comprador_user_id = $1))
+        order by e.fecha asc, b.codigo`,
+      [userId],
+    );
+    const now = Date.now();
+    return rows.map((b) => {
+      const eventoFecha = b.evento_fecha ? b.evento_fecha.toISOString() : new Date().toISOString();
+      const iniciado = new Date(eventoFecha).getTime() <= now;
+      const finalizado = b.evento_estado === 'finalizado';
+      const reventa = b.reventa_id
+        ? { id: b.reventa_id, precioCrc: Number(b.reventa_precio), estado: b.reventa_estado as any }
+        : null;
+      const vendible = b.estado === 'valido' && !iniciado && !finalizado && !reventa;
+      return {
+        id: b.id,
+        codigo: b.codigo,
+        estado: b.estado,
+        eventoId: b.evento_id,
+        eventoNombre: b.evento_nombre,
+        eventoFecha,
+        eventoSlug: b.evento_slug,
+        tipoId: b.tipo_id,
+        tipoNombre: b.tipo_nombre,
+        valorNominalCrc: Number(b.tipo_precio),
+        qrData: b.qr_data,
+        asientoLabel: b.asiento_fila ? asientoLabel(b.asiento_fila, Number(b.asiento_numero)) : null,
+        reventa,
+        vendible,
+      } as MiBoleto;
+    });
+  }
+
+  async crearReventa(userId: string, sellerEmail: string, boletoId: string, precioCrc: number): Promise<Reventa> {
+    const cfg = await this.getConfig();
+    if (!cfg.reventaActiva) throw new ApiError(409, 'La reventa no está habilitada en este momento');
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const bolRows = await client.query(
+        `select b.*, t.precio_crc as tipo_precio, o.comprador_user_id, e.estado as evento_estado, e.fecha as evento_fecha
+           from entrada_boletos b
+           join entrada_tipos t on t.id = b.tipo_id
+           join entrada_ordenes o on o.id = b.orden_id
+           join entrada_eventos e on e.id = b.evento_id
+          where b.id = $1 for update of b`,
+        [boletoId],
+      );
+      const b = bolRows.rows[0];
+      if (!b) { await client.query('rollback'); throw new ApiError(404, 'Boleto no encontrado'); }
+      const esDueno = b.owner_user_id === userId || (b.owner_user_id == null && b.comprador_user_id === userId);
+      if (!esDueno) { await client.query('rollback'); throw new ApiError(403, 'Este boleto no está a tu nombre'); }
+      if (b.estado !== 'valido') { await client.query('rollback'); throw new ApiError(409, 'Solo se pueden revender boletos válidos'); }
+      if (b.evento_estado === 'finalizado' || new Date(b.evento_fecha).getTime() <= Date.now()) {
+        await client.query('rollback');
+        throw new ApiError(409, 'El evento ya inició; no se puede revender');
+      }
+      const precio = Math.round(Number(precioCrc));
+      if (!Number.isFinite(precio) || precio <= 0) { await client.query('rollback'); throw new ApiError(400, 'Precio inválido'); }
+      const nominal = Number(b.tipo_precio);
+      if (cfg.reventaTopeNominal && precio > nominal) {
+        await client.query('rollback');
+        throw new ApiError(400, `El precio no puede superar el valor nominal (${nominal})`);
+      }
+      const feeComprador = Math.round((precio * cfg.reventaFeeCompradorPct) / 100);
+      const feeVendedor = Math.round((precio * cfg.reventaFeeVendedorPct) / 100);
+      const existing = await client.query(
+        "select 1 from entrada_reventas where boleto_id = $1 and estado in ('activa','reservada')",
+        [boletoId],
+      );
+      if (existing.rows[0]) { await client.query('rollback'); throw new ApiError(409, 'Este boleto ya está publicado en reventa'); }
+      const id = genId('RVT');
+      const ins = await client.query(
+        `insert into entrada_reventas (id, boleto_id, evento_id, seller_user_id, seller_email, precio_crc, fee_comprador_crc, fee_vendedor_crc, estado)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,'activa') returning *`,
+        [id, boletoId, b.evento_id, userId, String(sellerEmail || '').toLowerCase(), precio, feeComprador, feeVendedor],
+      );
+      await logEvento(client, 'reventa_listada', { eventoId: b.evento_id, boletoId, user: { id: userId, name: sellerEmail }, notas: `Listing ${id}, CRC ${precio}` });
+      await client.query('commit');
+      return toReventa(ins.rows[0]);
+    } catch (err) {
+      try { await client.query('rollback'); } catch { /* noop */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listMisReventas(userId: string): Promise<Reventa[]> {
+    const rows = await query<any>(
+      `select r.*, e.nombre as evento_nombre, e.fecha as evento_fecha, t.nombre as tipo_nombre,
+              a.fila as asiento_fila, a.numero as asiento_numero
+         from entrada_reventas r
+         join entrada_eventos e on e.id = r.evento_id
+         join entrada_boletos b on b.id = r.boleto_id
+         join entrada_tipos t on t.id = b.tipo_id
+         left join entrada_asientos a on a.id = b.asiento_id
+        where r.seller_user_id = $1
+        order by r.created_at desc`,
+      [userId],
+    );
+    return rows.map(toReventa);
+  }
+
+  async cancelarReventa(userId: string, reventaId: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const rows = await client.query('select * from entrada_reventas where id = $1 for update', [reventaId]);
+      const r = rows.rows[0];
+      if (!r) { await client.query('rollback'); throw new ApiError(404, 'Reventa no encontrada'); }
+      if (r.seller_user_id !== userId) { await client.query('rollback'); throw new ApiError(403, 'No es tu publicación'); }
+      if (r.estado !== 'activa') { await client.query('rollback'); throw new ApiError(409, 'Solo se pueden cancelar publicaciones activas'); }
+      await client.query("update entrada_reventas set estado = 'cancelada' where id = $1", [reventaId]);
+      await logEvento(client, 'reventa_cancelada', { eventoId: r.evento_id, boletoId: r.boleto_id, user: { id: userId, name: r.seller_email }, notas: `Listing ${reventaId}` });
+      await client.query('commit');
+    } catch (err) {
+      try { await client.query('rollback'); } catch { /* noop */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listReventasPublicas(slug: string): Promise<ReventaPublica[]> {
+    const ev = await query<any>("select id from entrada_eventos where slug = $1 and estado = 'publicado'", [slug]);
+    if (!ev[0]) return [];
+    const rows = await query<any>(
+      `select r.id, r.precio_crc, r.fee_comprador_crc, t.nombre as tipo_nombre,
+              a.fila as asiento_fila, a.numero as asiento_numero
+         from entrada_reventas r
+         join entrada_boletos b on b.id = r.boleto_id
+         join entrada_tipos t on t.id = b.tipo_id
+         left join entrada_asientos a on a.id = b.asiento_id
+        where r.evento_id = $1 and r.estado = 'activa' and b.estado = 'valido'
+        order by r.precio_crc asc, r.created_at asc`,
+      [ev[0].id],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      tipoNombre: r.tipo_nombre,
+      asientoLabel: r.asiento_fila ? asientoLabel(r.asiento_fila, Number(r.asiento_numero)) : null,
+      precioCrc: Number(r.precio_crc),
+      feeCompradorCrc: Number(r.fee_comprador_crc),
+      totalCrc: Number(r.precio_crc) + Number(r.fee_comprador_crc),
+    }));
+  }
+
+  // Reserva el listing y crea la orden de compra secundaria (pendiente). El
+  // boleto se transfiere al confirmar el pago (confirmarReventa).
+  async iniciarReventaOrden(userId: string, buyerEmail: string, buyerNombre: string, reventaId: string, provider: string): Promise<{ ordenId: string; total: number; evento: Evento; lineItems: { nombre: string; montoUnitarioCrc: number; cantidad: number }[] }> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const rvRows = await client.query('select * from entrada_reventas where id = $1 for update', [reventaId]);
+      const rv = rvRows.rows[0];
+      if (!rv) { await client.query('rollback'); throw new ApiError(404, 'Publicación no encontrada'); }
+      if (rv.estado !== 'activa') { await client.query('rollback'); throw new ApiError(409, 'La publicación ya no está disponible'); }
+      if (rv.seller_user_id === userId) { await client.query('rollback'); throw new ApiError(409, 'No podés comprar tu propia publicación'); }
+      const evRows = await client.query('select * from entrada_eventos where id = $1', [rv.evento_id]);
+      const evRow = evRows.rows[0];
+      if (!evRow || evRow.estado === 'finalizado' || new Date(evRow.fecha).getTime() <= Date.now()) {
+        await client.query('rollback');
+        throw new ApiError(409, 'El evento ya no admite compras');
+      }
+      // El boleto debe seguir válido.
+      const bol = await client.query("select estado from entrada_boletos where id = $1", [rv.boleto_id]);
+      if (!bol.rows[0] || bol.rows[0].estado !== 'valido') { await client.query('rollback'); throw new ApiError(409, 'El boleto ya no está disponible'); }
+      const total = Number(rv.precio_crc) + Number(rv.fee_comprador_crc);
+      const ordenId = genId('ORD');
+      await client.query(
+        `insert into entrada_ordenes
+           (id, evento_id, comprador_nombre, comprador_email, comprador_user_id, subtotal_crc, total_crc, estado, provider, reventa_id, lineas)
+         values ($1,$2,$3,$4,$5,$6,$7,'pendiente',$8,$9,$10)`,
+        [ordenId, rv.evento_id, buyerNombre, String(buyerEmail).toLowerCase(), userId, rv.precio_crc, total, provider, reventaId, JSON.stringify([])],
+      );
+      await client.query("update entrada_reventas set estado = 'reservada', buyer_user_id = $2, orden_reventa_id = $3 where id = $1", [reventaId, userId, ordenId]);
+      await logEvento(client, 'reventa_checkout', { eventoId: rv.evento_id, boletoId: rv.boleto_id, user: { id: userId, name: buyerEmail }, notas: `Orden ${ordenId}, listing ${reventaId}, CRC ${total}` });
+      await client.query('commit');
+      const lineItems = [{ nombre: `Reventa · ${evRow.nombre}`, montoUnitarioCrc: total, cantidad: 1 }];
+      return { ordenId, total, evento: toEvento(evRow), lineItems };
+    } catch (err) {
+      try { await client.query('rollback'); } catch { /* noop */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getOrdenKind(ordenId: string): Promise<{ reventaId: string | null } | null> {
+    const rows = await query<any>('select reventa_id from entrada_ordenes where id = $1', [ordenId]);
+    if (!rows[0]) return null;
+    return { reventaId: rows[0].reventa_id ?? null };
+  }
+
+  // Confirma una compra secundaria: transfiere el boleto al comprador (nuevo
+  // código + QR, invalidando el anterior), cierra el listing y crea el payout
+  // pendiente para el vendedor. Idempotente por estado de la orden.
+  async confirmarReventa(ordenId: string, pago: PagoEntrada): Promise<{ evento: Evento; boleto: Boleto; compradorEmail: string; sellerEmail: string; precioCrc: number } | null> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const ordRows = await client.query('select * from entrada_ordenes where id = $1 for update', [ordenId]);
+      const ord = ordRows.rows[0];
+      if (!ord || !ord.reventa_id) { await client.query('rollback'); return null; }
+      if (ord.estado === 'pagada') { await client.query('rollback'); return null; }
+      if (ord.estado !== 'pendiente') { await client.query('rollback'); return null; }
+
+      const rvRows = await client.query('select * from entrada_reventas where id = $1 for update', [ord.reventa_id]);
+      const rv = rvRows.rows[0];
+      if (!rv) { await client.query('rollback'); return null; }
+
+      const bolRows = await client.query('select * from entrada_boletos where id = $1 for update', [rv.boleto_id]);
+      const bol = bolRows.rows[0];
+      if (!bol) { await client.query('rollback'); return null; }
+
+      // Reemite el boleto: nuevo código + QR con el correo del comprador. El QR
+      // viejo deja de validar automáticamente (la puerta busca por código).
+      const nuevoCodigo = boletoCodigo();
+      const nuevoQr = qrData(nuevoCodigo, bol.evento_id, bol.tipo_id, ord.comprador_email);
+      const updBol = await client.query(
+        `update entrada_boletos
+            set codigo = $1, qr_data = $2, owner_user_id = $3, owner_email = $4
+          where id = $5 returning *`,
+        [nuevoCodigo, nuevoQr, ord.comprador_user_id, String(ord.comprador_email).toLowerCase(), bol.id],
+      );
+
+      await client.query("update entrada_reventas set estado = 'vendida', vendida_at = now() where id = $1", [rv.id]);
+      await client.query('update entrada_ordenes set estado = $1, pago = $2 where id = $3', ['pagada', JSON.stringify(pago), ordenId]);
+
+      const montoNeto = Number(rv.precio_crc) - Number(rv.fee_vendedor_crc);
+      await client.query(
+        `insert into entrada_reventa_payouts (id, reventa_id, seller_user_id, seller_email, monto_neto_crc, estado)
+         values ($1,$2,$3,$4,$5,'pendiente')`,
+        [genId('PAY'), rv.id, rv.seller_user_id, rv.seller_email, Math.max(0, montoNeto)],
+      );
+
+      await logEvento(client, 'reventa', { eventoId: bol.evento_id, boletoId: bol.id, user: { id: ord.comprador_user_id, name: ord.comprador_email }, notas: `Boleto transferido (listing ${rv.id}), CRC ${rv.precio_crc}` });
+
+      const evRows = await client.query('select * from entrada_eventos where id = $1', [bol.evento_id]);
+      const evento = toEvento(evRows.rows[0]);
+      const meta = await client.query('select nombre from entrada_tipos where id = $1', [bol.tipo_id]);
+      await client.query('commit');
+      const boleto = toBoleto({ ...updBol.rows[0], tipo_nombre: meta.rows[0]?.nombre, evento_nombre: evRows.rows[0]?.nombre });
+      return { evento, boleto, compradorEmail: String(ord.comprador_email), sellerEmail: String(rv.seller_email || ''), precioCrc: Number(rv.precio_crc) };
+    } catch (err) {
+      try { await client.query('rollback'); } catch { /* noop */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Compra secundaria expirada/cancelada: libera el listing y cancela la orden.
+  async expirarReventaOrden(ordenId: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const ordRows = await client.query('select * from entrada_ordenes where id = $1 for update', [ordenId]);
+      const ord = ordRows.rows[0];
+      if (!ord || !ord.reventa_id || ord.estado !== 'pendiente') { await client.query('rollback'); return; }
+      await client.query('update entrada_ordenes set estado = $1 where id = $2', ['cancelada', ordenId]);
+      await client.query(
+        "update entrada_reventas set estado = 'activa', buyer_user_id = null, orden_reventa_id = null where id = $1 and estado = 'reservada'",
+        [ord.reventa_id],
+      );
+      await logEvento(client, 'reventa_checkout_expirado', { eventoId: ord.evento_id, user: { id: ord.comprador_user_id, name: ord.comprador_email }, notas: `Orden ${ordenId} liberada, listing ${ord.reventa_id}` });
+      await client.query('commit');
+    } catch (err) {
+      try { await client.query('rollback'); } catch { /* noop */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async adminListReventas(): Promise<{ reventas: Reventa[]; payouts: ReventaPayout[] }> {
+    const reventas = (await query<any>(
+      `select r.*, e.nombre as evento_nombre, e.fecha as evento_fecha, t.nombre as tipo_nombre,
+              a.fila as asiento_fila, a.numero as asiento_numero
+         from entrada_reventas r
+         join entrada_eventos e on e.id = r.evento_id
+         join entrada_boletos b on b.id = r.boleto_id
+         join entrada_tipos t on t.id = b.tipo_id
+         left join entrada_asientos a on a.id = b.asiento_id
+        order by r.created_at desc`,
+    )).map(toReventa);
+    const payouts = (await query<any>(
+      `select p.*, e.nombre as evento_nombre, t.nombre as tipo_nombre, r.precio_crc
+         from entrada_reventa_payouts p
+         join entrada_reventas r on r.id = p.reventa_id
+         join entrada_eventos e on e.id = r.evento_id
+         join entrada_boletos b on b.id = r.boleto_id
+         join entrada_tipos t on t.id = b.tipo_id
+        order by (p.estado = 'pendiente') desc, p.created_at desc`,
+    )).map(toPayout);
+    return { reventas, payouts };
+  }
+
+  async marcarPayoutPagado(payoutId: string, actor: { id: string; name: string }, metodo?: string, referencia?: string): Promise<ReventaPayout> {
+    const rows = await query<any>('select * from entrada_reventa_payouts where id = $1', [payoutId]);
+    if (!rows[0]) throw new ApiError(404, 'Saldo no encontrado');
+    if (rows[0].estado === 'pagado') throw new ApiError(409, 'El saldo ya fue marcado como pagado');
+    const upd = await query<any>(
+      "update entrada_reventa_payouts set estado = 'pagado', metodo = $2, referencia = $3, pagado_at = now(), pagado_por = $4 where id = $1 returning *",
+      [payoutId, metodo ?? null, referencia ?? null, actor.name],
+    );
+    await this.logEvento('reventa_payout_pagado', { user: actor, notas: `Payout ${payoutId} · CRC ${rows[0].monto_neto_crc}${metodo ? ` · ${metodo}` : ''}` });
+    return toPayout(upd[0]);
   }
 }

@@ -54,3 +54,24 @@ export async function sendEntradasEmail({ to, evento, boletos }: { to: string; e
     attachments: [...qrAttachments, ...(await commonMailAttachments())],
   });
 }
+
+// Notifica al vendedor que su boleto se vendió en reventa y queda un saldo por
+// liquidar. El pago al vendedor se procesa manualmente (MVP).
+export async function sendReventaVendidaEmail({ to, evento, precioCrc }: { to: string; evento: Evento; precioCrc: number }): Promise<void> {
+  if (!isValidEmailAddress(to)) return;
+  const monto = new Intl.NumberFormat('es-CR', { style: 'currency', currency: 'CRC', maximumFractionDigits: 0 }).format(precioCrc || 0);
+  const body = `<p style="font-size:15px;line-height:1.55;margin:0 0 18px;color:#d8cdb6">Tu boleto para <b style="color:#c9a961">${escapeHtml(evento.nombre)}</b> se vendió en la reventa oficial. El código anterior quedó invalidado y se reemitió al comprador.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 22px;color:#f7f1df">
+      <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Evento</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(evento.nombre)}</td></tr>
+      <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Fecha</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(fmtMailDate(evento.fecha))}</td></tr>
+      <tr><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12);color:#c9a961;font-weight:bold">Precio de venta</td><td style="padding:10px;border-bottom:1px solid rgba(247,241,223,.12)">${escapeHtml(monto)}</td></tr>
+    </table>
+    <p style="font-size:13px;color:#aa9d84;margin:0">El club te contactará para coordinar la liquidación del saldo correspondiente.</p>`;
+  await makeMailTransport().sendMail({
+    from: env.MAIL_FROM,
+    to,
+    subject: `Tu boleto se vendió - ${evento.nombre}`,
+    html: emailShell('Herediano', 'Boleto vendido', body),
+    attachments: await commonMailAttachments(),
+  });
+}

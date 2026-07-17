@@ -26,3 +26,9 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     next(err);
   }
 }
+
+// Alias semántico de requireAdmin para rutas que solo exigen una sesión válida
+// (aficionado logueado), como el módulo de reventa (/api/me/*). Nota: separar
+// staff vs aficionado en /admin/api/* sigue siendo deuda existente fuera de
+// alcance; aquí basta con exigir sesión.
+export const requireAuth = requireAdmin;

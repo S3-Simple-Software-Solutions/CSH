@@ -19,10 +19,14 @@ import {
   MapaBatchInput,
   MapaEventoInput,
   MapaTipoInput,
+  MiBoleto,
   Promotor,
   PromotorInput,
   PromotorRanking,
   ReservaAsientos,
+  Reventa,
+  ReventaPayout,
+  ReventaPublica,
   Tanda,
   TandaInput,
   OrdenPublica,
@@ -53,6 +57,19 @@ export interface EntradasRepository {
   getBoletoByCodigo(codigo: string): Promise<Boleto | null>;
   getOrdenBoletos(ordenId: string): Promise<Boleto[]>;
   getOrden(ordenId: string): Promise<{ id: string; eventoId: string; compradorEmail: string; compradorNombre: string; compradorTelefono: string | null; notifWhatsapp: boolean } | null>;
+
+  // Reventa (mercado secundario)
+  listMisBoletos(userId: string, email: string): Promise<MiBoleto[]>;
+  crearReventa(userId: string, sellerEmail: string, boletoId: string, precioCrc: number): Promise<Reventa>;
+  listMisReventas(userId: string): Promise<Reventa[]>;
+  cancelarReventa(userId: string, reventaId: string): Promise<void>;
+  listReventasPublicas(slug: string): Promise<ReventaPublica[]>;
+  iniciarReventaOrden(userId: string, buyerEmail: string, buyerNombre: string, reventaId: string, provider: string): Promise<{ ordenId: string; total: number; evento: Evento; lineItems: { nombre: string; montoUnitarioCrc: number; cantidad: number }[] }>;
+  confirmarReventa(ordenId: string, pago: PagoEntrada): Promise<{ evento: Evento; boleto: Boleto; compradorEmail: string; sellerEmail: string; precioCrc: number } | null>;
+  expirarReventaOrden(ordenId: string): Promise<void>;
+  getOrdenKind(ordenId: string): Promise<{ reventaId: string | null } | null>;
+  adminListReventas(): Promise<{ reventas: Reventa[]; payouts: ReventaPayout[] }>;
+  marcarPayoutPagado(payoutId: string, actor: { id: string; name: string }, metodo?: string, referencia?: string): Promise<ReventaPayout>;
 
   // Admin
   adminListEventos(): Promise<VentasEvento[]>;
