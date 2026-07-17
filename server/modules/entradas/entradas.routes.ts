@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Router, raw } from 'express';
 import { rateLimit } from 'express-rate-limit';
-import { requireAdmin } from '../auth/auth.middleware';
+import { requireAdmin, requireAuth } from '../auth/auth.middleware';
 import { PUBLIC_DIR } from '../../config/constants';
 import { IMG_EXT } from '../../core/id';
 import { ApiError } from '../../core/errors';
@@ -84,6 +84,56 @@ entradasRouter.get('/api/entradas/publico/eventos/:slug/asientos', async (req, r
 entradasRouter.post('/api/entradas/publico/reservar-asientos', async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await entradas.reservarAsientosPublico(req.body)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Reventa disponible en la página pública del evento (sin datos del vendedor).
+entradasRouter.get('/api/entradas/publico/eventos/:slug/reventa', async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.getReventasPublicas(String(req.params.slug))) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- Reventa: cuenta del aficionado (requiere sesión) ----
+entradasRouter.get('/api/entradas/mis-boletos', requireAuth, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.getMisBoletos(req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.get('/api/entradas/mis-reventas', requireAuth, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.getMisReventas(req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/api/entradas/reventa', requireAuth, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.crearReventa(req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.delete('/api/entradas/reventa/:id', requireAuth, async (req, res, next) => {
+  try {
+    res.json(await entradas.cancelarReventa(String(req.params.id), req.adminUser!));
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/api/entradas/reventa/:id/checkout', requireAuth, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.iniciarReventaCheckout(String(req.params.id), req.adminUser!)) });
   } catch (err) {
     next(err);
   }
@@ -410,6 +460,23 @@ entradasRouter.get('/admin/api/entradas/config', requireAdmin, async (req, res, 
 entradasRouter.put('/admin/api/entradas/config', requireAdmin, async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await entradas.adminSetConfig(req.body, req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Reventa (admin) ─────────────────────────────────────────────────
+entradasRouter.get('/admin/api/entradas/reventas', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminListReventas(req.adminUser!)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+entradasRouter.post('/admin/api/entradas/reventas/payouts/:id/pagar', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await entradas.adminMarcarPayout(String(req.params.id), req.body, req.adminUser!)) });
   } catch (err) {
     next(err);
   }

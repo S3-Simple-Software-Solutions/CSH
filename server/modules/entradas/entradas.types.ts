@@ -271,11 +271,20 @@ export interface AplicarTemplateResultado {
 export interface EntradaConfig {
   feeTipoDefault: FeeTipo;
   feeValorDefault: number;
+  // Reventa (mercado secundario).
+  reventaActiva: boolean;
+  reventaTopeNominal: boolean; // true => el precio de reventa no puede superar el valor nominal
+  reventaFeeCompradorPct: number;
+  reventaFeeVendedorPct: number;
 }
 
 export interface EntradaConfigInput {
   feeTipoDefault?: FeeTipo;
   feeValorDefault?: number;
+  reventaActiva?: boolean;
+  reventaTopeNominal?: boolean;
+  reventaFeeCompradorPct?: number;
+  reventaFeeVendedorPct?: number;
 }
 
 export interface Boleto {
@@ -292,6 +301,76 @@ export interface Boleto {
   eventoNombre?: string;
   asientoId?: string | null;
   asientoLabel?: string | null; // "Fila B · Asiento 12"
+}
+
+export type ReventaEstado = 'activa' | 'reservada' | 'vendida' | 'cancelada' | 'expirada';
+export type PayoutEstado = 'pendiente' | 'pagado';
+
+// Un boleto del usuario, con la info necesaria para listarlo en reventa.
+export interface MiBoleto {
+  id: string;
+  codigo: string;
+  estado: BoletoEstado;
+  eventoId: string;
+  eventoNombre: string;
+  eventoFecha: string;
+  eventoSlug: string;
+  tipoId: string;
+  tipoNombre: string;
+  valorNominalCrc: number; // precio base del sector (tope de reventa si aplica)
+  qrData: string;
+  asientoLabel: string | null;
+  // Si el boleto está listado en reventa, su estado actual.
+  reventa: { id: string; precioCrc: number; estado: ReventaEstado } | null;
+  vendible: boolean; // cumple ventana/estado para poder revenderse
+}
+
+export interface Reventa {
+  id: string;
+  boletoId: string;
+  eventoId: string;
+  eventoNombre?: string;
+  eventoFecha?: string;
+  tipoNombre?: string;
+  asientoLabel?: string | null;
+  sellerUserId: string;
+  sellerEmail: string;
+  precioCrc: number;
+  feeCompradorCrc: number;
+  feeVendedorCrc: number;
+  estado: ReventaEstado;
+  buyerUserId: string | null;
+  ordenReventaId: string | null;
+  createdAt: string;
+  vendidaAt: string | null;
+}
+
+// Listing visible en la página pública del evento (sin datos del vendedor).
+export interface ReventaPublica {
+  id: string;
+  tipoNombre: string;
+  asientoLabel: string | null;
+  precioCrc: number;
+  feeCompradorCrc: number;
+  totalCrc: number; // precio + fee comprador
+}
+
+export interface ReventaPayout {
+  id: string;
+  reventaId: string;
+  sellerUserId: string;
+  sellerEmail: string;
+  montoNetoCrc: number;
+  estado: PayoutEstado;
+  metodo: string | null;
+  referencia: string | null;
+  createdAt: string;
+  pagadoAt: string | null;
+  pagadoPor: string | null;
+  // Contexto para la vista admin.
+  eventoNombre?: string;
+  tipoNombre?: string;
+  precioCrc?: number;
 }
 
 export interface EntradaLog {

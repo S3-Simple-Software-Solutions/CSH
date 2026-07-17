@@ -27,7 +27,15 @@ export const entradasFaq = [
     a: 'Revisá la carpeta de spam. Si no aparece, usá la sección "Consultar mi boleto" con tu código y correo para reenviarlo.',
   },
   {
-    q: '¿Puedo transferir o pedir reembolso de mi entrada?',
-    a: 'Por el momento las entradas no son transferibles ni reembolsables. Si tenés un caso especial, escribinos por el formulario de contacto.',
+    q: '¿Puedo revender mi entrada?',
+    a: 'Sí. Desde "Mi cuenta" podés publicar tu boleto en la reventa oficial fijando un precio (con un tope según el valor nominal). Cuando otro aficionado lo compra, tu QR se invalida y se reemite uno nuevo a nombre del comprador; el club te liquida el saldo correspondiente.',
+  },
+  {
+    q: '¿Cómo compro un boleto en reventa?',
+    a: 'En la página del evento, en el bloque "Reventa oficial", elegí un boleto disponible y pagá con tarjeta (necesitás iniciar sesión). Recibís tu propio código QR nuevo, válido para el ingreso.',
+  },
+  {
+    q: '¿Puedo pedir reembolso de mi entrada?',
+    a: 'Las entradas no son reembolsables. Si no podés asistir, podés revenderla desde "Mi cuenta". Para casos especiales, escribinos por el formulario de contacto.',
   },
 ];
