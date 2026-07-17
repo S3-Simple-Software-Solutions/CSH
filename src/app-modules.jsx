@@ -2318,10 +2318,64 @@ function PublicEntradas() {
   return slug ? <PublicEventDetail slug={slug} /> : <PublicEntradasList />;
 }
 
+const MI_BOLETO_ESTADO_LABEL = {
+  valido: 'Válido',
+  usado: 'Usado',
+  anulado: 'Anulado',
+  transferido: 'Transferido',
+};
+const REVENTA_ESTADO_LABEL_PUB = {
+  activa: 'Publicada',
+  reservada: 'En pago',
+  vendida: 'Vendida',
+  cancelada: 'Cancelada',
+  expirada: 'Expirada',
+};
+
+// Modal con el detalle de los boletos comprados para un evento: QR escaneable,
+// código, tipo, asiento y estado de cada entrada (incluida reventa).
+function MiBoletosModal({ grupo, onClose }) {
+  const fechaTxt = `${diaSemana(grupo.eventoFecha)} ${new Date(grupo.eventoFecha).getDate()} de ${mesCorto(grupo.eventoFecha)} · ${horaCorta(grupo.eventoFecha)}`;
+  return (
+    <Modal title="Mis entradas" onClose={onClose} wide>
+      <div className="pay-summary">
+        <b>{grupo.eventoNombre}</b><br />
+        <span className="muted">{fechaTxt}</span>
+      </div>
+      <div className="mi-boletos-grid">
+        {grupo.boletos.map((b) => (
+          <div key={b.id} className="mi-boleto-card">
+            <div className="mi-boleto-qr">
+              {b.qrData ? <QRImage data={b.qrData} size={128} /> : <span className="muted" style={{ fontSize: '.75rem' }}>Sin QR</span>}
+            </div>
+            <div className="mi-boleto-info">
+              <b>{b.tipoNombre}</b>
+              {b.asientoLabel && <span className="mi-boleto-asiento">{b.asientoLabel}</span>}
+              <span className="mi-boleto-codigo">{b.codigo}</span>
+              <div className="mi-boleto-pills">
+                <span className={`pill ${b.estado === 'valido' ? 'ok' : ''}`}>{MI_BOLETO_ESTADO_LABEL[b.estado] || b.estado}</span>
+                {b.reventa && <span className="pill reventa">Reventa · {money(b.reventa.precioCrc)} · {REVENTA_ESTADO_LABEL_PUB[b.reventa.estado] || b.reventa.estado}</span>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="muted" style={{ fontSize: '.82rem', marginTop: 14 }}>
+        Presentá el código QR en la entrada del estadio. Para revender un boleto, entrá a tu perfil.
+      </p>
+      <div className="modal-actions">
+        <a className="btn ghost" href="/mi-cuenta"><Ticket size={15} /> Gestionar en mi perfil</a>
+        <button className="btn" onClick={onClose}>Listo</button>
+      </div>
+    </Modal>
+  );
+}
+
 // Eventos que el aficionado ya compró. Solo se muestra si hay sesión activa
 // (el endpoint responde 401 si no) y si tiene al menos un boleto a su nombre.
 function MisEventosComprados() {
   const [grupos, setGrupos] = useState(null);
+  const [detalle, setDetalle] = useState(null);
   useEffect(() => {
     let alive = true;
     api('/api/entradas/mis-boletos').then((d) => {
@@ -2343,12 +2397,12 @@ function MisEventosComprados() {
     <section className="mis-eventos">
       <p className="eyebrow">Mi cuenta</p>
       <h2 className="mis-eventos-title"><Ticket size={20} /> Mis entradas</h2>
-      <p className="sub">Eventos que ya compraste. Gestioná o revendé tus boletos desde tu perfil.</p>
+      <p className="sub">Eventos que ya compraste. Tocá una tarjeta para ver el detalle y el código QR.</p>
       <div className="mis-eventos-grid">
         {grupos.map((g) => {
           const enReventa = g.boletos.filter((b) => b.reventa).length;
           return (
-            <a key={g.eventoId} className="mis-evento-card" href={g.eventoSlug ? `/entradas/${g.eventoSlug}` : '/mi-cuenta'}>
+            <button key={g.eventoId} type="button" className="mis-evento-card" onClick={() => setDetalle(g)}>
               <span className="mis-evento-date" aria-hidden="true">
                 <em>{diaSemana(g.eventoFecha).slice(0, 3)}</em>
                 <b>{pad(new Date(g.eventoFecha).getDate())}</b>
@@ -2363,10 +2417,11 @@ function MisEventosComprados() {
                 </span>
               </span>
               <span className="mis-evento-cta">Ver <Ticket size={15} /></span>
-            </a>
+            </button>
           );
         })}
       </div>
+      {detalle && <MiBoletosModal grupo={detalle} onClose={() => setDetalle(null)} />}
     </section>
   );
 }

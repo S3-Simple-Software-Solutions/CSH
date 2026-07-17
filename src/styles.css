@@ -602,8 +602,21 @@ tr:last-child td { border-bottom: 0; }
 .mis-eventos-title { display: flex; align-items: center; gap: 8px; margin: 4px 0 2px; }
 .mis-eventos-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
 @media (min-width: 720px) { .mis-eventos-grid { grid-template-columns: 1fr 1fr; } }
-.mis-evento-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: inherit; text-decoration: none; transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
+.mis-evento-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: inherit; text-decoration: none; text-align: left; width: 100%; font: inherit; cursor: pointer; transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
 .mis-evento-card:hover { border-color: rgba(201,169,97,.55); transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.22); }
+.mis-evento-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* Modal de detalle de boletos comprados */
+.mi-boletos-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 4px; }
+@media (min-width: 620px) { .mi-boletos-grid { grid-template-columns: 1fr 1fr; } }
+.mi-boleto-card { display: flex; align-items: center; gap: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.02); }
+.mi-boleto-qr { flex: 0 0 auto; width: 128px; height: 128px; display: grid; place-items: center; background: #fff; border-radius: 8px; padding: 6px; }
+.mi-boleto-qr img { display: block; width: 100%; height: 100%; }
+.mi-boleto-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mi-boleto-info > b { font-size: .98rem; }
+.mi-boleto-asiento { font-weight: 700; color: var(--gold); font-size: .9rem; }
+.mi-boleto-codigo { font-family: ui-monospace, monospace; font-size: .8rem; color: var(--muted); letter-spacing: .04em; }
+.mi-boleto-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .mis-evento-date { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 0 0 auto; min-width: 52px; padding: 2px 8px; border-left: 2px solid var(--red); line-height: 1; }
 .mis-evento-date em { font-style: normal; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; color: var(--red); margin-bottom: 3px; }
 .mis-evento-date b { font-family: var(--font-display); font-size: 34px; font-weight: 700; color: var(--paper); font-variant-numeric: tabular-nums; }
