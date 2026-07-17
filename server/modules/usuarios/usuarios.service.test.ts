@@ -1,18 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminUser } from './usuarios.data';
 import { hashPassword } from './usuarios.passwords';
+import { ApiError } from '../../core/errors';
 
 const db = vi.hoisted(() => ({
   query: vi.fn(),
   poolQuery: vi.fn(),
+  clientQuery: vi.fn(),
+  clientRelease: vi.fn(),
+  poolConnect: vi.fn(),
 }));
 
 vi.mock('../../core/db', () => ({
   query: db.query,
-  pool: { query: db.poolQuery },
+  pool: {
+    query: db.poolQuery,
+    connect: db.poolConnect,
+  },
 }));
 
-import { canManageCoupons, canManageEvents, canOperateGate, canViewSales, findAdminUser, isPasswordManagedByEnv } from './usuarios.service';
+import {
+  canManageCoupons,
+  canManageEvents,
+  canOperateGate,
+  canViewSales,
+  findAdminUser,
+  getUserProfile,
+  isPasswordManagedByEnv,
+  registerAficionado,
+} from './usuarios.service';
 
 function user(overrides: Partial<AdminUser> = {}): AdminUser {
   return {
@@ -52,6 +68,13 @@ describe('usuarios service permissions', () => {
   beforeEach(() => {
     db.query.mockReset();
     db.poolQuery.mockReset();
+    db.clientQuery.mockReset();
+    db.clientRelease.mockReset();
+    db.poolConnect.mockReset();
+    db.poolConnect.mockResolvedValue({
+      query: db.clientQuery,
+      release: db.clientRelease,
+    });
   });
 
   it('finds admin users by username or email with matching password', async () => {
@@ -85,5 +108,142 @@ describe('usuarios service permissions', () => {
     expect(isPasswordManagedByEnv(user({ id: 'u-001' }))).toBe(true);
     expect(isPasswordManagedByEnv(user({ id: 'demo-operador', passwordManagedByEnv: false }))).toBe(false);
     expect(isPasswordManagedByEnv(user({ id: 'demo-admin', passwordManagedByEnv: true }))).toBe(true);
+  });
+});
+
+function fanRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'fan-test-1',
+    username: 'nuevofan',
+    email: 'nuevo.fan@gmail.com',
+    password_hash: hashPassword('password123'),
+    full_name: 'Nuevo Fan',
+    display_role: 'Aficionado',
+    area: 'Aficionados',
+    status: 'Activo',
+    sponsor: null,
+    password_managed_by: 'database',
+    profile: { category: 'aficionado' },
+    role_ids: ['site:authenticated', 'parking:invitado', 'coupon:socio'],
+    ...overrides,
+  };
+}
+
+describe('registerAficionado', () => {
+  beforeEach(() => {
+    db.query.mockReset();
+    db.clientQuery.mockReset();
+    db.clientRelease.mockReset();
+    db.poolConnect.mockReset();
+    db.poolConnect.mockResolvedValue({
+      query: db.clientQuery,
+      release: db.clientRelease,
+    });
+    db.clientQuery.mockResolvedValue([]);
+  });
+
+  it('creates an aficionado account with default roles', async () => {
+    db.query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([fanRow()]);
+
+    const created = await registerAficionado({
+      nombre: 'Nuevo Fan',
+      email: 'nuevo.fan@gmail.com',
+      username: 'nuevofan',
+      clave: 'password123',
+    });
+
+    expect(created).toMatchObject({
+      id: 'fan-test-1',
+      role: 'Aficionado',
+      parkingRole: 'invitado',
+      couponRole: 'socio',
+      eventsRole: 'ninguno',
+    });
+    expect(db.clientQuery).toHaveBeenCalledWith('begin');
+    expect(db.clientQuery).toHaveBeenCalledWith('commit');
+  });
+
+  it('rejects duplicate email', async () => {
+    db.query.mockResolvedValueOnce([{ id: 'existing' }]);
+
+    await expect(
+      registerAficionado({
+        nombre: 'Nuevo Fan',
+        email: 'nuevo.fan@gmail.com',
+        username: 'nuevofan',
+        clave: 'password123',
+      }),
+    ).rejects.toMatchObject({ status: 409, message: 'Ya existe una cuenta con ese correo' });
+  });
+
+  it('rejects duplicate username', async () => {
+    db.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'existing' }]);
+
+    await expect(
+      registerAficionado({
+        nombre: 'Nuevo Fan',
+        email: 'nuevo.fan@gmail.com',
+        username: 'nuevofan',
+        clave: 'password123',
+      }),
+    ).rejects.toMatchObject({ status: 409, message: 'Ese nombre de usuario ya esta en uso' });
+  });
+
+  it('rejects short passwords', async () => {
+    await expect(
+      registerAficionado({
+        nombre: 'Nuevo Fan',
+        email: 'nuevo.fan@gmail.com',
+        username: 'nuevofan',
+        clave: 'short',
+      }),
+    ).rejects.toBeInstanceOf(ApiError);
+
+    await expect(
+      registerAficionado({
+        nombre: 'Nuevo Fan',
+        email: 'nuevo.fan@gmail.com',
+        username: 'nuevofan',
+        clave: 'short',
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe('getUserProfile', () => {
+  beforeEach(() => {
+    db.query.mockReset();
+  });
+
+  it('returns username and profile for an aficionado', async () => {
+    db.query.mockResolvedValueOnce([
+      fanRow({
+        id: 'fan-mariana',
+        username: 'msolis',
+        email: 'mariana.solis@gmail.com',
+        full_name: 'Mariana Solis Campos',
+        profile: {
+          category: 'aficionado',
+          personal: { telefono: '+506 8456-7012', cedula: '1-1788-0420', nacimiento: '2000-02-14', provincia: 'San Jose', genero: 'Femenino' },
+          app: { registrado: '2025-02-20', ultimoAcceso: '2026-06-17', plataforma: 'Android', notificaciones: true, sesiones30d: 34 },
+          metricas: { antiguedadMeses: 16, partidosAsistidos: 12, entradasCompradas: 14, gastoTotalCrc: 138000, cuponesUsados: 6, reservasParqueo: 2, puntosFidelidad: 980, asistenciaPct: 48 },
+        },
+      }),
+    ]);
+
+    await expect(getUserProfile('fan-mariana')).resolves.toMatchObject({
+      username: 'msolis',
+      email: 'mariana.solis@gmail.com',
+      category: 'aficionado',
+      profile: { category: 'aficionado', metricas: { puntosFidelidad: 980 } },
+    });
+  });
+
+  it('throws when user id does not exist', async () => {
+    db.query.mockResolvedValueOnce([]);
+    await expect(getUserProfile('missing-user')).rejects.toMatchObject({ status: 404 });
   });
 });
