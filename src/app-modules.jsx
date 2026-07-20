@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Accessibility, Activity, AlertCircle, BadgePercent, BarChart3, CalendarDays, Car, Check, Clock, Eye, EyeOff, Gift, Globe, ImagePlus, LayoutGrid, Lock, Mail, Map as MapIcon, MapPin, MessageSquare, Minus, Moon, Newspaper, PanelLeftClose, PanelLeftOpen, Pencil, Plus, QrCode, RotateCw, Route, ScanLine, Search, Send, Shield, ShoppingBag, Sparkles, Store, Sun, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, X } from 'lucide-react';
+import { Accessibility, Activity, AlertCircle, BadgePercent, Ban, BarChart3, CalendarDays, Car, Check, CheckCircle2, Clock, Eye, EyeOff, Filter, Gift, Globe, ImagePlus, LayoutGrid, Lock, Mail, Map as MapIcon, MapPin, MessageSquare, Minus, Moon, Newspaper, PanelLeftClose, PanelLeftOpen, Pencil, Plus, QrCode, RefreshCw, RotateCw, Route, ScanLine, Search, Send, Shield, ShieldCheck, ShoppingBag, Sparkles, Store, Sun, Tag, Ticket, ToggleLeft, ToggleRight, Trash2, TrendingUp, Trophy, Truck, Users, Users2, UtensilsCrossed, Wallet, X } from 'lucide-react';
 import AdminTopBar from './layout/AdminTopBar.jsx';
 import DataTable from './components/DataTable.jsx';
 import { StadiumMapEditor } from './pages/entradas/StadiumMapEditor.jsx';
@@ -3001,7 +3001,7 @@ function PublicEventDetail({ slug }) {
         )}
         {seatError && <div className="error">{seatError}</div>}
 
-        <ReventaDisponible slug={slug} />
+        <ReventaDisponible slug={slug} evento={evento} />
 
         <div className={`checkout-bar${viewMode === 'mapa' && hasMapa ? ' checkout-bar--mapa' : ''}`}>
           <div><span>{count} boleto(s)</span><b>{money(total)}</b></div>
@@ -3016,7 +3016,7 @@ function PublicEventDetail({ slug }) {
 
 // Reventa oficial (mercado secundario): listings de otros aficionados. Comprar
 // exige sesión — si no hay, mandamos al login y volvemos al evento.
-function ReventaDisponible({ slug }) {
+function ReventaDisponible({ slug, evento }) {
   const [reventas, setReventas] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
@@ -3044,31 +3044,41 @@ function ReventaDisponible({ slug }) {
   }
 
   if (!loaded || reventas.length === 0) return null;
+  const agotado = evento?.estado === 'agotado';
+  const n = reventas.length;
   return (
-    <section className="card" style={{ marginTop: 18 }}>
-      <p className="eyebrow">Reventa oficial</p>
-      <h2 style={{ marginTop: 4 }}>Boletos en reventa</h2>
-      <p className="muted" style={{ marginTop: 2 }}>
-        Boletos de otros aficionados. Al comprar, se te reemite un QR nuevo a tu nombre. Necesitás iniciar sesión.
-      </p>
+    <section className="card reventa-block">
+      <div className="reventa-block-head">
+        <div>
+          <p className="eyebrow"><RefreshCw size={13} /> Reventa oficial</p>
+          <h2>{agotado ? '¡Agotado! Pero hay reventa' : 'Boletos en reventa'}</h2>
+        </div>
+        <span className="reventa-count">{n} disponible{n === 1 ? '' : 's'}</span>
+      </div>
+      <div className="reventa-trust">
+        <span><ShieldCheck size={15} /> QR reemitido = 100% verificado</span>
+        <span><RefreshCw size={15} /> El QR del vendedor se invalida</span>
+        <span><Lock size={15} /> Pago seguro con tarjeta</span>
+      </div>
       {error && <div className="error">{error}</div>}
-      <div className="sector-list" style={{ marginTop: 8 }}>
+      <div className="reventa-grid">
         {reventas.map((r) => (
-          <div key={r.id} className="sector" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <div className="sector-info">
+          <div key={r.id} className="reventa-item">
+            <div className="reventa-item-info">
               <b>{r.tipoNombre}</b>
-              <span>{r.asientoLabel || 'Entrada general'}</span>
+              <span className="reventa-item-seat">{r.asientoLabel || 'Entrada general'}</span>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontWeight: 700 }}>{money(r.totalCrc)}</div>
-              {r.feeCompradorCrc > 0 && <div className="muted" style={{ fontSize: '.78rem' }}>incluye cargo {money(r.feeCompradorCrc)}</div>}
+            <div className="reventa-item-price">
+              <b>{money(r.totalCrc)}</b>
+              {r.feeCompradorCrc > 0 && <span className="muted">incl. cargo {money(r.feeCompradorCrc)}</span>}
             </div>
-            <button className="btn" disabled={busy === r.id} onClick={() => comprar(r)}>
-              {busy === r.id ? '…' : 'Comprar'}
+            <button className="btn reventa-buy" disabled={busy === r.id} onClick={() => comprar(r)}>
+              {busy === r.id ? <Spinner size={15} /> : <><ShoppingBag size={15} /> Comprar</>}
             </button>
           </div>
         ))}
       </div>
+      <p className="reventa-foot muted">Necesitás iniciar sesión para comprar. Al pagar, se te emite un boleto nuevo a tu nombre.</p>
     </section>
   );
 }
@@ -3231,10 +3241,77 @@ function AdminEntradas({ user, route = '/admin/entradas', navigate }) {
   );
 }
 
+const REVENTA_ADMIN_ESTADO = {
+  activa: 'Publicada', reservada: 'En pago', vendida: 'Vendida', cancelada: 'Cancelada', expirada: 'Expirada',
+};
+
+// Modal para registrar el pago manual (payout) al vendedor.
+function PayoutModal({ payout, onClose, onDone }) {
+  const [metodo, setMetodo] = useState('SINPE');
+  const [referencia, setReferencia] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  async function submit() {
+    setLoading(true); setErr('');
+    const d = await api(`/admin/api/entradas/reventas/payouts/${encodeURIComponent(payout.id)}/pagar`, {
+      method: 'POST', body: JSON.stringify({ metodo, referencia }),
+    });
+    setLoading(false);
+    if (!d.ok) return setErr(d.error || 'No se pudo registrar el pago.');
+    onDone();
+  }
+  return (
+    <Modal title="Registrar pago al vendedor" onClose={onClose}>
+      <div className="payout-modal">
+        <div className="payout-amount">
+          <span>Monto neto a transferir</span>
+          <b>{money(payout.montoNetoCrc)}</b>
+        </div>
+        <div className="pay-summary">
+          <div><span className="muted">Vendedor</span><br /><b>{payout.sellerEmail}</b></div>
+          {payout.eventoNombre && <div style={{ marginTop: 6 }}><span className="muted">Evento</span><br />{payout.eventoNombre}{payout.tipoNombre ? ` · ${payout.tipoNombre}` : ''}</div>}
+        </div>
+        <label>Método de pago</label>
+        <select value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+          <option>SINPE</option>
+          <option>Transferencia</option>
+          <option>Efectivo</option>
+          <option>Otro</option>
+        </select>
+        <label style={{ marginTop: 8 }}>Referencia (opcional)</label>
+        <input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="N.º de comprobante" />
+        {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
+        <div className="modal-actions">
+          <button className="btn ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn" onClick={submit} disabled={loading}>
+            {loading ? <><Spinner size={15} /> Guardando…</> : <><Check size={16} /> Confirmar pago</>}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function KpiCard({ icon, label, value, sub, tone }) {
+  return (
+    <div className={`reventa-kpi${tone ? ` reventa-kpi--${tone}` : ''}`}>
+      <span className="reventa-kpi-ic">{icon}</span>
+      <div>
+        <span className="reventa-kpi-label">{label}</span>
+        <b className="reventa-kpi-value">{value}</b>
+        {sub && <span className="reventa-kpi-sub">{sub}</span>}
+      </div>
+    </div>
+  );
+}
+
 function AdminReventasTab({ canManage }) {
   const [data, setData] = useState({ reventas: [], payouts: [] });
   const [config, setConfig] = useState(null);
   const [msg, setMsg] = useState(null);
+  const [payFilter, setPayFilter] = useState('pendiente');
+  const [revFilter, setRevFilter] = useState('todas');
+  const [payModal, setPayModal] = useState(null);
   const load = async () => {
     const d = await api('/admin/api/entradas/reventas');
     if (d.ok) setData({ reventas: d.reventas || [], payouts: d.payouts || [] });
@@ -3242,18 +3319,6 @@ function AdminReventasTab({ canManage }) {
     if (c.ok) setConfig(c.config);
   };
   useEffect(() => { load(); }, []);
-
-  async function pagar(id) {
-    setMsg(null);
-    const referencia = window.prompt('Referencia del pago (opcional):') || '';
-    const metodo = window.prompt('Método de pago (SINPE, transferencia…):') || '';
-    const d = await api(`/admin/api/entradas/reventas/payouts/${encodeURIComponent(id)}/pagar`, {
-      method: 'POST', body: JSON.stringify({ metodo, referencia }),
-    });
-    if (!d.ok) return setMsg({ type: 'error', text: d.error });
-    setMsg({ type: 'ok', text: 'Saldo marcado como pagado.' });
-    load();
-  }
 
   async function saveConfig() {
     setMsg(null);
@@ -3264,11 +3329,25 @@ function AdminReventasTab({ canManage }) {
   }
 
   const pendientes = data.payouts.filter((p) => p.estado === 'pendiente');
+  const pagados = data.payouts.filter((p) => p.estado === 'pagado');
   const totalPendiente = pendientes.reduce((s, p) => s + p.montoNetoCrc, 0);
+  const totalPagado = pagados.reduce((s, p) => s + p.montoNetoCrc, 0);
+  const vendidas = data.reventas.filter((r) => r.estado === 'vendida');
+  const comision = vendidas.reduce((s, r) => s + (r.feeCompradorCrc || 0) + (r.feeVendedorCrc || 0), 0);
+
+  const payoutsShown = payFilter === 'todos' ? data.payouts : data.payouts.filter((p) => p.estado === payFilter);
+  const reventasShown = revFilter === 'todas' ? data.reventas : data.reventas.filter((r) => r.estado === revFilter);
 
   return (
     <div className="admin-reventas">
       {msg && <div className={msg.type === 'ok' ? 'okbox' : 'error'}>{msg.text}</div>}
+
+      <div className="reventa-kpis">
+        <KpiCard icon={<Wallet size={18} />} tone="warn" label="Por pagar a vendedores" value={money(totalPendiente)} sub={`${pendientes.length} pendiente${pendientes.length === 1 ? '' : 's'}`} />
+        <KpiCard icon={<Check size={18} />} tone="ok" label="Ya pagado" value={money(totalPagado)} sub={`${pagados.length} liquidado${pagados.length === 1 ? '' : 's'}`} />
+        <KpiCard icon={<BadgePercent size={18} />} label="Comisión generada" value={money(comision)} sub={`${vendidas.length} venta${vendidas.length === 1 ? '' : 's'}`} />
+        <KpiCard icon={<TrendingUp size={18} />} label="Publicaciones" value={String(data.reventas.length)} sub={`${data.reventas.filter((r) => r.estado === 'activa').length} activa(s)`} />
+      </div>
 
       {canManage && config && (
         <section className="card" style={{ marginBottom: 16 }}>
@@ -3298,22 +3377,30 @@ function AdminReventasTab({ canManage }) {
       )}
 
       <section className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Saldos por pagar a vendedores</h3>
-        <p className="muted">Pendiente total: <b>{money(totalPendiente)}</b> ({pendientes.length})</p>
-        {data.payouts.length === 0 ? (
-          <p className="muted">Sin saldos registrados.</p>
+        <div className="reventa-section-head">
+          <h3 style={{ margin: 0 }}><Wallet size={16} /> Saldos por pagar a vendedores</h3>
+          <div className="reventa-filters">
+            {['pendiente', 'pagado', 'todos'].map((f) => (
+              <button key={f} className={`reventa-chip${payFilter === f ? ' is-active' : ''}`} onClick={() => setPayFilter(f)}>
+                {f === 'pendiente' ? 'Pendientes' : f === 'pagado' ? 'Pagados' : 'Todos'}
+              </button>
+            ))}
+          </div>
+        </div>
+        {payoutsShown.length === 0 ? (
+          <p className="muted">Sin saldos {payFilter !== 'todos' ? `(${payFilter})` : 'registrados'}.</p>
         ) : (
           <table className="admin-table">
             <thead><tr><th>Evento</th><th>Sector</th><th>Vendedor</th><th>Neto</th><th>Estado</th><th></th></tr></thead>
             <tbody>
-              {data.payouts.map((p) => (
+              {payoutsShown.map((p) => (
                 <tr key={p.id}>
                   <td>{p.eventoNombre}</td>
                   <td>{p.tipoNombre}</td>
                   <td>{p.sellerEmail}</td>
-                  <td>{money(p.montoNetoCrc)}</td>
-                  <td><span className={`pill ${p.estado === 'pagado' ? 'publicado' : ''}`}>{p.estado}</span></td>
-                  <td>{canManage && p.estado === 'pendiente' && <button className="btn ghost" onClick={() => pagar(p.id)}>Marcar pagado</button>}</td>
+                  <td><b>{money(p.montoNetoCrc)}</b></td>
+                  <td><span className={`rev-badge rev-badge--${p.estado === 'pagado' ? 'vendida' : 'reservada'}`}>{p.estado === 'pagado' ? <Check size={13} /> : <Clock size={13} />}{p.estado === 'pagado' ? 'Pagado' : 'Pendiente'}</span></td>
+                  <td>{canManage && p.estado === 'pendiente' && <button className="btn ghost" onClick={() => setPayModal(p)}><Check size={14} /> Marcar pagado</button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -3322,26 +3409,43 @@ function AdminReventasTab({ canManage }) {
       </section>
 
       <section className="card">
-        <h3 style={{ marginTop: 0 }}>Publicaciones de reventa</h3>
-        {data.reventas.length === 0 ? (
-          <p className="muted">No hay publicaciones.</p>
+        <div className="reventa-section-head">
+          <h3 style={{ margin: 0 }}><Tag size={16} /> Publicaciones de reventa</h3>
+          <div className="reventa-filters">
+            {['todas', 'activa', 'vendida', 'cancelada'].map((f) => (
+              <button key={f} className={`reventa-chip${revFilter === f ? ' is-active' : ''}`} onClick={() => setRevFilter(f)}>
+                {f === 'todas' ? 'Todas' : REVENTA_ADMIN_ESTADO[f]}
+              </button>
+            ))}
+          </div>
+        </div>
+        {reventasShown.length === 0 ? (
+          <p className="muted">No hay publicaciones{revFilter !== 'todas' ? ` (${REVENTA_ADMIN_ESTADO[revFilter]?.toLowerCase()})` : ''}.</p>
         ) : (
           <table className="admin-table">
             <thead><tr><th>Evento</th><th>Sector</th><th>Vendedor</th><th>Precio</th><th>Estado</th></tr></thead>
             <tbody>
-              {data.reventas.map((r) => (
+              {reventasShown.map((r) => (
                 <tr key={r.id}>
                   <td>{r.eventoNombre}</td>
                   <td>{r.tipoNombre}{r.asientoLabel ? ` · ${r.asientoLabel}` : ''}</td>
                   <td>{r.sellerEmail}</td>
                   <td>{money(r.precioCrc)}</td>
-                  <td><span className="pill">{r.estado}</span></td>
+                  <td><span className={`rev-badge rev-badge--${r.estado}`}>{REVENTA_ADMIN_ESTADO[r.estado] || r.estado}</span></td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </section>
+
+      {payModal && (
+        <PayoutModal
+          payout={payModal}
+          onClose={() => setPayModal(null)}
+          onDone={() => { setPayModal(null); setMsg({ type: 'ok', text: 'Saldo marcado como pagado.' }); load(); }}
+        />
+      )}
     </div>
   );
 }
