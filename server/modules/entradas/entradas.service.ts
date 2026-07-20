@@ -809,7 +809,19 @@ export async function adminSetConfig(body: any, user: AdminUser) {
 // ── Reventa (mercado secundario) ─────────────────────────────────
 
 export async function getMisBoletos(user: AdminUser) {
-  return { boletos: await getEntradasRepository().listMisBoletos(user.id, user.email) };
+  const repo = getEntradasRepository();
+  const [boletos, config] = await Promise.all([
+    repo.listMisBoletos(user.id, user.email),
+    repo.getConfig(),
+  ]);
+  // Fees/tope de reventa para que la UI calcule el neto del vendedor en vivo.
+  const reventaConfig = {
+    activa: config.reventaActiva,
+    topeNominal: config.reventaTopeNominal,
+    feeCompradorPct: config.reventaFeeCompradorPct,
+    feeVendedorPct: config.reventaFeeVendedorPct,
+  };
+  return { boletos, reventaConfig };
 }
 
 export async function crearReventa(body: { boletoId?: unknown; precioCrc?: unknown }, user: AdminUser) {
