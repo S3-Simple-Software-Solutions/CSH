@@ -57,6 +57,7 @@ async function seedSalones(): Promise<void> {
       capacidad: 120,
       tarifaHora: 45000,
       tarifaDia: 300000,
+      imagenUrl: '/brand/salones/seed-salon-rojiamarillo.jpg',
       amenidades: ['Proyector y pantalla', 'Sonido', 'Aire acondicionado', 'Wi-Fi', 'Servicio de catering opcional', 'Parqueo incluido'],
     },
     {
@@ -66,6 +67,7 @@ async function seedSalones(): Promise<void> {
       capacidad: 40,
       tarifaHora: 25000,
       tarifaDia: 160000,
+      imagenUrl: '/brand/salones/seed-salon-team.jpg',
       amenidades: ['Pantalla', 'Wi-Fi', 'Aire acondicionado', 'Mesa de reuniones'],
     },
   ];
@@ -73,9 +75,9 @@ async function seedSalones(): Promise<void> {
   let orden = 0;
   for (const s of salones) {
     await pool.query(
-      `insert into venue_salones (id, slug, nombre, descripcion, ubicacion, capacidad, tarifa_hora_crc, tarifa_dia_crc, amenidades, orden)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)`,
-      [genId('VSA'), slugify(s.nombre), s.nombre, s.descripcion, s.ubicacion, s.capacidad, s.tarifaHora, s.tarifaDia, JSON.stringify(s.amenidades), orden++],
+      `insert into venue_salones (id, slug, nombre, descripcion, ubicacion, capacidad, tarifa_hora_crc, tarifa_dia_crc, imagen_url, amenidades, orden)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)`,
+      [genId('VSA'), slugify(s.nombre), s.nombre, s.descripcion, s.ubicacion, s.capacidad, s.tarifaHora, s.tarifaDia, s.imagenUrl, JSON.stringify(s.amenidades), orden++],
     );
   }
 }
