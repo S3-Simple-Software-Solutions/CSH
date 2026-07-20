@@ -563,10 +563,6 @@ const ETIQUETAS_PLAZA = [
   { id: 'discapacitado', nombre: 'Discapacitados', icono: '♿' },
   { id: 'electrico', nombre: 'Carga eléctrica', icono: '⚡' },
   { id: 'moto', nombre: 'Motos', icono: '🏍' },
-  { id: 'familiar', nombre: 'Familiar', icono: '👶' },
-  { id: 'visitante', nombre: 'Visitantes', icono: '👤' },
-  { id: 'vip', nombre: 'VIP / directiva', icono: '⭐' },
-  { id: 'carga', nombre: 'Carga y descarga', icono: '📦' },
 ];
 
 const etiquetasDe = (st) => (Array.isArray(st?.etiquetas) && st.etiquetas.length
