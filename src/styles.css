@@ -2893,3 +2893,36 @@ th.dt-sorted { color: var(--gold-bright); }
   .reventa-item { flex-wrap: wrap; }
   .reventa-item-price { text-align: left; flex: 1; }
 }
+
+/* ── Patrocinadores: chips de espacios donde pauta ──────────────── */
+.espacios-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.espacio-chip {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 10px;
+  border-radius: 999px; border: 1px dashed var(--line); background: transparent;
+  color: var(--muted); font-size: 12px; cursor: pointer; transition: all .15s ease;
+}
+.espacio-chip:hover { border-color: var(--gold); color: var(--gold); }
+.espacio-chip.on {
+  border-style: solid; border-color: rgba(201,169,97,.5);
+  background: rgba(201,169,97,.14); color: var(--gold); font-weight: 600;
+}
+
+/* ── Salones (venues): tarjetas + formulario público ────────────── */
+.salon-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.salon-card { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.salon-card.selected { border-color: var(--gold); }
+.salon-card-img { width: 100%; height: 170px; object-fit: cover; display: block; }
+.salon-card-img.empty { background: rgba(255,255,255,.04); }
+.salon-card-body { padding: 14px; }
+.salon-card-title { display: flex; align-items: center; gap: 8px; }
+.salon-card-title b { font-family: var(--font-display); font-size: 1.25rem; }
+.salon-card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.salon-amenidades { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: .88rem; }
+.salon-amenidades li { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.salon-form { max-width: 620px; margin: 28px 0 0; border: 1px solid var(--line); border-radius: 10px; padding: 18px; background: var(--surface); }
+.salon-form h2 { margin-top: 0; }
+.salon-form textarea { width: 100%; }
+.salon-ocupadas { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+.salon-ocupadas h3 { display: flex; align-items: center; gap: 6px; font-size: .95rem; margin: 0 0 6px; }
+.salon-ocupadas ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .88rem; }
+.okbox.warn { border-color: rgba(224,165,0,.45); background: rgba(224,165,0,.12); color: #e0a500; }

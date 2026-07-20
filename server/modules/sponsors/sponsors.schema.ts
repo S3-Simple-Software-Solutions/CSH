@@ -12,10 +12,25 @@ export async function ensureSponsorsSchema(): Promise<void> {
       es_apparel boolean not null default false,
       creado_at timestamptz not null default now()
     );
+
+    -- Espacios publicitarios donde pauta cada patrocinador (ver ESPACIOS_PAUTA).
+    create table if not exists club_sponsor_espacios (
+      sponsor_id text not null references club_sponsors(id) on delete cascade,
+      espacio_id text not null,
+      creado_at  timestamptz not null default now(),
+      primary key (sponsor_id, espacio_id)
+    );
   `);
 
   const { count } = (await query<{ count: number }>('select count(*)::int as count from club_sponsors'))[0];
   if (count === 0) await seedSponsors();
+
+  // Backfill de una sola vez (tabla vacía): los patrocinadores que ya existían
+  // salen en la web, así que arrancan con el espacio 'web' y el sitio no cambia.
+  const espacios = (await query<{ count: number }>('select count(*)::int as count from club_sponsor_espacios'))[0];
+  if (espacios.count === 0) {
+    await pool.query("insert into club_sponsor_espacios (sponsor_id, espacio_id) select id, 'web' from club_sponsors");
+  }
 }
 
 async function seedSponsors(): Promise<void> {

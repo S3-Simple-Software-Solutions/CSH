@@ -36,6 +36,7 @@ export default function SiteFooter() {
           <Link to="/entradas">Entradas</Link>
           <Link to="/cuponera">Cuponera</Link>
           <Link to="/parqueo">Parqueo</Link>
+          <Link to="/salones">Alquiler de salones</Link>
         </div>
 
         <div className="site-foot-col">

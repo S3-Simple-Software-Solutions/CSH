@@ -73,22 +73,22 @@ restaurantesRouter.post('/admin/api/restaurantes', requireAdmin, async (req, res
   } catch (err) { next(err); }
 });
 
-// Gestión de dueños (solo admin) — literales antes de las rutas '/:id'.
-restaurantesRouter.get('/admin/api/restaurantes/owners', requireAdmin, async (req, res, next) => {
+// Dueños de un restaurante: la lista la ve cualquier dueño, sólo admin edita.
+restaurantesRouter.get('/admin/api/restaurantes/:id/owners', requireAdmin, async (req, res, next) => {
   try {
-    res.json({ ok: true, ...(await restaurantes.adminListOwnerCandidates(req.adminUser!)) });
+    res.json({ ok: true, ...(await restaurantes.adminListRestauranteOwners(String(req.params.id), req.adminUser!)) });
   } catch (err) { next(err); }
 });
 
-restaurantesRouter.post('/admin/api/restaurantes/owners', requireAdmin, async (req, res, next) => {
+restaurantesRouter.post('/admin/api/restaurantes/:id/owners', requireAdmin, async (req, res, next) => {
   try {
-    res.json(await restaurantes.adminGrantOwner(String(req.body?.userId || ''), req.adminUser!));
+    res.json({ ok: true, ...(await restaurantes.adminAddRestauranteOwner(String(req.params.id), String(req.body?.userId || ''), req.adminUser!)) });
   } catch (err) { next(err); }
 });
 
-restaurantesRouter.delete('/admin/api/restaurantes/owners/:userId', requireAdmin, async (req, res, next) => {
+restaurantesRouter.delete('/admin/api/restaurantes/:id/owners/:userId', requireAdmin, async (req, res, next) => {
   try {
-    res.json(await restaurantes.adminRevokeOwner(String(req.params.userId), req.adminUser!));
+    res.json({ ok: true, ...(await restaurantes.adminRemoveRestauranteOwner(String(req.params.id), String(req.params.userId), req.adminUser!)) });
   } catch (err) { next(err); }
 });
 

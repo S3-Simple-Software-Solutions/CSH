@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { GripVertical, Trash2, Plus } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { GripVertical, Trash2, Plus, Check } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -7,15 +7,39 @@ import { api, uploadFile } from '../../utils/api.js';
 import { useEscClose } from '../../utils/useEscClose.js';
 import DataTable from '../../components/DataTable.jsx';
 
-// El orden de las filas es manual (drag) y se persiste como dato, por eso la
-// tabla no ofrece "ordenar por columna"; sí permite ocultar/mover columnas.
-const SPONSOR_COLUMNS = [
-  { key: 'drag', label: '', menuLabel: 'Arrastrar', sortable: false },
-  { key: 'logo', label: 'Logo', render: (s) => (s.logoPath ? <img src={s.logoPath} alt={s.nombre} className="thumb-logo" /> : <div className="thumb-placeholder" />) },
-  { key: 'nombre', label: 'Nombre', render: (s) => <strong>{s.nombre}</strong> },
-  { key: 'tipo', label: 'Tipo', render: (s) => (s.esApparel ? <span className="pill ok">Apparel</span> : <span className="pill">Patrocinador</span>) },
-  { key: 'activo', label: 'Activo', render: (s) => <span className={`pill${s.activo ? ' ok' : ''}`}>{s.activo ? 'Activo' : 'Inactivo'}</span> },
+// Fallback por si el backend es más viejo que el bundle: el catálogo real
+// (ESPACIOS_PAUTA) llega en la respuesta de /admin/api/sponsors.
+const ESPACIOS_FALLBACK = [
+  { id: 'web', nombre: 'Página web' },
+  { id: 'vallas_dentro', nombre: 'Vallas dentro del estadio' },
+  { id: 'vallas_fuera', nombre: 'Vallas fuera del estadio' },
+  { id: 'pantallas', nombre: 'Pantallas' },
+  { id: 'entrada_estadio', nombre: 'Entrada del estadio' },
+  { id: 'entrada_parqueo', nombre: 'Entrada del parqueo' },
 ];
+
+// Chips de espacios: cada uno se prende/apaga con un click y persiste al toque.
+function EspaciosChips({ sponsor, catalogo, onToggle }) {
+  return (
+    <div className="espacios-chips" onClick={(e) => e.stopPropagation()}>
+      {catalogo.map((esp) => {
+        const on = sponsor.espacios?.includes(esp.id);
+        return (
+          <button
+            key={esp.id}
+            type="button"
+            className={`espacio-chip${on ? ' on' : ''}`}
+            onClick={() => onToggle(sponsor, esp.id)}
+            title={on ? `Pauta en ${esp.nombre} — click para quitar` : `No pauta en ${esp.nombre} — click para activar`}
+            aria-pressed={on}
+          >
+            {on && <Check size={12} />}{esp.nombre}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function SortableRow({ sponsor, columns, onEdit }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sponsor.id });
@@ -31,7 +55,7 @@ function SortableRow({ sponsor, columns, onEdit }) {
   );
 }
 
-function SponsorModal({ sponsor, onClose, onSaved, onDelete }) {
+function PatrocinadorModal({ sponsor, catalogo, onClose, onSaved, onDelete }) {
   useEscClose(onClose);
   const isEdit = Boolean(sponsor?.id);
   const [form, setForm] = useState({
@@ -40,6 +64,7 @@ function SponsorModal({ sponsor, onClose, onSaved, onDelete }) {
     esApparel: sponsor?.esApparel ?? false,
     activo: sponsor?.activo ?? true,
   });
+  const [espacios, setEspacios] = useState(sponsor?.espacios ?? ['web']);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(sponsor?.logoPath ?? null);
   const [busy, setBusy] = useState(false);
@@ -53,18 +78,24 @@ function SponsorModal({ sponsor, onClose, onSaved, onDelete }) {
     setPreview(URL.createObjectURL(f));
   }
 
+  function toggleEspacio(id) {
+    setEspacios((prev) => (prev.includes(id) ? prev.filter((e) => e !== id) : [...prev, id]));
+  }
+
   async function save() {
     if (!form.nombre.trim()) return setError('El nombre es obligatorio');
     setBusy(true); setError(null);
     try {
-      let res;
-      if (isEdit) {
-        res = await api(`/admin/api/sponsors/${sponsor.id}`, { method: 'PATCH', body: JSON.stringify({ ...form, orden: Number(form.orden) }) });
-      } else {
-        res = await api('/admin/api/sponsors', { method: 'POST', body: JSON.stringify({ ...form, orden: Number(form.orden) }) });
-      }
+      const body = JSON.stringify({ ...form, orden: Number(form.orden), espacios });
+      const res = isEdit
+        ? await api(`/admin/api/sponsors/${sponsor.id}`, { method: 'PATCH', body })
+        : await api('/admin/api/sponsors', { method: 'POST', body });
       if (!res.ok) { setError(res.error); setBusy(false); return; }
       const id = res.sponsor.id;
+      if (isEdit) {
+        const esp = await api(`/admin/api/sponsors/${id}/espacios`, { method: 'PUT', body: JSON.stringify({ espacios }) });
+        if (!esp.ok) { setError(esp.error); setBusy(false); return; }
+      }
       if (file) {
         const up = await uploadFile(`/admin/api/sponsors/${id}/logo`, file);
         if (!up.ok) { setError(up.error); setBusy(false); return; }
@@ -76,7 +107,7 @@ function SponsorModal({ sponsor, onClose, onSaved, onDelete }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head"><h2>{isEdit ? 'Editar sponsor' : 'Nuevo sponsor'}</h2><button className="icon-text ghost" onClick={onClose}>✕</button></div>
+        <div className="modal-head"><h2>{isEdit ? 'Editar patrocinador' : 'Nuevo patrocinador'}</h2><button className="icon-text ghost" onClick={onClose}>✕</button></div>
         {isEdit && (
           <div className="modal-toolbar">
             <button className="btn ghost danger" onClick={onDelete}><Trash2 size={14} />Eliminar</button>
@@ -86,6 +117,14 @@ function SponsorModal({ sponsor, onClose, onSaved, onDelete }) {
         <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Reebok" />
         <label>Orden</label>
         <input type="number" value={form.orden} onChange={(e) => setForm({ ...form, orden: e.target.value })} />
+        <label>Dónde pauta</label>
+        <div className="espacios-chips">
+          {catalogo.map((esp) => (
+            <button key={esp.id} type="button" className={`espacio-chip${espacios.includes(esp.id) ? ' on' : ''}`} onClick={() => toggleEspacio(esp.id)} aria-pressed={espacios.includes(esp.id)}>
+              {espacios.includes(esp.id) && <Check size={12} />}{esp.nombre}
+            </button>
+          ))}
+        </div>
         <div className="check-row">
           <label><input type="checkbox" checked={form.esApparel} onChange={(e) => setForm({ ...form, esApparel: e.target.checked })} /> Es partner de apparel</label>
           <label><input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /> Activo</label>
@@ -120,15 +159,38 @@ function ConfirmModal({ title, text, onConfirm, onClose, busy }) {
   );
 }
 
-export default function AdminSponsors() {
+export default function AdminPatrocinadores() {
   const [sponsors, setSponsors] = useState([]);
+  const [catalogo, setCatalogo] = useState(ESPACIOS_FALLBACK);
   const [modal, setModal] = useState(null);
   const [delTarget, setDelTarget] = useState(null);
   const [delBusy, setDelBusy] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor));
 
-  const load = () => api('/admin/api/sponsors').then((d) => d.ok && setSponsors(d.sponsors));
+  const load = () => api('/admin/api/sponsors').then((d) => {
+    if (!d.ok) return;
+    setSponsors(d.sponsors);
+    if (Array.isArray(d.espaciosCatalogo) && d.espaciosCatalogo.length) setCatalogo(d.espaciosCatalogo);
+  });
   useEffect(() => { load(); }, []);
+
+  // Un click en un chip persiste de inmediato; la fila se actualiza optimista.
+  async function toggleEspacio(sponsor, espacioId) {
+    const actuales = sponsor.espacios ?? [];
+    const espacios = actuales.includes(espacioId) ? actuales.filter((e) => e !== espacioId) : [...actuales, espacioId];
+    setSponsors((prev) => prev.map((s) => (s.id === sponsor.id ? { ...s, espacios } : s)));
+    const d = await api(`/admin/api/sponsors/${sponsor.id}/espacios`, { method: 'PUT', body: JSON.stringify({ espacios }) });
+    if (!d.ok) load();
+  }
+
+  const columns = useMemo(() => [
+    { key: 'drag', label: '', menuLabel: 'Arrastrar', sortable: false },
+    { key: 'logo', label: 'Logo', render: (s) => (s.logoPath ? <img src={s.logoPath} alt={s.nombre} className="thumb-logo" /> : <div className="thumb-placeholder" />) },
+    { key: 'nombre', label: 'Nombre', render: (s) => <strong>{s.nombre}</strong> },
+    { key: 'espacios', label: 'Dónde pauta', sortable: false, render: (s) => <EspaciosChips sponsor={s} catalogo={catalogo} onToggle={toggleEspacio} /> },
+    { key: 'tipo', label: 'Tipo', render: (s) => (s.esApparel ? <span className="pill ok">Apparel</span> : <span className="pill">Patrocinador</span>) },
+    { key: 'activo', label: 'Activo', render: (s) => <span className={`pill${s.activo ? ' ok' : ''}`}>{s.activo ? 'Activo' : 'Inactivo'}</span> },
+  ], [catalogo]);
 
   async function confirmDelete() {
     setDelBusy(true);
@@ -148,16 +210,24 @@ export default function AdminSponsors() {
 
   return (
     <main className="page">
-      <p className="eyebrow">Contenido del sitio</p>
-      <h1>Sponsors</h1>
-      <p className="sub">Arrastrá filas para reordenar.</p>
+      <p className="eyebrow">Comercial</p>
+      <h1>Patrocinadores</h1>
+      <p className="sub">Lista completa de patrocinadores y en qué espacios pauta cada uno. Marcá o desmarcá un espacio con un click. “Página web” es lo que decide si el logo sale en el sitio.</p>
+      <div className="rest-metrics">
+        {catalogo.map((esp) => (
+          <div key={esp.id} className="rest-metric">
+            <b>{sponsors.filter((s) => s.espacios?.includes(esp.id)).length}</b>
+            <span>{esp.nombre}</span>
+          </div>
+        ))}
+      </div>
       <div className="toolbar" style={{ marginBottom: '1rem' }}>
-        <button className="btn" onClick={() => setModal({})}><Plus size={15} />Nuevo sponsor</button>
+        <button className="btn" onClick={() => setModal({})}><Plus size={15} />Nuevo patrocinador</button>
       </div>
       <DataTable
-        id="sponsors"
+        id="patrocinadores"
         rows={sponsors}
-        columns={SPONSOR_COLUMNS}
+        columns={columns}
         sortable={false}
         renderBody={(cols, rows) => (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -171,8 +241,8 @@ export default function AdminSponsors() {
           </DndContext>
         )}
       />
-      {modal !== null && <SponsorModal sponsor={modal?.id ? modal : null} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
-      {delTarget && <ConfirmModal title="Eliminar sponsor" text={`¿Eliminar a ${delTarget.nombre}? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
+      {modal !== null && <PatrocinadorModal sponsor={modal?.id ? modal : null} catalogo={catalogo} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(); }} onDelete={() => { const t = modal; setModal(null); setDelTarget(t); }} />}
+      {delTarget && <ConfirmModal title="Eliminar patrocinador" text={`¿Eliminar a ${delTarget.nombre}? Esta acción no se puede deshacer.`} onConfirm={confirmDelete} onClose={() => setDelTarget(null)} busy={delBusy} />}
     </main>
   );
 }

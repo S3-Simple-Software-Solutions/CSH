@@ -12,7 +12,8 @@ import { gramillaKeysForTemplate } from './pages/entradas/stadiumFieldGeometry.j
 import AdminJugadores from './pages/admin/AdminJugadores.jsx';
 import AdminNoticias from './pages/admin/AdminNoticias.jsx';
 import AdminPartidos from './pages/admin/AdminPartidos.jsx';
-import AdminSponsors from './pages/admin/AdminSponsors.jsx';
+import AdminPatrocinadores from './pages/admin/AdminPatrocinadores.jsx';
+import AdminVenues from './pages/admin/AdminVenues.jsx';
 import AdminMensajes from './pages/admin/AdminMensajes.jsx';
 import { LoginPage, isAdminUser } from './pages/Auth.jsx';
 import { entradasFaq } from './data/entradasInfo.js';
@@ -1583,14 +1584,7 @@ function PaymentModal({ info, onClose, onDone }) {
   );
 }
 
-const WIP_MODULES = {
-  '/admin/proveedores': {
-    icon: Truck,
-    title: 'Gestion de proveedores',
-    desc: 'Registro y seguimiento de proveedores del club: contratos, ordenes de compra y pagos.',
-    items: ['Directorio de proveedores y contactos', 'Ordenes de compra y entregas', 'Historial de contratos y pagos'],
-  },
-};
+const WIP_MODULES = {};
 
 function UnderConstruction({ modulo }) {
   const Icon = modulo.icon;
@@ -1680,6 +1674,8 @@ function AdminApp() {
             <AdminNavButton active={route === '/admin/cuponera'} onClick={() => navigate('/admin/cuponera')} icon={Ticket} label="Cuponera" />
             {user.restaurantRole && user.restaurantRole !== 'ninguno' && <AdminNavButton active={route.startsWith('/admin/restaurantes')} onClick={() => navigate('/admin/restaurantes')} icon={UtensilsCrossed} label="Restaurantes" />}
             <AdminNavButton active={route === '/admin/usuarios'} onClick={() => navigate('/admin/usuarios')} icon={Users} label="Gestion de usuarios" />
+            <AdminNavButton active={route === '/admin/patrocinadores' || route === '/admin/sponsors'} onClick={() => navigate('/admin/patrocinadores')} icon={ShoppingBag} label="Patrocinadores" />
+            <AdminNavButton active={route.startsWith('/admin/venues')} onClick={() => navigate('/admin/venues')} icon={Store} label="Alquiler de salones" />
             {Object.entries(WIP_MODULES).map(([path, mod]) => {
               const Icon = mod.icon;
               return <AdminNavButton key={path} active={route === path} onClick={() => navigate(path)} icon={Icon} label={mod.title} />;
@@ -1690,12 +1686,11 @@ function AdminApp() {
             <AdminNavButton active={route === '/admin/jugadores'} onClick={() => navigate('/admin/jugadores')} icon={Users2} label="Jugadores" />
             <AdminNavButton active={route === '/admin/noticias'} onClick={() => navigate('/admin/noticias')} icon={Newspaper} label="Noticias" />
             <AdminNavButton active={route === '/admin/partidos'} onClick={() => navigate('/admin/partidos')} icon={Trophy} label="Partidos" />
-            <AdminNavButton active={route === '/admin/sponsors'} onClick={() => navigate('/admin/sponsors')} icon={ShoppingBag} label="Sponsors" />
             <AdminNavButton active={route === '/admin/mensajes'} onClick={() => navigate('/admin/mensajes')} icon={MessageSquare} label="Mensajes" />
       </aside>
       <section className="admin-main">
         <AdminTopBar user={user} onLogout={logout} onMenu={() => setMenuOpen(true)} />
-        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route.startsWith('/admin/entradas') ? <AdminEntradas user={user} route={route} navigate={navigate} /> : route.startsWith('/admin/restaurantes') ? <AdminRestaurantes user={user} route={route} navigate={navigate} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/analytics' ? <AdminAnalytics user={user} /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : route === '/admin/sponsors' ? <AdminSponsors /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
+        {route === '/admin/parqueo' ? <AdminParking user={user} /> : route.startsWith('/admin/entradas') ? <AdminEntradas user={user} route={route} navigate={navigate} /> : route.startsWith('/admin/restaurantes') ? <AdminRestaurantes user={user} route={route} navigate={navigate} /> : route === '/admin/cuponera' ? <AdminCoupons user={user} /> : route === '/admin/usuarios' ? <AdminUsers /> : route === '/admin/analytics' ? <AdminAnalytics user={user} /> : route === '/admin/web' ? <AdminWeb /> : route === '/admin/jugadores' ? <AdminJugadores /> : route === '/admin/noticias' ? <AdminNoticias /> : route === '/admin/partidos' ? <AdminPartidos /> : (route === '/admin/patrocinadores' || route === '/admin/sponsors') ? <AdminPatrocinadores /> : route.startsWith('/admin/venues') ? <AdminVenues /> : route === '/admin/mensajes' ? <AdminMensajes /> : WIP_MODULES[route] ? <UnderConstruction modulo={WIP_MODULES[route]} /> : <AdminHome user={user} navigate={navigate} />}
       </section>
     </div>
   );
@@ -1721,7 +1716,8 @@ function AdminHome({ user, navigate }) {
         <button onClick={() => navigate('/admin/jugadores')}><Users2 />Jugadores</button>
         <button onClick={() => navigate('/admin/noticias')}><Newspaper />Noticias</button>
         <button onClick={() => navigate('/admin/partidos')}><Trophy />Partidos</button>
-        <button onClick={() => navigate('/admin/sponsors')}><ShoppingBag />Sponsors</button>
+        <button onClick={() => navigate('/admin/patrocinadores')}><ShoppingBag />Patrocinadores</button>
+        <button onClick={() => navigate('/admin/venues')}><Store />Alquiler de salones</button>
         <button onClick={() => navigate('/admin/mensajes')}><MessageSquare />Mensajes</button>
       </div>
     </main>
@@ -6160,7 +6156,6 @@ function AdminRestaurantes({ user, route, navigate }) {
   const [data, setData] = useState(null); // { role, restaurantes, owners? }
   const [error, setError] = useState('');
   const [creando, setCreando] = useState(false);
-  const [duenos, setDuenos] = useState(false);
   const load = () => api('/admin/api/restaurantes').then((d) => { if (d.ok) setData(d); else setError(d.error); });
   useEffect(() => { load(); }, []);
 
@@ -6172,7 +6167,7 @@ function AdminRestaurantes({ user, route, navigate }) {
   const isAdmin = data.role === 'admin';
 
   if (detalleId) {
-    return <AdminRestauranteDetalle id={detalleId} isAdmin={isAdmin} owners={data.owners || []} onBack={() => navigate('/admin/restaurantes')} reloadList={load} />;
+    return <AdminRestauranteDetalle id={detalleId} isAdmin={isAdmin} onBack={() => navigate('/admin/restaurantes')} reloadList={load} />;
   }
 
   return (
@@ -6182,7 +6177,6 @@ function AdminRestaurantes({ user, route, navigate }) {
       <RestMetrics restaurantes={data.restaurantes} />
       <div className="rest-toolbar">
         <button className="btn" onClick={() => setCreando(true)}><Plus size={16} /> Nuevo restaurante</button>
-        {isAdmin && <button className="btn ghost" onClick={() => setDuenos(true)}><Users size={15} /> Dueños</button>}
         {isAdmin && <RestFeeInline />}
       </div>
       {data.restaurantes.length === 0 && <div className="result empty">Aún no hay restaurantes. Creá el primero.</div>}
@@ -6199,7 +6193,6 @@ function AdminRestaurantes({ user, route, navigate }) {
         ))}
       </div>
       {creando && <RestCrearModal isAdmin={isAdmin} owners={data.owners || []} onClose={() => setCreando(false)} onSaved={(id) => { setCreando(false); load(); navigate(`/admin/restaurantes/${id}`); }} />}
-      {duenos && <Modal title="Dueños de restaurante" onClose={() => setDuenos(false)}><RestOwners /></Modal>}
     </main>
   );
 }
@@ -6248,7 +6241,7 @@ function RestCrearModal({ isAdmin, owners, onClose, onSaved }) {
     <Modal title="Nuevo restaurante" onClose={onClose}>
       <label>Nombre</label><input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus placeholder="Soda La Herediana" />
       {isAdmin && owners.length > 0 && (
-        <><label>Dueño</label><select value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)}>{owners.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}</select></>
+        <><label>Dueño principal</label><select value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)}>{owners.map((o) => <option key={o.id} value={o.id}>{o.nombre}{o.username ? ` (@${o.username})` : ''}</option>)}</select><p className="muted" style={{ fontSize: '.85rem' }}>Después podés sumar más dueños desde la pestaña “Dueños” del restaurante.</p></>
       )}
       {error && <div className="error">{error}</div>}
       <button className="btn" onClick={submit} disabled={saving || !nombre.trim()}>{saving ? 'Creando…' : 'Crear y configurar'}</button>
@@ -6257,7 +6250,7 @@ function RestCrearModal({ isAdmin, owners, onClose, onSaved }) {
 }
 
 // ---- Detalle de un restaurante: tabs Detalle / Menú / Pedidos ----
-function AdminRestauranteDetalle({ id, isAdmin, owners, onBack, reloadList }) {
+function AdminRestauranteDetalle({ id, isAdmin, onBack, reloadList }) {
   const [tab, setTab] = useState('detalle');
   const [restaurante, setRestaurante] = useState(null);
   const [error, setError] = useState('');
@@ -6281,10 +6274,12 @@ function AdminRestauranteDetalle({ id, isAdmin, owners, onBack, reloadList }) {
         <button className={tab === 'detalle' ? 'active' : ''} onClick={() => setTab('detalle')}>Detalle</button>
         <button className={tab === 'menu' ? 'active' : ''} onClick={() => setTab('menu')}>Menú</button>
         <button className={tab === 'pedidos' ? 'active' : ''} onClick={() => setTab('pedidos')}>Pedidos</button>
+        <button className={tab === 'duenos' ? 'active' : ''} onClick={() => setTab('duenos')}>Dueños</button>
       </div>
       {tab === 'detalle' && <RestDetalleInfo restaurante={restaurante} isAdmin={isAdmin} reload={() => { load(); reloadList(); }} onDeleted={() => { reloadList(); onBack(); }} />}
       {tab === 'menu' && <RestMenuPanel restauranteId={id} />}
       {tab === 'pedidos' && <RestOrdenesPanel restauranteId={id} />}
+      {tab === 'duenos' && <RestOwners restauranteId={id} />}
     </main>
   );
 }
@@ -6513,29 +6508,59 @@ function RestItemModal({ restauranteId, categorias, item, onClose, onSaved }) {
   );
 }
 
-function RestOwners() {
-  const [usuarios, setUsuarios] = useState([]);
-  const [msg, setMsg] = useState(null);
-  const load = () => api('/admin/api/restaurantes/owners').then((d) => { if (d.ok) setUsuarios(d.usuarios); });
-  useEffect(() => { load(); }, []);
-  async function toggle(u) {
-    setMsg(null);
-    const d = u.esOwner
-      ? await api(`/admin/api/restaurantes/owners/${u.id}`, { method: 'DELETE' })
-      : await api('/admin/api/restaurantes/owners', { method: 'POST', body: JSON.stringify({ userId: u.id }) });
-    if (d.ok) load(); else setMsg({ type: 'error', text: d.error });
+// Propietarios de ESTE restaurante: quienes pueden administrarlo (menú, pedidos,
+// datos del local). El principal es el titular y no se puede quitar.
+function RestOwners({ restauranteId }) {
+  const confirm = useConfirm();
+  const [data, setData] = useState(null); // { owners, candidatos, puedeEditar }
+  const [nuevo, setNuevo] = useState('');
+  const [error, setError] = useState('');
+  const load = () => api(`/admin/api/restaurantes/${restauranteId}/owners`).then((d) => { if (d.ok) setData(d); else setError(d.error); });
+  useEffect(() => { load(); }, [restauranteId]);
+
+  if (error) return <section><div className="error">{error}</div></section>;
+  if (!data) return <section><p>Cargando…</p></section>;
+
+  const yaEs = new Set(data.owners.map((o) => o.id));
+  const disponibles = (data.candidatos || []).filter((c) => !yaEs.has(c.id));
+
+  async function agregar() {
+    setError('');
+    const d = await api(`/admin/api/restaurantes/${restauranteId}/owners`, { method: 'POST', body: JSON.stringify({ userId: nuevo }) });
+    if (!d.ok) return setError(d.error);
+    setNuevo(''); setData(d);
   }
+  async function quitar(o) {
+    if (!(await confirm({ title: `¿Quitar a ${o.nombre}?`, message: 'Dejará de administrar este restaurante.', danger: true, confirmLabel: 'Quitar' }))) return;
+    setError('');
+    const d = await api(`/admin/api/restaurantes/${restauranteId}/owners/${o.id}`, { method: 'DELETE' });
+    if (!d.ok) return setError(d.error);
+    setData({ ...data, owners: d.owners });
+  }
+
   return (
     <section>
-      <p className="muted">Marcá qué usuarios pueden crear y administrar sus propios restaurantes (rol “Mi restaurante”).</p>
-      {msg && <div className="error">{msg.text}</div>}
+      <p className="muted">Los dueños de este restaurante pueden administrarlo: menú, pedidos y datos del local.</p>
+      {error && <div className="error">{error}</div>}
+      {data.puedeEditar && (
+        <div className="rest-toolbar">
+          <select value={nuevo} onChange={(e) => setNuevo(e.target.value)}>
+            <option value="">Agregar dueño…</option>
+            {disponibles.map((c) => <option key={c.id} value={c.id}>{c.nombre} (@{c.username})</option>)}
+          </select>
+          <button className="btn" onClick={agregar} disabled={!nuevo}><Plus size={15} /> Agregar</button>
+        </div>
+      )}
       <div className="rest-owners">
-        {usuarios.map((u) => (
-          <div key={u.id} className="rest-owner-row">
-            <div><b>{u.nombre}</b><span className="muted" style={{ display: 'block', fontSize: '.85rem' }}>@{u.username}</span></div>
-            <button className={`btn ghost${u.esOwner ? ' on' : ''}`} onClick={() => toggle(u)}>
-              {u.esOwner ? <><ToggleRight size={16} /> Dueño</> : <><ToggleLeft size={16} /> No es dueño</>}
-            </button>
+        {data.owners.map((o) => (
+          <div key={o.id} className="rest-owner-row">
+            <div>
+              <b>{o.nombre}</b>{o.principal && <span className="pill" style={{ marginLeft: 6 }}>Principal</span>}
+              <span className="muted" style={{ display: 'block', fontSize: '.85rem' }}>@{o.username} · {o.email}</span>
+            </div>
+            {data.puedeEditar && !o.principal && (
+              <button className="btn ghost danger" onClick={() => quitar(o)} title="Quitar"><Trash2 size={15} /></button>
+            )}
           </div>
         ))}
       </div>

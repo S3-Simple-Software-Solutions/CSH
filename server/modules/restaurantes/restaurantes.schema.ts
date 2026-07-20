@@ -72,12 +72,31 @@ export async function ensureRestaurantesSchema(): Promise<void> {
       entregada_at     timestamptz
     );
 
+    -- Propietarios de cada restaurante: el dueño original vive en
+    -- restaurantes.owner_user_id y además se refleja acá como principal.
+    create table if not exists restaurante_owners (
+      restaurante_id text not null references restaurantes(id) on delete cascade,
+      user_id        text not null references app_users(id) on delete cascade,
+      principal      boolean not null default false,
+      creado_at      timestamptz not null default now(),
+      primary key (restaurante_id, user_id)
+    );
+
     create index if not exists idx_restaurantes_owner on restaurantes(owner_user_id);
+    create index if not exists idx_rest_owners_user on restaurante_owners(user_id);
     create index if not exists idx_rest_categorias_rest on restaurante_menu_categorias(restaurante_id);
     create index if not exists idx_rest_items_rest on restaurante_menu_items(restaurante_id);
     create index if not exists idx_rest_ordenes_rest_creado on restaurante_ordenes(restaurante_id, creado_at desc);
     create index if not exists idx_rest_ordenes_provider_ref on restaurante_ordenes(provider_ref);
     create index if not exists idx_rest_ordenes_estado on restaurante_ordenes(estado);
+  `);
+
+  // Backfill: los restaurantes creados antes de restaurante_owners quedan con su
+  // dueño original como propietario principal.
+  await pool.query(`
+    insert into restaurante_owners (restaurante_id, user_id, principal)
+    select r.id, r.owner_user_id, true from restaurantes r
+    on conflict (restaurante_id, user_id) do nothing
   `);
 
   const count = Number((await query<{ count: number }>('select count(*)::int as count from restaurantes'))[0].count);
@@ -105,6 +124,11 @@ async function seedRestaurantes(): Promise<void> {
         '/brand/restaurantes/seed-soda-herediana.jpg',
         owner.id,
       ],
+    );
+
+    await client.query(
+      'insert into restaurante_owners (restaurante_id, user_id, principal) values ($1,$2,true) on conflict do nothing',
+      [restId, owner.id],
     );
 
     const categorias = [

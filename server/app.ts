@@ -19,6 +19,7 @@ import { jugadoresRouter } from './modules/jugadores/jugadores.routes';
 import { noticiasRouter } from './modules/noticias/noticias.routes';
 import { partidosRouter } from './modules/partidos/partidos.routes';
 import { sponsorsRouter } from './modules/sponsors/sponsors.routes';
+import { venuesRouter } from './modules/venues/venues.routes';
 import { analyticsRouter } from './modules/analytics/analytics.routes';
 
 // Rutas que NO deben caer en el fallback de la SPA (las maneja el backend).
@@ -63,6 +64,7 @@ export function createApp() {
   app.use(noticiasRouter);
   app.use(partidosRouter);
   app.use(sponsorsRouter);
+  app.use(venuesRouter);
   app.use(analyticsRouter);
 
   // Assets estáticos: brand/favicon (public/) y bundle compilado de la SPA (dist/).
