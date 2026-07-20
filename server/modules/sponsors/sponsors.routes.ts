@@ -7,8 +7,9 @@ import { genId, slugify, IMG_EXT } from '../../core/id';
 import { ApiError } from '../../core/errors';
 import {
   findSponsorsActivos, findAllSponsors, findSponsorById,
-  insertSponsor, updateSponsor, deleteSponsor, reorderSponsors,
+  insertSponsor, updateSponsor, deleteSponsor, reorderSponsors, setSponsorEspacios,
 } from './sponsors.repository';
+import { ESPACIOS_PAUTA } from './sponsors.types';
 
 export const sponsorsRouter = Router();
 
@@ -31,22 +32,35 @@ sponsorsRouter.get('/api/sponsors', async (_req, res, next) => {
 sponsorsRouter.get('/admin/api/sponsors', requireAdmin, async (_req, res, next) => {
   try {
     const sponsors = await findAllSponsors();
-    res.json({ ok: true, sponsors });
+    res.json({ ok: true, sponsors, espaciosCatalogo: ESPACIOS_PAUTA });
   } catch (err) { next(err); }
 });
 
 sponsorsRouter.post('/admin/api/sponsors', requireAdmin, async (req, res, next) => {
   try {
-    const { nombre, orden, esApparel } = req.body;
+    const { nombre, orden, esApparel, espacios } = req.body;
     if (!nombre) throw new ApiError(400, 'nombre es obligatorio');
-    const sponsor = await insertSponsor({
+    const creado = await insertSponsor({
       id: genId('SPO'),
       nombre: String(nombre).trim(),
       logoPath: null,
       orden: Number(orden ?? 0),
       esApparel: Boolean(esApparel),
     });
+    // Un patrocinador nuevo sin espacios explícitos pauta al menos en la web.
+    const sponsor = await setSponsorEspacios(creado.id, Array.isArray(espacios) ? espacios.map(String) : ['web']);
     res.status(201).json({ ok: true, sponsor });
+  } catch (err) { next(err); }
+});
+
+// Espacios donde pauta un patrocinador: se reemplaza el set completo.
+sponsorsRouter.put('/admin/api/sponsors/:id/espacios', requireAdmin, async (req, res, next) => {
+  try {
+    const sponsor = await findSponsorById(String(req.params.id));
+    if (!sponsor) throw new ApiError(404, 'Patrocinador no encontrado');
+    const { espacios } = req.body;
+    if (!Array.isArray(espacios)) throw new ApiError(400, 'espacios debe ser un array');
+    res.json({ ok: true, sponsor: await setSponsorEspacios(sponsor.id, espacios.map(String)) });
   } catch (err) { next(err); }
 });
 

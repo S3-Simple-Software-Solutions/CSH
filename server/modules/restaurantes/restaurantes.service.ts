@@ -18,9 +18,10 @@ import {
   findOrdenById,
   findOrdenes,
   findOwners,
-  findOwnerCandidates,
-  grantRestaurantOwner,
-  revokeRestaurantOwner,
+  findRestauranteOwners,
+  isRestauranteOwner,
+  addRestauranteOwner,
+  removeRestauranteOwner,
   findRestauranteById,
   findRestaurantePublicoBySlug,
   findRestaurantes,
@@ -225,14 +226,13 @@ export async function consultarOrdenPublica(ref: string) {
 
 // ---- Owner / Admin ----
 
-// Autorización central: existe (404) y es del dueño o admin (403).
+// Autorización central: existe (404) y es admin o uno de sus dueños (403).
 async function assertOwnRestaurante(user: AdminUser, restauranteId: string): Promise<Restaurante> {
   const r = await findRestauranteById(restauranteId);
   if (!r) throw new ApiError(404, 'Restaurante no encontrado');
-  if (!isRestaurantAdmin(user) && r.ownerUserId !== user.id) {
-    throw new ApiError(403, 'Solo podés administrar tus propios restaurantes');
-  }
-  return r;
+  if (isRestaurantAdmin(user) || r.ownerUserId === user.id) return r;
+  if (await isRestauranteOwner(restauranteId, user.id)) return r;
+  throw new ApiError(403, 'Solo podés administrar tus propios restaurantes');
 }
 
 export async function getAdminRestaurantes(user: AdminUser) {
@@ -415,21 +415,33 @@ export async function adminCambiarEstadoOrden(id: string, body: any, user: Admin
 
 // ---- Gestión de dueños (solo admin del club) ----
 
-export async function adminListOwnerCandidates(user: AdminUser) {
-  if (!isRestaurantAdmin(user)) throw new ApiError(403, 'Sin permiso');
-  return { usuarios: await findOwnerCandidates() };
+// ---- Dueños de un restaurante ----
+
+// La lista la ve cualquier dueño del local; sólo el admin puede modificarla.
+export async function adminListRestauranteOwners(restauranteId: string, user: AdminUser) {
+  await assertOwnRestaurante(user, restauranteId);
+  const admin = isRestaurantAdmin(user);
+  return {
+    owners: await findRestauranteOwners(restauranteId),
+    candidatos: admin ? await findOwners() : [],
+    puedeEditar: admin,
+  };
 }
 
-export async function adminGrantOwner(userId: string, user: AdminUser) {
-  if (!isRestaurantAdmin(user)) throw new ApiError(403, 'Sin permiso');
-  await grantRestaurantOwner(String(userId || '').trim());
-  return { ok: true };
+export async function adminAddRestauranteOwner(restauranteId: string, userId: string, user: AdminUser) {
+  await assertOwnRestaurante(user, restauranteId);
+  if (!isRestaurantAdmin(user)) throw new ApiError(403, 'Solo un administrador puede cambiar los dueños');
+  const id = String(userId || '').trim();
+  if (!id) throw new ApiError(400, 'Elegí un usuario');
+  await addRestauranteOwner(restauranteId, id);
+  return { owners: await findRestauranteOwners(restauranteId) };
 }
 
-export async function adminRevokeOwner(userId: string, user: AdminUser) {
-  if (!isRestaurantAdmin(user)) throw new ApiError(403, 'Sin permiso');
-  await revokeRestaurantOwner(String(userId || '').trim());
-  return { ok: true };
+export async function adminRemoveRestauranteOwner(restauranteId: string, userId: string, user: AdminUser) {
+  await assertOwnRestaurante(user, restauranteId);
+  if (!isRestaurantAdmin(user)) throw new ApiError(403, 'Solo un administrador puede cambiar los dueños');
+  await removeRestauranteOwner(restauranteId, String(userId || '').trim());
+  return { owners: await findRestauranteOwners(restauranteId) };
 }
 
 // ---- Config (solo admin) ----

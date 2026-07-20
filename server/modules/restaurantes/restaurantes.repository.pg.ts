@@ -175,49 +175,85 @@ export async function findRestauranteById(id: string): Promise<Restaurante | nul
   return rows[0] ? toRestaurante(rows[0]) : null;
 }
 
-// Lista para el panel: si ownerId viene, filtra por dueño; si no, todos (admin).
+// Lista para el panel: si ownerId viene, filtra por los locales donde es
+// propietario (principal o agregado); si no, todos (admin).
 export async function findRestaurantes(ownerId?: string): Promise<Restaurante[]> {
   const rows = ownerId
-    ? await query<RestauranteRow>(`select ${REST_COLS} from restaurantes where owner_user_id = $1 order by nombre asc`, [ownerId])
+    ? await query<RestauranteRow>(
+      `select ${REST_COLS.split(', ').map((c) => `r.${c}`).join(', ')}
+         from restaurantes r
+        where r.owner_user_id = $1
+           or exists(select 1 from restaurante_owners o where o.restaurante_id = r.id and o.user_id = $1)
+        order by r.nombre asc`,
+      [ownerId],
+    )
     : await query<RestauranteRow>(`select ${REST_COLS} from restaurantes order by nombre asc`);
   return rows.map(toRestaurante);
 }
 
-// Usuarios con rol restaurant:owner (para el selector de dueño del admin).
-export async function findOwners(): Promise<{ id: string; nombre: string }[]> {
-  return query<{ id: string; nombre: string }>(
-    `select u.id, u.full_name as nombre
-       from app_users u
-       join app_user_roles ur on ur.user_id = u.id
-      where ur.role_id = 'restaurant:owner'
-      order by u.full_name asc`,
-  );
-}
-
-// Candidatos a dueño (usuarios activos + flag de si ya lo son) para la gestión del admin.
-export async function findOwnerCandidates(): Promise<{ id: string; nombre: string; username: string; esOwner: boolean }[]> {
-  return query(
-    `select u.id, u.full_name as nombre, u.username,
-        exists(select 1 from app_user_roles ur where ur.user_id = u.id and ur.role_id = 'restaurant:owner') as "esOwner"
+// Usuarios activos: candidatos a dueño de un restaurante (selector del admin).
+export async function findOwners(): Promise<{ id: string; nombre: string; username: string }[]> {
+  return query<{ id: string; nombre: string; username: string }>(
+    `select u.id, u.full_name as nombre, u.username
        from app_users u
       where lower(u.status) not in ('suspendido','suspended','inactivo','inactive')
       order by u.full_name asc`,
   );
 }
 
-export async function grantRestaurantOwner(userId: string): Promise<void> {
+// ---- Propietarios de un restaurante ----
+
+export type RestauranteOwner = { id: string; nombre: string; username: string; email: string; principal: boolean };
+
+export async function findRestauranteOwners(restauranteId: string): Promise<RestauranteOwner[]> {
+  return query<RestauranteOwner>(
+    `select u.id, u.full_name as nombre, u.username, u.email, o.principal
+       from restaurante_owners o
+       join app_users u on u.id = o.user_id
+      where o.restaurante_id = $1
+      order by o.principal desc, u.full_name asc`,
+    [restauranteId],
+  );
+}
+
+export async function isRestauranteOwner(restauranteId: string, userId: string): Promise<boolean> {
+  const rows = await query(
+    'select 1 from restaurante_owners where restaurante_id = $1 and user_id = $2 limit 1',
+    [restauranteId, userId],
+  );
+  return Boolean(rows[0]);
+}
+
+// Agrega un propietario y le concede el rol global "Mi restaurante" para que
+// pueda entrar al panel.
+export async function addRestauranteOwner(restauranteId: string, userId: string, principal = false): Promise<void> {
   const u = await query('select id from app_users where id = $1', [userId]);
   if (!u[0]) throw new ApiError(404, 'Usuario no encontrado');
+  await pool.query(
+    `insert into restaurante_owners (restaurante_id, user_id, principal) values ($1,$2,$3)
+     on conflict (restaurante_id, user_id) do nothing`,
+    [restauranteId, userId, principal],
+  );
   await pool.query(
     "insert into app_user_roles (user_id, role_id) values ($1, 'restaurant:owner') on conflict do nothing",
     [userId],
   );
 }
 
-export async function revokeRestaurantOwner(userId: string): Promise<void> {
-  const propios = await query('select 1 from restaurantes where owner_user_id = $1 limit 1', [userId]);
-  if (propios[0]) throw new ApiError(409, 'Este usuario todavía tiene restaurantes. Reasignálos o eliminálos primero.');
-  await pool.query("delete from app_user_roles where user_id = $1 and role_id = 'restaurant:owner'", [userId]);
+// Quita a un propietario. El principal no se puede quitar (es el titular del
+// local). Si el usuario ya no es dueño de ningún restaurante, pierde el rol.
+export async function removeRestauranteOwner(restauranteId: string, userId: string): Promise<void> {
+  const rows = await query<{ principal: boolean }>(
+    'select principal from restaurante_owners where restaurante_id = $1 and user_id = $2',
+    [restauranteId, userId],
+  );
+  if (!rows[0]) throw new ApiError(404, 'Ese usuario no es dueño de este restaurante');
+  if (rows[0].principal) throw new ApiError(409, 'No se puede quitar al dueño principal. Primero transferí el restaurante.');
+  await pool.query('delete from restaurante_owners where restaurante_id = $1 and user_id = $2', [restauranteId, userId]);
+  const otros = await query('select 1 from restaurante_owners where user_id = $1 limit 1', [userId]);
+  if (!otros[0]) {
+    await pool.query("delete from app_user_roles where user_id = $1 and role_id = 'restaurant:owner'", [userId]);
+  }
 }
 
 // ---- Restaurantes (escritura) ----
@@ -233,6 +269,7 @@ export async function insertRestaurante(data: {
      values ($1,$2,$3,$4,$5,$6,$7) returning ${REST_COLS}`,
     [id, slug, data.nombre, data.descripcion, data.ubicacion, data.tiempoPrepMin, data.ownerUserId],
   );
+  await addRestauranteOwner(id, data.ownerUserId, true);
   return toRestaurante(rows[0]);
 }
 

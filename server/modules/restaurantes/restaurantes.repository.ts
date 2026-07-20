@@ -6,9 +6,10 @@ export {
   findRestauranteById,
   findRestaurantes,
   findOwners,
-  findOwnerCandidates,
-  grantRestaurantOwner,
-  revokeRestaurantOwner,
+  findRestauranteOwners,
+  isRestauranteOwner,
+  addRestauranteOwner,
+  removeRestauranteOwner,
   insertRestaurante,
   updateRestaurante,
   setRestauranteImagen,
@@ -34,4 +35,4 @@ export {
   updateOrdenEstado,
 } from './restaurantes.repository.pg';
 
-export type { IniciarOrdenInput, IniciarOrdenResult } from './restaurantes.repository.pg';
+export type { IniciarOrdenInput, IniciarOrdenResult, RestauranteOwner } from './restaurantes.repository.pg';

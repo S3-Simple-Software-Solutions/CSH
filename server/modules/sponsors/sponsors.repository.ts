@@ -1,5 +1,5 @@
 import { pool, query } from '../../core/db';
-import type { Sponsor, SponsorRow } from './sponsors.types';
+import { ESPACIO_IDS, type Sponsor, type SponsorRow } from './sponsors.types';
 
 function toSponsor(r: SponsorRow): Sponsor {
   return {
@@ -9,23 +9,58 @@ function toSponsor(r: SponsorRow): Sponsor {
     orden: r.orden,
     activo: r.activo,
     esApparel: r.es_apparel,
+    espacios: r.espacios ?? [],
     creadoAt: r.creado_at,
   };
 }
 
+// Los espacios viajan siempre con el patrocinador (array agregado desde la
+// tabla puente) para no hacer N+1 consultas en el panel.
+const SPONSOR_SELECT = `
+  select s.*,
+    coalesce(array(select e.espacio_id from club_sponsor_espacios e where e.sponsor_id = s.id order by e.espacio_id), '{}') as espacios
+    from club_sponsors s`;
+
+// Público: sólo los activos que pautan en la página web.
 export async function findSponsorsActivos(): Promise<Sponsor[]> {
-  const rows = await query<SponsorRow>('select * from club_sponsors where activo=true order by orden asc');
+  const rows = await query<SponsorRow>(
+    `${SPONSOR_SELECT}
+      where s.activo = true
+        and exists(select 1 from club_sponsor_espacios e where e.sponsor_id = s.id and e.espacio_id = 'web')
+      order by s.orden asc`,
+  );
   return rows.map(toSponsor);
 }
 
 export async function findAllSponsors(): Promise<Sponsor[]> {
-  const rows = await query<SponsorRow>('select * from club_sponsors order by orden asc');
+  const rows = await query<SponsorRow>(`${SPONSOR_SELECT} order by s.orden asc`);
   return rows.map(toSponsor);
 }
 
 export async function findSponsorById(id: string): Promise<Sponsor | null> {
-  const rows = await query<SponsorRow>('select * from club_sponsors where id=$1', [id]);
+  const rows = await query<SponsorRow>(`${SPONSOR_SELECT} where s.id=$1`, [id]);
   return rows[0] ? toSponsor(rows[0]) : null;
+}
+
+// Reemplaza el set completo de espacios de un patrocinador (ids desconocidos se
+// descartan) y devuelve el patrocinador ya actualizado.
+export async function setSponsorEspacios(id: string, espacios: string[]): Promise<Sponsor | null> {
+  const validos = [...new Set(espacios.filter((e) => ESPACIO_IDS.includes(e)))];
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query('delete from club_sponsor_espacios where sponsor_id=$1', [id]);
+    for (const espacio of validos) {
+      await client.query('insert into club_sponsor_espacios (sponsor_id, espacio_id) values ($1,$2)', [id, espacio]);
+    }
+    await client.query('commit');
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
+  return findSponsorById(id);
 }
 
 export async function insertSponsor(fields: {

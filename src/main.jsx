@@ -19,6 +19,7 @@ import NoticiaDetalle from './pages/NoticiaDetalle.jsx';
 import Socios from './pages/Socios.jsx';
 import Contacto from './pages/Contacto.jsx';
 import PerfilPage from './pages/Perfil.jsx';
+import Salones from './pages/Salones.jsx';
 
 function ReleaseBadge() {
   const [release, setRelease] = React.useState(null);
@@ -78,6 +79,7 @@ const router = createBrowserRouter([
       { path: '/cuponera', element: <PublicCoupons /> },
       { path: '/entradas/*', element: <PublicEntradas /> },
       { path: '/comida/*', element: <PublicComida /> },
+      { path: '/salones', element: <Salones /> },
     ],
   },
   { path: '/admin/*', element: <ConfirmProvider><AdminApp /></ConfirmProvider> },
