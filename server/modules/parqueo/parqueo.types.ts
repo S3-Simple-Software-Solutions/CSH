@@ -1,5 +1,19 @@
 export type ParqueoModoCobro = 'hora' | 'fijo';
 
+// Etiquetas que el admin puede colgarle a una plaza. El id se guarda en
+// parking_spaces.etiquetas; 'discapacitado' además refleja accessible.
+export const ETIQUETAS_PLAZA = [
+  { id: 'discapacitado', nombre: 'Discapacitados', icono: '\u267F' },
+  { id: 'electrico', nombre: 'Carga eléctrica', icono: '\u26A1' },
+  { id: 'moto', nombre: 'Motos', icono: '\uD83C\uDFCD' },
+  { id: 'familiar', nombre: 'Familiar', icono: '\uD83D\uDC76' },
+  { id: 'visitante', nombre: 'Visitantes', icono: '\uD83D\uDC64' },
+  { id: 'vip', nombre: 'VIP / directiva', icono: '\u2B50' },
+  { id: 'carga', nombre: 'Carga y descarga', icono: '\uD83D\uDCE6' },
+] as const;
+
+export const ETIQUETA_IDS: readonly string[] = ETIQUETAS_PLAZA.map((e) => e.id);
+
 export interface Parqueo {
   id: string;
   piso: number;
@@ -26,6 +40,7 @@ export interface Space {
   ancho: number | null;
   alto: number | null;
   discapacitado: boolean;
+  etiquetas: string[];
 }
 
 export interface Reservation {

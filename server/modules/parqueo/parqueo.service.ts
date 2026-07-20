@@ -4,7 +4,7 @@ import { getParqueoRepository } from './parqueo.repository';
 import type { ParkingSpaceStatus } from './parqueo.repository';
 import { sendParkingQrEmail, sendPaymentReceiptEmail } from './parqueo.mail';
 import { maskedReservaEmail, montoDe, reservaEmail } from './parqueo.helpers';
-import { PaymentRecord, Parqueo, Recibo } from './parqueo.types';
+import { ETIQUETAS_PLAZA, ETIQUETA_IDS, PaymentRecord, Parqueo, Recibo } from './parqueo.types';
 import { FLOW_ARROW_KINDS, FlowArrowKind } from './parqueo.flow';
 import { findUserEmailById } from '../usuarios/usuarios.service';
 
@@ -163,9 +163,10 @@ export async function getCroquis() {
       ancho: d.ancho,
       alto: d.alto,
       discapacitado: d.discapacitado,
+      etiquetas: d.etiquetas,
     })),
   }));
-  return { floors };
+  return { floors, etiquetasCatalogo: ETIQUETAS_PLAZA };
 }
 
 export async function addEspacio(body: { piso: unknown; x: unknown; y: unknown; zona?: unknown }, actor: Actor) {
@@ -245,15 +246,32 @@ export async function setPlanVisibilidad(body: { piso: unknown; showPlan: unknow
   return { piso, showPlan: show };
 }
 
-export async function updateEspacio(id: string, body: { nombre?: unknown; discapacitado?: unknown; ancho?: unknown; alto?: unknown }, actor: Actor) {
+// Sólo se aceptan etiquetas del catálogo; el resto se descarta en silencio.
+function validEtiquetas(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map((e) => String(e).trim()))].filter((e) => ETIQUETA_IDS.includes(e));
+}
+
+export async function updateEspacio(
+  id: string,
+  body: { nombre?: unknown; discapacitado?: unknown; ancho?: unknown; alto?: unknown; etiquetas?: unknown },
+  actor: Actor,
+) {
   requireParkingAdmin(actor);
-  const discapacitado = body.discapacitado === true || String(body.discapacitado).toLowerCase() === 'true';
+  // 'discapacitado' y la etiqueta homónima son la misma cosa: se sincronizan
+  // para no romper a quien siga mandando solo el booleano.
+  const etiquetas = validEtiquetas(body.etiquetas);
+  const discapacitado = body.etiquetas !== undefined
+    ? etiquetas.includes('discapacitado')
+    : body.discapacitado === true || String(body.discapacitado).toLowerCase() === 'true';
+  if (discapacitado && !etiquetas.includes('discapacitado')) etiquetas.push('discapacitado');
   const espacio = await getParqueoRepository().updateEspacio(id, {
     nombre: validSpotName(body.nombre),
     tipo: discapacitado ? 'discapacitado' : 'regular',
     ancho: validNullableDimension(body.ancho, 'Ancho'),
     alto: validNullableDimension(body.alto, 'Alto'),
     discapacitado,
+    etiquetas,
   });
   return { espacio };
 }
@@ -264,7 +282,7 @@ export async function removeEspacio(id: string, actor: Actor) {
   return { id };
 }
 
-export async function batchEspacios(body: { ids?: unknown; action?: unknown; estado?: unknown }, actor: Actor) {
+export async function batchEspacios(body: { ids?: unknown; action?: unknown; estado?: unknown; etiqueta?: unknown; activar?: unknown }, actor: Actor) {
   requireParkingAdmin(actor);
   const ids = validSpaceIds(body.ids);
   const action = String(body.action || '').trim();
@@ -277,6 +295,13 @@ export async function batchEspacios(body: { ids?: unknown; action?: unknown; est
     const estado = validBatchSpaceStatus(body.estado);
     const count = await repo.updateEspaciosEstado(ids, estado, { id: actor.id, name: actor.name });
     return { count, estado };
+  }
+  if (action === 'etiqueta') {
+    const etiqueta = String(body.etiqueta || '').trim();
+    if (!ETIQUETA_IDS.includes(etiqueta)) throw new ApiError(400, 'Etiqueta invalida');
+    const activar = body.activar !== false && String(body.activar).toLowerCase() !== 'false';
+    const count = await repo.setEtiquetaEspacios(ids, etiqueta, activar);
+    return { count, etiqueta, activar };
   }
   throw new ApiError(400, 'Accion invalida');
 }

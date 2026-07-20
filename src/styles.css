@@ -2957,3 +2957,26 @@ th.dt-sorted { color: var(--gold-bright); }
 .cal-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding: 10px; border: 1px solid var(--gold); border-radius: 8px; background: rgba(201,169,97,.08); }
 .cal-actions input { margin: 0; flex: 1 1 160px; min-width: 140px; }
 .cal-actions .btn { margin-top: 0; }
+
+/* ── Etiquetas de plaza en el croquis (discapacitados, eléctrico…) ── */
+.pspot-tag {
+  font-size: 9px; line-height: 1; pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.55));
+}
+.pspot { display: grid; place-items: center; }
+.tag-menu-wrap { position: relative; display: inline-flex; }
+.tag-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; min-width: 210px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2, var(--surface));
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+.tag-menu-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 6px;
+  border: none; background: none; color: inherit; font: inherit; font-size: .85rem;
+  cursor: pointer; text-align: left; width: 100%;
+}
+.tag-menu-item:hover { background: rgba(201,169,97,.14); }
+.tag-menu-item.on { color: var(--gold); }
+.tag-menu-item.partial { color: var(--muted); }
+.tag-menu-icon { width: 18px; text-align: center; }
