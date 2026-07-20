@@ -6,10 +6,6 @@ export const ETIQUETAS_PLAZA = [
   { id: 'discapacitado', nombre: 'Discapacitados', icono: '\u267F' },
   { id: 'electrico', nombre: 'Carga eléctrica', icono: '\u26A1' },
   { id: 'moto', nombre: 'Motos', icono: '\uD83C\uDFCD' },
-  { id: 'familiar', nombre: 'Familiar', icono: '\uD83D\uDC76' },
-  { id: 'visitante', nombre: 'Visitantes', icono: '\uD83D\uDC64' },
-  { id: 'vip', nombre: 'VIP / directiva', icono: '\u2B50' },
-  { id: 'carga', nombre: 'Carga y descarga', icono: '\uD83D\uDCE6' },
 ] as const;
 
 export const ETIQUETA_IDS: readonly string[] = ETIQUETAS_PLAZA.map((e) => e.id);
