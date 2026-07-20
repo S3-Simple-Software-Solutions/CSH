@@ -33,7 +33,17 @@ function toSpace(row: any): Space {
     ancho: row.spot_width == null ? null : Number(row.spot_width),
     alto: row.spot_height == null ? null : Number(row.spot_height),
     discapacitado: Boolean(row.accessible),
+    etiquetas: toEtiquetas(row.etiquetas),
   };
+}
+
+// La columna jsonb puede venir como array o como string según el driver.
+function toEtiquetas(raw: any): string[] {
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw === 'string') {
+    try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; }
+  }
+  return [];
 }
 
 function toFlowArrow(row: any): FlowArrow {
@@ -244,6 +254,7 @@ export class PgParqueoRepository implements ParqueoRepository {
       ancho: r.spot_width == null ? null : Number(r.spot_width),
       alto: r.spot_height == null ? null : Number(r.spot_height),
       discapacitado: Boolean(r.accessible),
+      etiquetas: toEtiquetas(r.etiquetas),
     }));
   }
 
@@ -497,7 +508,7 @@ export class PgParqueoRepository implements ParqueoRepository {
   }
 
   async croquisDots(): Promise<CroquisDot[]> {
-    const rows = await query<any>('select id, floor, zone, num, type, status, reservation_id, pos_x, pos_y, utilizado, name, spot_width, spot_height, accessible from parking_spaces where utilizado = true and pos_x is not null and pos_y is not null order by floor, num');
+    const rows = await query<any>('select id, floor, zone, num, type, status, reservation_id, pos_x, pos_y, utilizado, name, spot_width, spot_height, accessible, etiquetas from parking_spaces where utilizado = true and pos_x is not null and pos_y is not null order by floor, num');
     return rows.map((r) => ({
       id: r.id,
       piso: r.floor,
@@ -513,6 +524,7 @@ export class PgParqueoRepository implements ParqueoRepository {
       ancho: r.spot_width == null ? null : Number(r.spot_width),
       alto: r.spot_height == null ? null : Number(r.spot_height),
       discapacitado: Boolean(r.accessible),
+      etiquetas: toEtiquetas(r.etiquetas),
     }));
   }
 
@@ -583,7 +595,7 @@ export class PgParqueoRepository implements ParqueoRepository {
         [id, piso, zona, num, 'regular', 'disponible', null, x, y, true, false, parqueoId],
       );
       await client.query('commit');
-      return { id, piso, zona, num, tipo: 'regular', estado: 'disponible', reservaId: null, utilizado: true, nombre: null, ancho: null, alto: null, discapacitado: false };
+      return { id, piso, zona, num, tipo: 'regular', estado: 'disponible', reservaId: null, utilizado: true, nombre: null, ancho: null, alto: null, discapacitado: false, etiquetas: [] };
     } catch (err) {
       try {
         await client.query('rollback');
@@ -596,7 +608,7 @@ export class PgParqueoRepository implements ParqueoRepository {
     }
   }
 
-  async updateEspacio(id: string, { nombre, tipo, ancho, alto, discapacitado }: UpdateEspacioInput): Promise<Space> {
+  async updateEspacio(id: string, { nombre, tipo, ancho, alto, discapacitado, etiquetas }: UpdateEspacioInput): Promise<Space> {
     const rows = await query<any>(
       `
         update parking_spaces
@@ -604,14 +616,36 @@ export class PgParqueoRepository implements ParqueoRepository {
             type = $2,
             spot_width = $3,
             spot_height = $4,
-            accessible = $5
-        where id = $6
+            accessible = $5,
+            etiquetas = $6::jsonb
+        where id = $7
         returning *
       `,
-      [nombre, tipo, ancho, alto, discapacitado, id],
+      [nombre, tipo, ancho, alto, discapacitado, JSON.stringify(etiquetas), id],
     );
     if (!rows[0]) throw new ApiError(404, 'El espacio no existe');
     return toSpace(rows[0]);
+  }
+
+  // Agrega o quita una etiqueta a varias plazas de una sola vez.
+  async setEtiquetaEspacios(ids: string[], etiqueta: string, activar: boolean): Promise<number> {
+    const uniqueIds = Array.from(new Set(ids));
+    if (!uniqueIds.length) return 0;
+    const result = await pool.query(
+      activar
+        ? `update parking_spaces
+             set etiquetas = (select jsonb_agg(distinct e) from jsonb_array_elements_text(etiquetas || to_jsonb($2::text)) e),
+                 accessible = case when $2 = 'discapacitado' then true else accessible end,
+                 type = case when $2 = 'discapacitado' then 'discapacitado' else type end
+           where id = any($1::text[])`
+        : `update parking_spaces
+             set etiquetas = coalesce((select jsonb_agg(e) from jsonb_array_elements_text(etiquetas) e where e <> $2), '[]'::jsonb),
+                 accessible = case when $2 = 'discapacitado' then false else accessible end,
+                 type = case when $2 = 'discapacitado' then 'regular' else type end
+           where id = any($1::text[])`,
+      [uniqueIds, etiqueta],
+    );
+    return result.rowCount ?? 0;
   }
 
   async updateEspaciosEstado(ids: string[], estado: ParkingSpaceStatus, actor: EventActor): Promise<number> {

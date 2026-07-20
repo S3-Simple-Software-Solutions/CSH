@@ -30,6 +30,12 @@ export async function ensureParqueoSchema(): Promise<void> {
     alter table parking_spaces add column if not exists spot_width double precision;
     alter table parking_spaces add column if not exists spot_height double precision;
     alter table parking_spaces add column if not exists accessible boolean not null default false;
+    -- Etiquetas libres de la plaza (discapacitado, electrico, moto...). La
+    -- columna accessible se mantiene en sync para no romper lo ya existente.
+    alter table parking_spaces add column if not exists etiquetas jsonb not null default '[]'::jsonb;
+    update parking_spaces
+      set etiquetas = '["discapacitado"]'::jsonb
+      where accessible = true and etiquetas = '[]'::jsonb;
     update parking_spaces
       set accessible = true
       where lower(type) in ('discapacitado','discapacitados','accessible','disabled') and accessible = false;

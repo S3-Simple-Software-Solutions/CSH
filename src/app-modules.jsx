@@ -557,10 +557,43 @@ function FlowArrows({ arrows, editable = false, selected = null, onPointerDown, 
   );
 }
 
+// Etiquetas de plaza: el catálogo real llega en /api/parqueo/croquis; esta copia
+// es el respaldo por si el backend todavía no lo manda.
+const ETIQUETAS_PLAZA = [
+  { id: 'discapacitado', nombre: 'Discapacitados', icono: '♿' },
+  { id: 'electrico', nombre: 'Carga eléctrica', icono: '⚡' },
+  { id: 'moto', nombre: 'Motos', icono: '🏍' },
+  { id: 'familiar', nombre: 'Familiar', icono: '👶' },
+  { id: 'visitante', nombre: 'Visitantes', icono: '👤' },
+  { id: 'vip', nombre: 'VIP / directiva', icono: '⭐' },
+  { id: 'carga', nombre: 'Carga y descarga', icono: '📦' },
+];
+
+const etiquetasDe = (st) => (Array.isArray(st?.etiquetas) && st.etiquetas.length
+  ? st.etiquetas
+  : (st?.discapacitado ? ['discapacitado'] : []));
+
+const etiquetaMeta = (id, catalogo = ETIQUETAS_PLAZA) => catalogo.find((e) => e.id === id) || { id, nombre: id, icono: '•' };
+
+// Icono y texto de la primera etiqueta: es lo que se pinta dentro del punto.
+function marcaEtiqueta(st, catalogo) {
+  const ids = etiquetasDe(st);
+  if (!ids.length) return null;
+  const metas = ids.map((id) => etiquetaMeta(id, catalogo));
+  return { icono: metas[0].icono, texto: metas.map((m) => m.nombre).join(' · ') };
+}
+
 function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = [], me, showFlow = true }) {
   const [floors, setFloors] = useState(null);
+  const [catalogo, setCatalogo] = useState(ETIQUETAS_PLAZA);
   const [now, setNow] = useState(Date.now());
-  useEffect(() => { api('/api/parqueo/croquis').then((d) => d.ok && setFloors(d.floors)); }, []);
+  useEffect(() => {
+    api('/api/parqueo/croquis').then((d) => {
+      if (!d.ok) return;
+      setFloors(d.floors);
+      if (Array.isArray(d.etiquetasCatalogo) && d.etiquetasCatalogo.length) setCatalogo(d.etiquetasCatalogo);
+    });
+  }, []);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 5000); return () => clearInterval(id); }, []);
   const fl = floors?.find((f) => f.piso === floor);
   const spaceById = useMemo(() => new Map(spaces.map((s) => [s.id, s])), [spaces]);
@@ -582,6 +615,7 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
             const expired = session && new Date(session.fin).getTime() <= now;
             const mine = reservation && reservation.userId === me?.id;
             const spotName = st.nombre || st.id;
+            const marca = marcaEtiqueta(st, catalogo);
             const label = admin && reservation
               ? `${spotName} · ${reservation.placa}${expired ? ' · vencido' : ''}`
               : `${spotName} · ${expired ? 'tiempo vencido' : estado}`;
@@ -591,9 +625,11 @@ function PlanoCroquis({ spaces, floor, onSpace, admin = false, reservations = []
                 type="button"
                 className={`pspot ${estado}${st.discapacitado ? ' accessible' : ''}${expired ? ' vencido' : ''}${mine ? ' mine' : ''}`}
                 style={spotStyle(st, spotLayout)}
-                title={label}
+                title={marca ? `${label} · ${marca.texto}` : label}
                 onClick={() => space && onSpace?.(space, reservation)}
-              />
+              >
+                {marca && <span className="pspot-tag" aria-hidden>{marca.icono}</span>}
+              </button>
             );
           })}
         </div>
@@ -618,6 +654,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
   const [editMode, setEditMode] = useState(autoEdit);
   const [confirmSave, setConfirmSave] = useState(false);
   const [showPlan, setShowPlan] = useState(true);
+  const [showTags, setShowTags] = useState(false);
   const [drawingRoad, setDrawingRoad] = useState(false);
   const [draftRoad, setDraftRoad] = useState(null); // vértices ya fijados con click
   const [roadCursor, setRoadCursor] = useState(null); // posición del cursor (preview)
@@ -628,7 +665,12 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
   const baseline = useRef(null);
   const tempSeq = useRef(0);
 
-  const reload = () => api('/api/parqueo/croquis').then((d) => d.ok && setFloors(d.floors));
+  const [catalogoEtiquetas, setCatalogoEtiquetas] = useState(ETIQUETAS_PLAZA);
+  const reload = () => api('/api/parqueo/croquis').then((d) => {
+    if (!d.ok) return;
+    setFloors(d.floors);
+    if (Array.isArray(d.etiquetasCatalogo) && d.etiquetasCatalogo.length) setCatalogoEtiquetas(d.etiquetasCatalogo);
+  });
   useEffect(() => { reload(); }, []);
 
   // Modo edición diferido: todos los cambios se acumulan en estado local;
@@ -816,7 +858,7 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     if (e.target !== overlayRef.current || busy) return;
     const { x, y } = frac(e);
     const id = nextTempId('sp');
-    const espacio = { id, piso: floor, zona: 'A', x, y, utilizado: true, estado: 'disponible', reservaId: null, nombre: null, tipo: 'regular', ancho: null, alto: null, discapacitado: false };
+    const espacio = { id, piso: floor, zona: 'A', x, y, utilizado: true, estado: 'disponible', reservaId: null, nombre: null, tipo: 'regular', ancho: null, alto: null, discapacitado: false, etiquetas: [] };
     setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : { ...f, stalls: [...(f.stalls || []), espacio] })));
     selectSpaces([id]);
     setSelectedArrow(null);
@@ -977,13 +1019,14 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
     setEditTarget(null);
   }
 
-  function applySpaceBatch(action, estado) {
+  function applySpaceBatch(action, estado, etiqueta) {
     if (!selectedIds.length || busy) return;
     if (action === 'delete' && !window.confirm(`¿Quitar ${selectedIds.length} espacio${selectedIds.length === 1 ? '' : 's'}? Se aplicará al guardar.`)) return;
     setMsg(null);
     const ids = new Set(selectedIds);
-    // Para discapacitado: si todas las seleccionadas ya lo son, lo quita; si no, lo pone.
-    const turnOn = action === 'accessible' ? !visibleStalls.filter((s) => ids.has(s.id)).every((s) => s.discapacitado) : false;
+    const sel = visibleStalls.filter((s) => ids.has(s.id));
+    // Si todas las seleccionadas ya tienen la etiqueta, se la quita; si no, se la pone.
+    const turnOn = action === 'etiqueta' ? !sel.every((s) => etiquetasDe(s).includes(etiqueta)) : false;
     setFloors((prev) => prev.map((f) => {
       if (f.piso !== floor) return f;
       if (action === 'delete') return { ...f, stalls: (f.stalls || []).filter((s) => !ids.has(s.id)) };
@@ -991,8 +1034,19 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
         const patch = (estado === 'disponible' || estado === 'no_disponible') ? { estado, reservaId: null } : { estado };
         return { ...f, stalls: (f.stalls || []).map((s) => (ids.has(s.id) ? { ...s, ...patch } : s)) };
       }
-      if (action === 'accessible') {
-        return { ...f, stalls: (f.stalls || []).map((s) => (ids.has(s.id) ? { ...s, discapacitado: turnOn, tipo: turnOn ? 'discapacitado' : 'regular' } : s)) };
+      if (action === 'etiqueta') {
+        return {
+          ...f,
+          stalls: (f.stalls || []).map((s) => {
+            if (!ids.has(s.id)) return s;
+            const actuales = etiquetasDe(s);
+            const etiquetas = turnOn
+              ? [...new Set([...actuales, etiqueta])]
+              : actuales.filter((e) => e !== etiqueta);
+            const disc = etiquetas.includes('discapacitado');
+            return { ...s, etiquetas, discapacitado: disc, tipo: disc ? 'discapacitado' : 'regular' };
+          }),
+        };
       }
       return f;
     }));
@@ -1043,8 +1097,8 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
         if (!isTempId(s.id)) continue;
         const created = await call('/admin/api/parqueo/espacio', { method: 'POST', body: JSON.stringify({ piso: floor, x: s.x, y: s.y, zona: s.zona || 'A' }) });
         const realId = created.espacio.id;
-        if (s.nombre || s.discapacitado || s.ancho != null || s.alto != null) {
-          await call(`/admin/api/parqueo/espacio/${encodeURIComponent(realId)}`, { method: 'PUT', body: JSON.stringify({ nombre: s.nombre || '', discapacitado: !!s.discapacitado, ancho: s.ancho ?? null, alto: s.alto ?? null }) });
+        if (s.nombre || etiquetasDe(s).length || s.ancho != null || s.alto != null) {
+          await call(`/admin/api/parqueo/espacio/${encodeURIComponent(realId)}`, { method: 'PUT', body: JSON.stringify({ nombre: s.nombre || '', etiquetas: etiquetasDe(s), ancho: s.ancho ?? null, alto: s.alto ?? null }) });
         }
         if (s.estado && s.estado !== 'disponible' && statusGroups[s.estado]) statusGroups[s.estado].push(realId);
       }
@@ -1057,8 +1111,10 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
         if (s.x !== b.x || s.y !== b.y) {
           await call(`/admin/api/parqueo/espacio/${encodeURIComponent(s.id)}/pos`, { method: 'PUT', body: JSON.stringify({ x: s.x, y: s.y }) });
         }
-        if ((s.nombre || '') !== (b.nombre || '') || !!s.discapacitado !== !!b.discapacitado || (s.ancho ?? null) !== (b.ancho ?? null) || (s.alto ?? null) !== (b.alto ?? null)) {
-          await call(`/admin/api/parqueo/espacio/${encodeURIComponent(s.id)}`, { method: 'PUT', body: JSON.stringify({ nombre: s.nombre || '', discapacitado: !!s.discapacitado, ancho: s.ancho ?? null, alto: s.alto ?? null }) });
+        const tagsAhora = etiquetasDe(s).slice().sort().join(',');
+        const tagsAntes = etiquetasDe(b).slice().sort().join(',');
+        if ((s.nombre || '') !== (b.nombre || '') || tagsAhora !== tagsAntes || (s.ancho ?? null) !== (b.ancho ?? null) || (s.alto ?? null) !== (b.alto ?? null)) {
+          await call(`/admin/api/parqueo/espacio/${encodeURIComponent(s.id)}`, { method: 'PUT', body: JSON.stringify({ nombre: s.nombre || '', etiquetas: etiquetasDe(s), ancho: s.ancho ?? null, alto: s.alto ?? null }) });
         }
         if (s.estado && s.estado !== b.estado && statusGroups[s.estado]) statusGroups[s.estado].push(s.id);
       }
@@ -1155,17 +1211,22 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
             onClick={editMode ? (drawingRoad ? addRoadPoint : handleOverlayClick) : undefined}
             onDoubleClick={editMode && drawingRoad ? commitRoad : undefined}
           >
-            {visibleStalls.map((st) => (
-              <button
-                key={st.id}
-                type="button"
-                className={`pspot${editMode ? ' editable' : ''} ${st.estado || 'disponible'}${st.discapacitado ? ' accessible' : ''}${editMode && selectedSet.has(st.id) ? ' selected' : ''}`}
-                style={spotStyle(st, spotLayout)}
-                title={st.nombre || st.id}
-                onPointerDown={editMode && !drawingRoad ? (e) => startDrag(e, st) : undefined}
-                onClick={(e) => e.stopPropagation()}
-              />
-            ))}
+            {visibleStalls.map((st) => {
+              const marca = marcaEtiqueta(st, catalogoEtiquetas);
+              return (
+                <button
+                  key={st.id}
+                  type="button"
+                  className={`pspot${editMode ? ' editable' : ''} ${st.estado || 'disponible'}${st.discapacitado ? ' accessible' : ''}${editMode && selectedSet.has(st.id) ? ' selected' : ''}`}
+                  style={spotStyle(st, spotLayout)}
+                  title={marca ? `${st.nombre || st.id} · ${marca.texto}` : (st.nombre || st.id)}
+                  onPointerDown={editMode && !drawingRoad ? (e) => startDrag(e, st) : undefined}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {marca && <span className="pspot-tag" aria-hidden>{marca.icono}</span>}
+                </button>
+              );
+            })}
             {selectionBox && (
               <div
                 className="selection-marquee"
@@ -1194,7 +1255,37 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
               <button className="btn ghost" onClick={() => applySpaceBatch('status', 'disponible')} disabled={busy || !selectedIds.length} title="Marcar como disponible"><Check size={15} />Disponible</button>
               <button className="btn ghost" onClick={() => applySpaceBatch('status', 'ocupado')} disabled={busy || !selectedIds.length} title="Marcar como ocupado"><Car size={15} />Ocupado</button>
               <button className="btn ghost" onClick={() => applySpaceBatch('status', 'no_disponible')} disabled={busy || !selectedIds.length} title="Marcar como no disponible"><EyeOff size={15} />No disp.</button>
-              <button className="btn ghost" onClick={() => applySpaceBatch('accessible')} disabled={busy || !selectedIds.length} title="Marcar/desmarcar como plaza de discapacitados"><Accessibility size={15} />Discap.</button>
+              <div className="tag-menu-wrap">
+                <button
+                  className={`btn ghost${showTags ? ' active' : ''}`}
+                  onClick={() => setShowTags((v) => !v)}
+                  disabled={busy || !selectedIds.length}
+                  title="Poner o quitar etiquetas (discapacitados, eléctrico…) a las plazas seleccionadas"
+                >
+                  <Tag size={15} />Etiquetas
+                </button>
+                {showTags && selectedIds.length > 0 && (
+                  <div className="tag-menu">
+                    {catalogoEtiquetas.map((et) => {
+                      const sel = visibleStalls.filter((s) => selectedSet.has(s.id));
+                      const todas = sel.length > 0 && sel.every((s) => etiquetasDe(s).includes(et.id));
+                      const algunas = !todas && sel.some((s) => etiquetasDe(s).includes(et.id));
+                      return (
+                        <button
+                          key={et.id}
+                          className={`tag-menu-item${todas ? ' on' : ''}${algunas ? ' partial' : ''}`}
+                          onClick={() => applySpaceBatch('etiqueta', null, et.id)}
+                        >
+                          <span className="tag-menu-icon" aria-hidden>{et.icono}</span>
+                          {et.nombre}
+                          {todas && <Check size={14} />}
+                          {algunas && <span className="muted" style={{ marginLeft: 'auto', fontSize: '.75rem' }}>algunas</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <button className="btn ghost danger" onClick={() => (selectedIds.length === 1 ? removeDot(selectedIds[0]) : applySpaceBatch('delete'))} disabled={busy || !selectedIds.length} title="Quitar las plazas seleccionadas"><Trash2 size={15} />Borrar</button>
               <button className="btn ghost" onClick={() => setSelectedIds([])} disabled={busy || !selectedIds.length} title="Deseleccionar">Deselec.</button>
               <span className="plano-tools-sep" aria-hidden />
@@ -1211,15 +1302,18 @@ function PlanoEditor({ floor, onClose, onSaved, autoEdit = false }) {
         <EditSpaceModal
           stall={editTarget}
           layout={spotLayout}
+          catalogo={catalogoEtiquetas}
           onClose={() => setEditTarget(null)}
           onApply={(patch) => {
+            const disc = (patch.etiquetas || []).includes('discapacitado');
             setFloors((prev) => prev.map((f) => (f.piso !== floor ? f : {
               ...f,
               stalls: (f.stalls || []).map((s) => (s.id === editTarget.id ? {
                 ...s,
                 nombre: patch.nombre ? patch.nombre : null,
-                discapacitado: !!patch.discapacitado,
-                tipo: patch.discapacitado ? 'discapacitado' : 'regular',
+                etiquetas: patch.etiquetas || [],
+                discapacitado: disc,
+                tipo: disc ? 'discapacitado' : 'regular',
                 ancho: patch.ancho ?? null,
                 alto: patch.alto ?? null,
               } : s)),
@@ -1245,31 +1339,45 @@ function pctValue(value) {
   return String(Math.round(Number(value || 0) * 1000) / 10);
 }
 
-function EditSpaceModal({ stall, layout, onClose, onApply }) {
+function EditSpaceModal({ stall, layout, catalogo = ETIQUETAS_PLAZA, onClose, onApply }) {
   const current = layout.get(stall.id) || { w: stall.ancho || 0.032, h: stall.alto || 0.022 };
+  const [etiquetas, setEtiquetas] = useState(etiquetasDe(stall));
   const [form, setForm] = useState({
     nombre: stall.nombre || '',
-    discapacitado: Boolean(stall.discapacitado),
     ancho: pctValue(current.w),
     alto: pctValue(current.h),
   });
+  const toggleEtiqueta = (id) => setEtiquetas((prev) => (prev.includes(id) ? prev.filter((e) => e !== id) : [...prev, id]));
   const [msg, setMsg] = useState(null);
   function save() {
     setMsg(null);
     const ancho = Number(form.ancho) / 100;
     const alto = Number(form.alto) / 100;
     if (!Number.isFinite(ancho) || !Number.isFinite(alto) || ancho <= 0 || alto <= 0) return setMsg({ type: 'error', text: 'Ingresa un tamano valido.' });
-    onApply({ nombre: form.nombre, discapacitado: form.discapacitado, ancho, alto });
+    onApply({ nombre: form.nombre, etiquetas, ancho, alto });
   }
   function resetSize() {
     setMsg(null);
-    onApply({ nombre: form.nombre, discapacitado: form.discapacitado, ancho: null, alto: null });
+    onApply({ nombre: form.nombre, etiquetas, ancho: null, alto: null });
   }
   return (
     <Modal title={`Editar plaza ${stall.id}`} onClose={onClose}>
       <label>Nombre</label>
       <input value={form.nombre} maxLength={32} placeholder={stall.id} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
-      <label className="check-row"><input type="checkbox" checked={form.discapacitado} onChange={(e) => setForm({ ...form, discapacitado: e.target.checked })} /> Plaza de discapacitados</label>
+      <label>Etiquetas</label>
+      <div className="espacios-chips">
+        {catalogo.map((et) => (
+          <button
+            key={et.id}
+            type="button"
+            className={`espacio-chip${etiquetas.includes(et.id) ? ' on' : ''}`}
+            onClick={() => toggleEtiqueta(et.id)}
+            aria-pressed={etiquetas.includes(et.id)}
+          >
+            <span aria-hidden>{et.icono}</span>{et.nombre}
+          </button>
+        ))}
+      </div>
       <div className="two">
         <div><label>Ancho (%)</label><input type="number" min="0.6" max="12" step="0.1" value={form.ancho} onChange={(e) => setForm({ ...form, ancho: e.target.value })} /></div>
         <div><label>Alto (%)</label><input type="number" min="0.6" max="12" step="0.1" value={form.alto} onChange={(e) => setForm({ ...form, alto: e.target.value })} /></div>

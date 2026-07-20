@@ -42,6 +42,7 @@ export interface CroquisDot {
   ancho: number | null;
   alto: number | null;
   discapacitado: boolean;
+  etiquetas: string[];
 }
 
 export interface FlowArrow {
@@ -66,6 +67,7 @@ export interface UpdateEspacioInput {
   ancho: number | null;
   alto: number | null;
   discapacitado: boolean;
+  etiquetas: string[];
 }
 
 export interface AddFlowArrowInput {
@@ -143,6 +145,7 @@ export interface ParqueoRepository {
   setPlanVisibility(plan: string, show: boolean): Promise<void>;
   addEspacio(input: AddEspacioInput): Promise<Space>;
   updateEspacio(id: string, input: UpdateEspacioInput): Promise<Space>;
+  setEtiquetaEspacios(ids: string[], etiqueta: string, activar: boolean): Promise<number>;
   updateEspaciosEstado(ids: string[], estado: ParkingSpaceStatus, actor: EventActor): Promise<number>;
   moveEspacio(id: string, x: number, y: number): Promise<void>;
   moveFlowArrow(id: string, x: number, y: number): Promise<void>;
