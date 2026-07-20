@@ -103,6 +103,57 @@ export async function deleteSalon(id: string): Promise<boolean> {
   return (result.rowCount ?? 0) > 0;
 }
 
+// ---- Días bloqueados (disponibilidad manual) ----
+
+export interface DiaBloqueado { salonId: string; fecha: string; motivo: string }
+
+export async function findBloqueos(salonId?: string, desde = new Date().toISOString().slice(0, 10)): Promise<DiaBloqueado[]> {
+  const rows = await query<{ salon_id: string; fecha: string; motivo: string }>(
+    `select salon_id, to_char(fecha,'YYYY-MM-DD') as fecha, motivo
+       from venue_dias_bloqueados
+      where fecha >= $1::date ${salonId ? 'and salon_id = $2' : ''}
+      order by fecha asc`,
+    salonId ? [desde, salonId] : [desde],
+  );
+  return rows.map((r) => ({ salonId: r.salon_id, fecha: r.fecha, motivo: r.motivo }));
+}
+
+// Bloquea o libera un conjunto de días de un salón en una sola transacción.
+export async function setBloqueos(salonId: string, fechas: string[], bloquear: boolean, motivo = ''): Promise<void> {
+  if (!fechas.length) return;
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    for (const fecha of fechas) {
+      if (bloquear) {
+        await client.query(
+          `insert into venue_dias_bloqueados (salon_id, fecha, motivo) values ($1,$2::date,$3)
+           on conflict (salon_id, fecha) do update set motivo = excluded.motivo`,
+          [salonId, fecha, motivo],
+        );
+      } else {
+        await client.query('delete from venue_dias_bloqueados where salon_id = $1 and fecha = $2::date', [salonId, fecha]);
+      }
+    }
+    await client.query('commit');
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function findDiasBloqueadosEn(salonId: string, fechas: string[]): Promise<string[]> {
+  if (!fechas.length) return [];
+  const rows = await query<{ fecha: string }>(
+    `select to_char(fecha,'YYYY-MM-DD') as fecha from venue_dias_bloqueados
+      where salon_id = $1 and fecha = any($2::date[])`,
+    [salonId, fechas],
+  );
+  return rows.map((r) => r.fecha);
+}
+
 // ---- Reservas ----
 
 function nuevoCodigo(): string {
