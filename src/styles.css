@@ -2926,3 +2926,34 @@ th.dt-sorted { color: var(--gold-bright); }
 .salon-ocupadas h3 { display: flex; align-items: center; gap: 6px; font-size: .95rem; margin: 0 0 6px; }
 .salon-ocupadas ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .88rem; }
 .okbox.warn { border-color: rgba(224,165,0,.45); background: rgba(224,165,0,.12); color: #e0a500; }
+
+/* ── Calendario de disponibilidad de salones (selección por arrastre) ── */
+.cal-wrap { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cal-head b { font-size: .95rem; }
+.cal-hint { font-size: .78rem; margin-left: auto; }
+.cal-months { display: flex; gap: 18px; flex-wrap: wrap; }
+.cal-month { flex: 1 1 220px; min-width: 210px; }
+.cal-month-name { font-size: .85rem; color: var(--muted); text-transform: capitalize; margin-bottom: 4px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; user-select: none; }
+.cal-dow { font-size: .7rem; color: var(--muted); text-align: center; padding-bottom: 2px; }
+.cal-day {
+  aspect-ratio: 1; display: grid; place-items: center; font-size: .8rem; cursor: pointer;
+  border: 1px solid transparent; border-radius: 6px; background: rgba(255,255,255,.04);
+  color: inherit; font-family: inherit; padding: 0;
+}
+.cal-day:hover:not(:disabled) { border-color: var(--gold); }
+.cal-day.empty { background: none; cursor: default; }
+.cal-day.pasado { opacity: .28; cursor: not-allowed; }
+.cal-day.bloqueada { background: rgba(200,50,50,.2); color: #e05555; text-decoration: line-through; }
+.cal-day.reservada { background: rgba(10,125,58,.22); color: #35c46f; cursor: not-allowed; }
+.cal-day.sel { outline: 2px solid var(--gold); background: rgba(201,169,97,.28); color: var(--gold); }
+.cal-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: .78rem; color: var(--muted); }
+.cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.cal-legend .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.cal-legend .sw.libre { background: rgba(255,255,255,.12); }
+.cal-legend .sw.bloqueada { background: rgba(200,50,50,.45); }
+.cal-legend .sw.reservada { background: rgba(10,125,58,.5); }
+.cal-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding: 10px; border: 1px solid var(--gold); border-radius: 8px; background: rgba(201,169,97,.08); }
+.cal-actions input { margin: 0; flex: 1 1 160px; min-width: 140px; }
+.cal-actions .btn { margin-top: 0; }

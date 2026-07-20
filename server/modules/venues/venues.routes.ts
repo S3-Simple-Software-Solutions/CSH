@@ -144,6 +144,13 @@ venuesRouter.post('/admin/api/venues/salones/:id/imagen', imgRateLimit, requireA
   } catch (err) { next(err); }
 });
 
+// Disponibilidad: bloquear/liberar un conjunto de días del salón.
+venuesRouter.put('/admin/api/venues/salones/:id/disponibilidad', requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await venues.adminSetDisponibilidad(String(req.params.id), req.body)) });
+  } catch (err) { next(err); }
+});
+
 venuesRouter.post('/admin/api/venues/reservas', requireAdmin, async (req, res, next) => {
   try {
     res.json({ ok: true, ...(await venues.adminCrearReserva(req.body)) });

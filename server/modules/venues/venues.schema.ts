@@ -39,6 +39,16 @@ export async function ensureVenuesSchema(): Promise<void> {
       creado_at        timestamptz not null default now()
     );
 
+    -- Días marcados a mano como no disponibles (mantenimiento, evento propio,
+    -- etc.). Se guarda un registro por día para poder pintar el calendario.
+    create table if not exists venue_dias_bloqueados (
+      salon_id  text not null references venue_salones(id) on delete cascade,
+      fecha     date not null,
+      motivo    text not null default '',
+      creado_at timestamptz not null default now(),
+      primary key (salon_id, fecha)
+    );
+
     create index if not exists idx_venue_reservas_salon_fecha on venue_reservas(salon_id, fecha);
     create index if not exists idx_venue_reservas_estado on venue_reservas(estado);
   `);

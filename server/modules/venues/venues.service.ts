@@ -3,6 +3,8 @@ import type { Reserva, ReservaEstado, Salon } from './venues.types';
 import { RESERVA_ESTADOS } from './venues.types';
 import {
   deleteReserva,
+  findBloqueos,
+  findDiasBloqueadosEn,
   findOcupadas,
   findReservaById,
   findReservas,
@@ -10,6 +12,7 @@ import {
   findSalones,
   haySolape,
   insertReserva,
+  setBloqueos,
   updateReserva,
 } from './venues.repository';
 
@@ -89,8 +92,10 @@ async function salonDeReserva(datos: DatosReserva): Promise<Salon> {
 
 export async function getSalonesPublicos() {
   const salones = await findSalones(true);
-  const ocupadas = await findOcupadas();
+  const [ocupadas, bloqueadas] = await Promise.all([findOcupadas(), findBloqueos()]);
   return {
+    // Días que el club cerró a mano; el público solo necesita saber la fecha.
+    bloqueadas: bloqueadas.map((b) => ({ salonId: b.salonId, fecha: b.fecha })),
     salones: salones.map((s) => ({
       id: s.id, slug: s.slug, nombre: s.nombre, descripcion: s.descripcion, ubicacion: s.ubicacion,
       capacidad: s.capacidad, tarifaHoraCrc: s.tarifaHoraCrc, tarifaDiaCrc: s.tarifaDiaCrc,
@@ -108,6 +113,9 @@ export async function crearSolicitudPublica(body: any) {
   const salon = await salonDeReserva(datos);
   if (!salon.activo) throw new ApiError(400, 'Ese salón no está disponible por ahora');
   if (datos.fecha < new Date().toISOString().slice(0, 10)) throw new ApiError(400, 'Elegí una fecha futura');
+  if ((await findDiasBloqueadosEn(salon.id, [datos.fecha])).length) {
+    throw new ApiError(409, `${salon.nombre} no está disponible el ${datos.fecha}. Elegí otra fecha.`);
+  }
 
   const reserva = await insertReserva({
     ...datos,
@@ -121,23 +129,55 @@ export async function crearSolicitudPublica(body: any) {
 // ---- Admin ----
 
 export async function getAdminVenues(filtro: { estado?: string; salonId?: string } = {}) {
-  const [salones, reservas] = await Promise.all([
+  const [salones, reservas, bloqueadas, agenda] = await Promise.all([
     findSalones(false),
     findReservas({
       ...(filtro.estado && RESERVA_ESTADOS.includes(filtro.estado as ReservaEstado) && { estado: filtro.estado }),
       ...(filtro.salonId && { salonId: filtro.salonId }),
     }),
+    // El calendario de disponibilidad mira hacia adelante desde ayer, para que
+    // el mes en curso se pinte completo.
+    findBloqueos(undefined, new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)),
+    // Agenda confirmada sin filtrar: el calendario siempre la necesita completa.
+    findOcupadas(),
   ]);
   const hoy = new Date().toISOString().slice(0, 10);
   return {
     salones,
     reservas,
+    bloqueadas,
+    agenda: agenda.map((r) => ({ salonId: r.salonId, fecha: r.fecha, horaInicio: r.horaInicio, horaFin: r.horaFin, codigo: r.codigo })),
     metricas: {
       solicitudes: reservas.filter((r) => r.estado === 'solicitada').length,
       confirmadas: reservas.filter((r) => r.estado === 'confirmada' && r.fecha >= hoy).length,
       ingresosConfirmados: reservas.filter((r) => r.estado === 'confirmada').reduce((sum, r) => sum + r.precioCrc, 0),
     },
   };
+}
+
+// Bloquea o libera varios días de un salón de una vez (selección tipo Airbnb).
+// Un día con reserva confirmada no se puede bloquear: primero hay que cancelarla.
+export async function adminSetDisponibilidad(salonId: string, body: any) {
+  const salon = await findSalonById(salonId);
+  if (!salon) throw new ApiError(404, 'Salón no encontrado');
+  const crudas: unknown[] = Array.isArray(body?.fechas) ? body.fechas : [];
+  const fechas = [...new Set(crudas.map((f) => str(f, 10)))].filter((f) => FECHA_RE.test(f));
+  if (!fechas.length) throw new ApiError(400, 'Elegí al menos un día');
+  if (fechas.length > 400) throw new ApiError(400, 'Demasiados días en una sola operación');
+  const bloquear = body?.bloquear !== false;
+  const motivo = str(body?.motivo, 200);
+
+  if (bloquear) {
+    const conReserva = (await findReservas({ estado: 'confirmada', salonId }))
+      .filter((r) => fechas.includes(r.fecha))
+      .map((r) => r.fecha);
+    if (conReserva.length) {
+      throw new ApiError(409, `Hay reservas confirmadas el ${[...new Set(conReserva)].join(', ')}. Cancelalas antes de bloquear esos días.`);
+    }
+  }
+
+  await setBloqueos(salonId, fechas, bloquear, motivo);
+  return { bloqueadas: await findBloqueos(salonId, new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)) };
 }
 
 // Reserva cargada a mano por el club: nace confirmada y sí valida el solape.

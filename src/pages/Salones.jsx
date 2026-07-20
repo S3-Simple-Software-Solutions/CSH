@@ -36,6 +36,13 @@ export default function Salones() {
   );
   const choque = ocupadasSalon.some((o) => o.fecha === form.fecha && o.horaInicio < form.horaFin && o.horaFin > form.horaInicio);
 
+  // Días que el club cerró a mano para ese salón: no se pueden solicitar.
+  const bloqueadasSalon = useMemo(
+    () => (data?.bloqueadas || []).filter((b) => b.salonId === form.salonId && b.fecha >= hoy()).map((b) => b.fecha),
+    [data, form.salonId],
+  );
+  const diaCerrado = bloqueadasSalon.includes(form.fecha);
+
   async function enviar(e) {
     e.preventDefault();
     setEnviando(true); setError('');
@@ -115,14 +122,16 @@ export default function Salones() {
           </div>
           <label>Contanos del evento</label>
           <textarea rows={3} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
-          {choque && <div className="okbox warn">Ese horario ya está reservado en {salon?.nombre}. Podés enviar la solicitud igual y el club te propone alternativas.</div>}
+          {diaCerrado && <div className="error">El {form.fecha} el salón no está disponible. Elegí otra fecha.</div>}
+          {!diaCerrado && choque && <div className="okbox warn">Ese horario ya está reservado en {salon?.nombre}. Podés enviar la solicitud igual y el club te propone alternativas.</div>}
           {error && <div className="error">{error}</div>}
-          <button className="btn" disabled={enviando}>{enviando ? 'Enviando…' : 'Enviar solicitud'}</button>
+          <button className="btn" disabled={enviando || diaCerrado}>{enviando ? 'Enviando…' : 'Enviar solicitud'}</button>
 
-          {ocupadasSalon.length > 0 && (
+          {(ocupadasSalon.length > 0 || bloqueadasSalon.length > 0) && (
             <div className="salon-ocupadas">
-              <h3><CalendarDays size={15} /> Fechas ya reservadas</h3>
+              <h3><CalendarDays size={15} /> Fechas no disponibles</h3>
               <ul>
+                {bloqueadasSalon.slice(0, 8).map((f) => <li key={f}>{f} · todo el día</li>)}
                 {ocupadasSalon.slice(0, 8).map((o, i) => <li key={i}>{o.fecha} · {o.horaInicio}–{o.horaFin}</li>)}
               </ul>
             </div>

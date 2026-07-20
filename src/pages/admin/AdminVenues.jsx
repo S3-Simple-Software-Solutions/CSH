@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2, Check, Ban, ImagePlus, Pencil } from 'lucide-react';
 import { api, uploadFile } from '../../utils/api.js';
 import { useEscClose } from '../../utils/useEscClose.js';
@@ -131,8 +131,163 @@ function ReservaDetalle({ reserva, onClose, onChanged }) {
   );
 }
 
+// ---- Calendario de disponibilidad (selección por arrastre, tipo Airbnb) ----
+
+const DIAS_SEMANA = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Celdas de un mes: huecos al inicio para que el 1 caiga en su día de semana
+// (semana que arranca en lunes).
+function celdasDelMes(anio, mes) {
+  const primero = new Date(anio, mes, 1);
+  const offset = (primero.getDay() + 6) % 7;
+  const total = new Date(anio, mes + 1, 0).getDate();
+  const celdas = Array(offset).fill(null);
+  for (let d = 1; d <= total; d++) celdas.push(ymd(new Date(anio, mes, d)));
+  return celdas;
+}
+
+// Todas las fechas entre dos extremos, en cualquier orden de selección.
+function rango(a, b) {
+  const [ini, fin] = a <= b ? [a, b] : [b, a];
+  const out = [];
+  const cur = new Date(`${ini}T00:00:00`);
+  const hasta = new Date(`${fin}T00:00:00`);
+  while (cur <= hasta) { out.push(ymd(cur)); cur.setDate(cur.getDate() + 1); }
+  return out;
+}
+
+function SalonCalendario({ salon, bloqueadas, agenda, onChanged }) {
+  const [mesBase, setMesBase] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [ancla, setAncla] = useState(null);     // primer día del arrastre
+  const [hover, setHover] = useState(null);     // día bajo el cursor mientras arrastra
+  const [seleccion, setSeleccion] = useState([]);
+  const [motivo, setMotivo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const hoyStr = ymd(new Date());
+  const bloqueadasSet = useMemo(() => new Map(bloqueadas.map((b) => [b.fecha, b.motivo])), [bloqueadas]);
+  const reservadas = useMemo(() => {
+    const m = new Map();
+    for (const r of agenda) m.set(r.fecha, `${r.codigo} · ${r.horaInicio}–${r.horaFin}`);
+    return m;
+  }, [agenda]);
+
+  // Mientras se arrastra, la preselección se calcula del ancla al día bajo el cursor.
+  const preview = ancla && hover ? rango(ancla, hover) : [];
+  const activas = new Set(preview.length ? preview : seleccion);
+
+  function soltar() {
+    if (!ancla) return;
+    const dias = rango(ancla, hover || ancla).filter((f) => f >= hoyStr && !reservadas.has(f));
+    setSeleccion(dias);
+    setAncla(null); setHover(null);
+  }
+
+  useEffect(() => {
+    // El arrastre puede terminar fuera del calendario: se escucha en la ventana.
+    if (!ancla) return undefined;
+    window.addEventListener('pointerup', soltar);
+    return () => window.removeEventListener('pointerup', soltar);
+  });
+
+  async function aplicar(bloquear) {
+    setBusy(true); setError('');
+    const d = await api(`/admin/api/venues/salones/${salon.id}/disponibilidad`, {
+      method: 'PUT',
+      body: JSON.stringify({ fechas: seleccion, bloquear, motivo: bloquear ? motivo : '' }),
+    });
+    setBusy(false);
+    if (!d.ok) return setError(d.error);
+    setSeleccion([]); setMotivo(''); onChanged();
+  }
+
+  const meses = [mesBase, new Date(mesBase.getFullYear(), mesBase.getMonth() + 1, 1)];
+  const seleccionBloqueadas = seleccion.filter((f) => bloqueadasSet.has(f)).length;
+
+  return (
+    <div className="cal-wrap">
+      <div className="cal-head">
+        <button className="btn ghost xs" onClick={() => setMesBase(new Date(mesBase.getFullYear(), mesBase.getMonth() - 1, 1))}>←</button>
+        <b>Disponibilidad</b>
+        <button className="btn ghost xs" onClick={() => setMesBase(new Date(mesBase.getFullYear(), mesBase.getMonth() + 1, 1))}>→</button>
+        <span className="muted cal-hint">Arrastrá para marcar varios días</span>
+      </div>
+
+      <div className="cal-months">
+        {meses.map((m) => (
+          <div key={`${m.getFullYear()}-${m.getMonth()}`} className="cal-month">
+            <div className="cal-month-name">{MESES[m.getMonth()]} {m.getFullYear()}</div>
+            <div className="cal-grid">
+              {DIAS_SEMANA.map((d, idx) => <span key={idx} className="cal-dow">{d}</span>)}
+              {celdasDelMes(m.getFullYear(), m.getMonth()).map((fecha, idx) => {
+                if (!fecha) return <span key={`v${idx}`} className="cal-day empty" />;
+                const pasado = fecha < hoyStr;
+                const reservada = reservadas.get(fecha);
+                const bloqueada = bloqueadasSet.has(fecha);
+                const sel = activas.has(fecha);
+                const clase = ['cal-day',
+                  pasado ? 'pasado' : '',
+                  reservada ? 'reservada' : '',
+                  bloqueada ? 'bloqueada' : '',
+                  sel ? 'sel' : ''].filter(Boolean).join(' ');
+                const titulo = reservada ? `Reservado · ${reservada}`
+                  : bloqueada ? `No disponible${bloqueadasSet.get(fecha) ? ` · ${bloqueadasSet.get(fecha)}` : ''}`
+                    : pasado ? 'Fecha pasada' : 'Disponible';
+                return (
+                  <button
+                    key={fecha}
+                    type="button"
+                    className={clase}
+                    title={titulo}
+                    disabled={pasado || Boolean(reservada)}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      // En touch el navegador captura el puntero en el elemento
+                      // original; sin soltarlo, el arrastre no marcaría los días
+                      // siguientes. Con mouse no hay captura implícita.
+                      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                      }
+                      setAncla(fecha); setHover(fecha);
+                    }}
+                    onPointerEnter={() => ancla && setHover(fecha)}
+                  >
+                    {Number(fecha.slice(8))}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="cal-legend">
+        <span><i className="sw libre" />Disponible</span>
+        <span><i className="sw bloqueada" />No disponible</span>
+        <span><i className="sw reservada" />Reservado</span>
+      </div>
+
+      {seleccion.length > 0 && (
+        <div className="cal-actions">
+          <b>{seleccion.length} {seleccion.length === 1 ? 'día' : 'días'}</b>
+          <span className="muted">{seleccion[0]}{seleccion.length > 1 ? ` → ${seleccion[seleccion.length - 1]}` : ''}</span>
+          <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (opcional)" />
+          <button className="btn" onClick={() => aplicar(true)} disabled={busy}>Marcar no disponible</button>
+          <button className="btn ghost" onClick={() => aplicar(false)} disabled={busy || seleccionBloqueadas === 0}>Liberar</button>
+          <button className="btn ghost xs" onClick={() => setSeleccion([])}>Limpiar</button>
+        </div>
+      )}
+      {error && <div className="error">{error}</div>}
+    </div>
+  );
+}
+
 // ---- Ficha editable de un salón ----
-function SalonCard({ salon, onChanged }) {
+function SalonCard({ salon, bloqueadas, agenda, onChanged }) {
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState(salon);
   const [busy, setBusy] = useState(false);
@@ -218,8 +373,11 @@ function SalonCard({ salon, onChanged }) {
             : <><button className="btn" onClick={guardar} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</button><button className="btn ghost" onClick={() => { setEdit(false); setForm(salon); }}>Cancelar</button></>}
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={subirFoto} />
           <button className="btn ghost" onClick={() => fileRef.current.click()} disabled={busy}><ImagePlus size={15} />Foto</button>
-          <button className="btn ghost" onClick={toggleActivo}>{salon.activo ? 'Marcar no disponible' : 'Marcar disponible'}</button>
+          <button className="btn ghost" onClick={toggleActivo} title="Cierra el salón por completo: deja de mostrarse en el sitio">
+            {salon.activo ? 'Cerrar el salón' : 'Reabrir el salón'}
+          </button>
         </div>
+        <SalonCalendario salon={salon} bloqueadas={bloqueadas} agenda={agenda} onChanged={onChanged} />
       </div>
     </div>
   );
@@ -278,7 +436,15 @@ export default function AdminVenues() {
 
       {tab === 'salones' && (
         <div className="salon-cards">
-          {data.salones.map((s) => <SalonCard key={s.id} salon={s} onChanged={load} />)}
+          {data.salones.map((s) => (
+            <SalonCard
+              key={s.id}
+              salon={s}
+              bloqueadas={(data.bloqueadas || []).filter((b) => b.salonId === s.id)}
+              agenda={(data.agenda || []).filter((a) => a.salonId === s.id)}
+              onChanged={load}
+            />
+          ))}
         </div>
       )}
 
