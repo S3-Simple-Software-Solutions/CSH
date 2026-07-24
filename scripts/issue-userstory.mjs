@@ -301,17 +301,21 @@ function runProvider(config, providerName, issue, storyId, runDir) {
   }
 
   if (provider.type === "claude-cli") {
+    // El prompt va por stdin, no como argumento: `--allowedTools` es variadico
+    // (`<tools...>`) y se traga cualquier argumento posicional que le siga, con
+    // lo que claude se queda sin prompt y aborta. `--verbose` es obligatorio
+    // para combinar `--print` con `--output-format stream-json`.
     const args = [
       "--print",
       "--output-format",
       "stream-json",
+      "--verbose",
       "--model",
       provider.model || "sonnet",
       "--allowedTools",
-      (provider.allowedTools || []).join(","),
-      prompt
+      (provider.allowedTools || []).join(",")
     ];
-    const result = spawn(provider.command || "claude", args);
+    const result = spawn(provider.command || "claude", args, { input: prompt });
     fs.writeFileSync(path.join(runDir, "agent-events.log"), `${result.stdout}\n${result.stderr}`);
     if (result.ok) {
       const text = extractClaudeText(result.stdout);
