@@ -14,6 +14,7 @@ ALL_SECRETS
 node_modules/
 .playwright-cli/
 output/
+.agentic-runs/
 /current
 /releases/
 /shared/
