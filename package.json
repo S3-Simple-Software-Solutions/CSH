@@ -16,6 +16,8 @@
     "agentic": "node scripts/agentic-harness.mjs",
     "agentic:status": "node scripts/agentic-harness.mjs status",
     "agentic:notify-test": "node scripts/agentic-harness.mjs notify-test",
+    "issue:userstory": "node scripts/issue-userstory.mjs",
+    "issue:project:setup": "node scripts/setup-userstory-project.mjs",
     "sync:branches": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sync-branches.ps1",
     "finish:feature": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/finish-feature.ps1"
   },
