@@ -1,0 +1,88 @@
+name: Issue Lifecycle Notifications
+
+# Avisos del ciclo de vida de una user story. El aviso de "paso a user story" no
+# esta aca: lo emite scripts/issue-userstory.mjs al terminar el intake.
+#
+# Projects v2 no expone eventos de workflow, asi que las transiciones de etapa no
+# se detectan mirando el tablero: se disparan con un comando en un comentario.
+#   /planning  /building  /tests  /testdeploy
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: issue-lifecycle-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  notify-created:
+    name: Avisar issue creado
+    if: github.event_name == 'issues'
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Notificar a Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          node scripts/agentic-discord.mjs \
+            --title "Issue nuevo" \
+            --description "Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}" \
+            --status info \
+            --field "Autor=${{ github.event.issue.user.login }}" \
+            --field "Issue=${{ github.event.issue.html_url }}"
+
+  stage-command:
+    name: Mover etapa por comando
+    # Solo comentarios en issues (no en PRs) y solo de gente de la organizacion:
+    # el repo es publico y esto corre en un runner propio.
+    if: |
+      github.event_name == 'issue_comment' &&
+      !github.event.issue.pull_request &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Resolver etapa pedida
+        id: stage
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          case "$COMMENT_BODY" in
+            */planning*)   STAGE=Planning ;;
+            */building*)   STAGE=Building ;;
+            */testdeploy*) STAGE=TestDeploy ;;
+            */tests*)      STAGE=Tests ;;
+            *)             STAGE="" ;;
+          esac
+          echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
+          if [ -z "$STAGE" ]; then
+            echo "El comentario no trae comando de etapa; nada que hacer."
+          fi
+
+      - name: Mover etapa y notificar
+        if: steps.stage.outputs.stage != ''
+        env:
+          GH_PROJECT_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          node scripts/issue-stage.mjs \
+            --issue-number "${{ github.event.issue.number }}" \
+            --stage "${{ steps.stage.outputs.stage }}"
