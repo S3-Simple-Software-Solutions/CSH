@@ -28,7 +28,7 @@
   "project": {
     "owner": "S3-Simple-Software-Solutions",
     "title": "CSH User Stories",
-    "number": null,
+    "number": 1,
     "fieldName": "CSH Stage",
     "backlogOption": "Backlog",
     "statusOptions": [
