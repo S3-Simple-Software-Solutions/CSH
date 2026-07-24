@@ -338,24 +338,36 @@ function runProvider(config, providerName, issue, storyId, runDir) {
   return fallbackStory(issue, storyId);
 }
 
+// El stream trae un bloque de texto por cada turno del agente, incluida la
+// narracion entre llamadas a herramientas ("voy a revisar el repo..."). Juntarlos
+// todos mete esa narracion dentro de la historia, asi que se usa el evento
+// terminal `result`, que trae unicamente la respuesta final. La concatenacion
+// queda como respaldo por si el stream se corta antes del cierre.
 function extractClaudeText(stdout) {
-  const text = [];
+  const fallback = [];
+  let result = "";
+
   for (const line of String(stdout || "").split("\n").filter(Boolean)) {
     try {
       const event = JSON.parse(line);
+      if (event?.type === "result" && typeof event.result === "string") {
+        result = event.result;
+        continue;
+      }
       const content = event?.message?.content || event?.content;
       if (Array.isArray(content)) {
         for (const block of content) {
-          if (block?.type === "text" && block.text) text.push(block.text);
+          if (block?.type === "text" && block.text) fallback.push(block.text);
         }
       } else if (typeof content === "string") {
-        text.push(content);
+        fallback.push(content);
       }
     } catch {
       // Ignore progress lines.
     }
   }
-  return text.join("\n").trim();
+
+  return (result || fallback.join("\n")).trim();
 }
 
 function writeStory(config, issue, storyMarkdown, overrideDir = null) {
