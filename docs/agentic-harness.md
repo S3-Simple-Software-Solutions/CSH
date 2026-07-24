@@ -14,6 +14,43 @@ from `dev`, runs a provider, validates, commits, pushes, opens a PR back to
 The OpenAI provider is intentionally planner-only in this harness. Use `codex`
 or `claude` when the run must edit files.
 
+## Issue Intake
+
+GitHub issues are converted into user stories by `.github/workflows/issue-userstory.yml`.
+The workflow runs on a self-hosted runner so the selected agent starts on the
+host, creates a branch from `dev`, expands the issue, writes a user story under
+`docs/user-stories/`, comments back on the issue, labels it, and sends a Discord
+notification.
+
+Manual runs:
+
+```bash
+npm run issue:userstory -- --issue-number 123 --provider codex
+npm run issue:userstory -- --all-open --provider noop
+```
+
+Project setup:
+
+```bash
+gh auth refresh -s read:project -s project
+npm run issue:project:setup
+```
+
+The setup command creates or reuses `CSH User Stories`, adds the configured
+`CSH Stage` field with `Backlog`, `Planning`, `Building`, `Tests`, and
+`TestDeploy`, and writes the project number into
+`scripts/issue-userstory.config.json`.
+
+For GitHub Actions to add issues to the Project, add this repository secret:
+
+```text
+GH_PROJECT_TOKEN
+```
+
+The token needs project access. Without it, the story branch, markdown file,
+issue comment, labels, and Discord notification still work; the Project update
+is reported as pending setup.
+
 ## Usage
 
 ```bash
