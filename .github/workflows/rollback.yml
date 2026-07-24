@@ -31,6 +31,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Notify Discord start
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node scripts/agentic-discord.mjs \
+            --title "CSH rollback started" \
+            --description "Rolling production back to $RELEASE_VERSION" \
+            --status warning \
+            --field "Environment=production" \
+            --field "Release=$RELEASE_VERSION" \
+            --field "Run=$RUN_URL"
+
       - name: Validate selected release
         id: release
         shell: bash
@@ -234,6 +252,7 @@ jobs:
           ENDSSH
 
       - name: Rollback summary
+        if: always()
         shell: bash
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
@@ -250,3 +269,28 @@ jobs:
               echo "- Reason: $REASON"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notify Discord result
+        if: always()
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          case "$JOB_STATUS" in
+            success) STATUS=success; TITLE="CSH rollback succeeded" ;;
+            cancelled) STATUS=warning; TITLE="CSH rollback cancelled" ;;
+            *) STATUS=failure; TITLE="CSH rollback failed" ;;
+          esac
+
+          node scripts/agentic-discord.mjs \
+            --title "$TITLE" \
+            --description "Rollback finished for $RELEASE_VERSION" \
+            --status "$STATUS" \
+            --field "Environment=production" \
+            --field "Result=$JOB_STATUS" \
+            --field "Release=${RELEASE_URL:-$RELEASE_VERSION}" \
+            --field "Run=$RUN_URL"

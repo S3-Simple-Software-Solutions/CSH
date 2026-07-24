@@ -152,3 +152,43 @@ jobs:
           if [ -f /tmp/csh-app.pid ]; then
             kill "$(cat /tmp/csh-app.pid)" || true
           fi
+
+  notify:
+    name: Notify Discord
+    if: always()
+    runs-on: ubuntu-latest
+    needs:
+      - code-review
+      - dependency-review
+      - unit-testing
+      - app-health
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Notify Discord result
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          NEEDS_JSON: ${{ toJson(needs) }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if grep -q '"result":"failure"' <<<"$NEEDS_JSON"; then
+            STATUS=failure
+            TITLE="CSH CI failed"
+          elif grep -q '"result":"cancelled"' <<<"$NEEDS_JSON"; then
+            STATUS=warning
+            TITLE="CSH CI cancelled"
+          else
+            STATUS=success
+            TITLE="CSH CI passed"
+          fi
+
+          node scripts/agentic-discord.mjs \
+            --title "$TITLE" \
+            --description "Main Merge CI finished for ${GITHUB_REF_NAME}" \
+            --status "$STATUS" \
+            --field "Event=${GITHUB_EVENT_NAME}" \
+            --field "Ref=${GITHUB_REF_NAME}" \
+            --field "Run=$RUN_URL"

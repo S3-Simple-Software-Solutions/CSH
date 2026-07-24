@@ -49,6 +49,15 @@ OPENAI_API_KEY=...
 `DISCORD_WEBHOOK_URL` enables start, provider, validation, push, PR, and failure
 notifications. `OPENAI_API_KEY` is only needed for `--provider openai`.
 
+GitHub Actions uses the same webhook name. Add this repository secret:
+
+```text
+DISCORD_WEBHOOK_URL
+```
+
+The deploy, rollback, and CI workflows call `scripts/agentic-discord.mjs` and
+skip notifications safely when the secret is absent.
+
 ## Configuration
 
 The harness config is in:
