@@ -39,6 +39,9 @@
       "TestDeploy"
     ]
   },
+  "manual": {
+    "assignee": "anthonyOviedo"
+  },
   "roadmap": {
     "owner": "S3-Simple-Software-Solutions",
     "number": 2,

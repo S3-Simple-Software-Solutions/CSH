@@ -42,6 +42,9 @@ function parseArgs(argv) {
     } else if (key === "--issue-author") {
       args.issueAuthor = value || "";
       i += 1;
+    } else if (key === "--assignee") {
+      args.assignee = value;
+      i += 1;
     } else if (key === "--provider") {
       args.provider = value || "";
       i += 1;
@@ -135,8 +138,12 @@ function readIssue(issueNumber) {
   };
 }
 
-function listOpenIssues() {
-  const json = run("gh", [
+// El barrido manual (--all-open) se limita al responsable configurado, para no
+// arrastrar issues ajenos. `--assignee any` lo desactiva. El disparo automatico
+// por evento `issues` no pasa por aca: procesa solo el issue recien abierto.
+function listOpenIssues(config, args) {
+  const assignee = args.assignee || config.manual?.assignee || "";
+  const command = [
     "issue",
     "list",
     "--repo",
@@ -147,8 +154,12 @@ function listOpenIssues() {
     "200",
     "--json",
     "number,title,labels"
-  ]);
-  return JSON.parse(json).map((issue) => issue.number);
+  ];
+  if (assignee && assignee !== "any") {
+    command.push("--assignee", assignee);
+    console.log(`Barrido manual limitado a los issues asignados a ${assignee}.`);
+  }
+  return JSON.parse(run("gh", command)).map((issue) => issue.number);
 }
 
 function promptForIssue(issue, storyId) {
@@ -562,7 +573,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const config = loadConfig(args.configPath);
   if (args.allOpen) {
-    for (const issueNumber of listOpenIssues()) {
+    for (const issueNumber of listOpenIssues(config, args)) {
       await processIssue(config, args, issueNumber);
     }
     return;
