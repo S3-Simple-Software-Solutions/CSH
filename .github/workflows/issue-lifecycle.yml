@@ -33,6 +33,21 @@ jobs:
         with:
           ref: dev
 
+      # El alta en el roadmap la hace el workflow nativo de auto-add del proyecto,
+      # que puede tardar unos segundos en correr.
+      - name: Agendar ventana de una semana en el roadmap
+        env:
+          GH_PROJECT_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+        run: |
+          for intento in 1 2 3 4 5 6; do
+            if node scripts/issue-schedule.mjs --issue-number "${{ github.event.issue.number }}"; then
+              exit 0
+            fi
+            echo "Todavia no esta en el proyecto; reintento $intento/6"
+            sleep 10
+          done
+          echo "::warning::No se pudo agendar el issue en el roadmap"
+
       - name: Notificar a Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
