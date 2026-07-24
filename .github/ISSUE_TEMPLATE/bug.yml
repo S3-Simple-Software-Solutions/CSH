@@ -1,0 +1,70 @@
+name: Bug
+description: Algo no funciona como deberia
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Con que llenes lo que sepas alcanza. El intake automatico refina el texto
+        despues, asi que no hace falta que quede perfecto.
+
+  - type: textarea
+    id: que-pasa
+    attributes:
+      label: Que esta pasando
+      description: Describi el problema como lo ves.
+      placeholder: Al tocar "pagar" desde el celular la pantalla se queda cargando.
+    validations:
+      required: true
+
+  - type: textarea
+    id: pasos
+    attributes:
+      label: Como reproducirlo
+      description: Los pasos para llegar al problema.
+      placeholder: |
+        1. Entrar a /entradas
+        2. Elegir un asiento y seguir al pago
+        3. Tocar "pagar"
+    validations:
+      required: false
+
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Que deberia pasar en su lugar
+    validations:
+      required: false
+
+  - type: dropdown
+    id: donde
+    attributes:
+      label: Donde ocurre
+      multiple: true
+      options:
+        - Sitio publico
+        - Panel administrativo
+        - Aplicacion movil
+        - Correo o notificaciones
+        - No estoy seguro
+    validations:
+      required: false
+
+  - type: dropdown
+    id: gravedad
+    attributes:
+      label: Que tan grave es
+      options:
+        - Bloquea una operacion del club
+        - Molesta pero hay forma de seguir
+        - Cosmetico
+    validations:
+      required: false
+
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto adicional
+      description: Capturas, mensajes de error, dispositivo o navegador.
+    validations:
+      required: false
