@@ -32,7 +32,14 @@ jobs:
   create-user-story:
     name: Create User Story
     runs-on: self-hosted
-    if: github.event_name == 'workflow_dispatch' || !contains(github.event.issue.labels.*.name, 'user-story-created')
+    # El repo es publico y este job corre en un runner self-hosted: el texto del
+    # issue termina alimentando un agente en una maquina propia. Por eso solo se
+    # procesan automaticamente los issues de gente de la organizacion. Para un
+    # issue de terceros, un maintainer lo dispara a mano con workflow_dispatch.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (!contains(github.event.issue.labels.*.name, 'user-story-created') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
 
     env:
       GH_TOKEN: ${{ github.token }}
