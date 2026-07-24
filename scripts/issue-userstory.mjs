@@ -3,11 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { execFileSync, spawnSync } from "node:child_process";
+import { runAgent, MARCA_FALLO } from "./agent-provider.mjs";
 
 const DEFAULT_CONFIG_PATH = "scripts/issue-userstory.config.json";
 const REPO = process.env.GITHUB_REPOSITORY || "S3-Simple-Software-Solutions/CSH";
-// Permite detectar despues si la historia salio del agente o del respaldo.
-const MARCA_FALLO = "Esta historia no se pudo generar";
 
 function parseArgs(argv) {
   const args = {
@@ -19,7 +18,6 @@ function parseArgs(argv) {
     provider: "",
     configPath: DEFAULT_CONFIG_PATH,
     dryRun: false,
-    noPush: false,
     noComment: false,
     noProject: false,
     noNotify: false,
@@ -57,8 +55,6 @@ function parseArgs(argv) {
       args.allOpen = true;
     } else if (key === "--dry-run") {
       args.dryRun = true;
-    } else if (key === "--no-push") {
-      args.noPush = true;
     } else if (key === "--no-comment") {
       args.noComment = true;
     } else if (key === "--no-project") {
@@ -217,205 +213,55 @@ function promptForIssue(issue, storyId) {
     issue.body || "(El issue no trae descripción.)"
   ].join("\n");
 }
-
 function fallbackStory(issue, storyId, motivo) {
-  const title = issue.title || `Issue ${issue.number}`;
   return [
-    `# ${storyId}: ${title}`,
+    `# ${storyId}: ${issue.title}`,
     "",
-    `> **${MARCA_FALLO}.**`,
+    `> **${MARCA_FALLO} la user story.**`,
     `> El agente de refinamiento fallo${motivo ? `: ${motivo}` : "."}`,
-    "> Lo que sigue es el texto original del issue, sin refinar. Volve a correr el",
-    "> intake cuando el proveedor este operativo:",
-    `> \`node scripts/issue-userstory.mjs --issue-number ${issue.number} --provider claude\``,
-    "",
-    "## Issue de origen",
-    `- Numero: ${issue.number}`,
-    `- URL: ${issue.url}`,
-    `- Autor: ${issue.author || "desconocido"}`,
+    "> Abajo queda el texto original del issue, sin refinar.",
     "",
     "## Texto original",
     issue.body || "(El issue no trae descripcion.)"
   ].join("\n");
 }
 
-function runProvider(config, providerName, issue, storyId, runDir) {
-  const provider = config.providers?.[providerName];
-  if (!provider) {
-    throw new Error(`Unknown provider: ${providerName}`);
-  }
-  fs.mkdirSync(runDir, { recursive: true });
-  const prompt = promptForIssue(issue, storyId);
-  fs.writeFileSync(path.join(runDir, "prompt.md"), `${prompt}\n`);
+// La historia se publica como comentario del issue, no como archivo: el equipo
+// la lee sin salir de GitHub. La marca oculta permite reconocer el comentario
+// mas adelante, para editarlo en vez de duplicarlo y para que el generador de
+// planes sepa cual es la historia vigente.
+const MARCA_HISTORIA = "<!-- csh:user-story -->";
 
-  if (provider.type === "noop") {
-    return fallbackStory(issue, storyId, 'proveedor "noop", no refina nada');
-  }
+function publicarHistoria(issue, storyMarkdown, projectResult, args) {
+  if (args.noComment || args.dryRun) return null;
+  ensureLabel("user-story", "0E8A16", "El issue tiene una user story generada");
+  ensureLabel("user-story-created", "5319E7", "La automatizacion genero la user story");
 
-  if (provider.type === "codex-cli") {
-    const outputPath = path.join(runDir, "agent-output.md");
-    const args = [
-      "exec",
-      "--cd",
-      process.cwd(),
-      "--sandbox",
-      provider.sandbox || "workspace-write",
-      "--output-last-message",
-      outputPath,
-      "-m",
-      provider.model || "gpt-5.6-sol",
-      "-"
-    ];
-    const result = spawn(provider.command || "codex", args, { input: prompt });
-    fs.writeFileSync(path.join(runDir, "agent-events.log"), `${result.stdout}\n${result.stderr}`);
-    if (result.ok && fs.existsSync(outputPath)) {
-      const text = fs.readFileSync(outputPath, "utf8").trim();
-      if (text) return text;
-    }
-    return fallbackStory(issue, storyId, reportarFallo("codex", result, runDir));
-  }
-
-  if (provider.type === "claude-cli") {
-    // El prompt va por stdin, no como argumento: `--allowedTools` es variadico
-    // (`<tools...>`) y se traga cualquier argumento posicional que le siga, con
-    // lo que claude se queda sin prompt y aborta. `--verbose` es obligatorio
-    // para combinar `--print` con `--output-format stream-json`.
-    const args = [
-      "--print",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-      "--model",
-      provider.model || "sonnet",
-      "--allowedTools",
-      (provider.allowedTools || []).join(",")
-    ];
-    const result = spawn(provider.command || "claude", args, { input: prompt });
-    fs.writeFileSync(path.join(runDir, "agent-events.log"), `${result.stdout}\n${result.stderr}`);
-    if (result.ok) {
-      const text = extractClaudeText(result.stdout);
-      if (text) return text;
-    }
-    return fallbackStory(issue, storyId, reportarFallo("claude", result, runDir));
-  }
-
-  return fallbackStory(issue, storyId, `tipo de proveedor "${provider.type}" sin implementacion`);
-}
-
-// El fallback silencioso escondio tres fallas seguidas del proveedor, y cada una
-// produjo una historia inservible que igual se commiteo. Ahora deja rastro en el
-// log del job y en el propio archivo de la historia.
-function reportarFallo(nombre, result, runDir) {
-  const detalle = (result.stderr || result.stdout || "")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .pop() || "sin salida";
-  const motivo = `${nombre} salio con codigo ${result.status} (${detalle})`;
-  console.error(`::warning::Refinamiento fallido, se conserva el texto original. ${motivo}`);
-  console.error(`Log completo del agente: ${path.join(runDir, "agent-events.log")}`);
-  return motivo;
-}
-
-// El stream trae un bloque de texto por cada turno del agente, incluida la
-// narracion entre llamadas a herramientas ("voy a revisar el repo..."). Juntarlos
-// todos mete esa narracion dentro de la historia, asi que se usa el evento
-// terminal `result`, que trae unicamente la respuesta final. La concatenacion
-// queda como respaldo por si el stream se corta antes del cierre.
-function extractClaudeText(stdout) {
-  const fallback = [];
-  let result = "";
-
-  for (const line of String(stdout || "").split("\n").filter(Boolean)) {
-    try {
-      const event = JSON.parse(line);
-      if (event?.type === "result" && typeof event.result === "string") {
-        result = event.result;
-        continue;
-      }
-      const content = event?.message?.content || event?.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block?.type === "text" && block.text) fallback.push(block.text);
-        }
-      } else if (typeof content === "string") {
-        fallback.push(content);
-      }
-    } catch {
-      // Ignore progress lines.
-    }
-  }
-
-  return (result || fallback.join("\n")).trim();
-}
-
-function writeStory(config, issue, storyMarkdown, overrideDir = null) {
-  const storyId = issueId(issue.number);
-  const dir = overrideDir || path.resolve(config.storyRoot || "docs/user-stories");
-  fs.mkdirSync(dir, { recursive: true });
-  const fileName = `${storyId}-${slugify(issue.title)}.md`;
-  const filePath = path.join(dir, fileName);
   const body = [
-    "---",
-    `id: ${storyId}`,
-    `issue: ${issue.number}`,
-    `issue_url: ${issue.url}`,
-    "stage: Backlog",
-    `generated_at: ${new Date().toISOString()}`,
-    "---",
-    "",
+    MARCA_HISTORIA,
     storyMarkdown.trim(),
-    ""
+    "",
+    "---",
+    `Etapa: **${projectResult.added ? "Backlog" : "pendiente de alta en el proyecto"}**`,
+    "",
+    "Comenta `approved` para que el agente arme el plan de implementacion, o pedi los cambios que quieras sobre esta historia."
   ].join("\n");
-  const reescrita = fs.existsSync(filePath);
-  fs.writeFileSync(filePath, body);
-  return { filePath, reescrita };
-}
 
-function ensureBranch(config, issue, dryRun) {
-  const baseBranch = config.baseBranch || "dev";
-  const branch = `${config.branchPrefix || "issue"}/${issue.number}-${slugify(issue.title)}`;
-  if (dryRun) return branch;
+  const existente = run("gh", [
+    "api", `repos/${REPO}/issues/${issue.number}/comments`, "--paginate",
+    "--jq", `[.[] | select(.body | startswith("${MARCA_HISTORIA}"))] | first | .id // empty`
+  ]);
 
-  run("git", ["fetch", "origin", baseBranch], { stdio: "inherit" });
-  const branches = run("git", ["branch", "--list", branch]);
-  if (branches) {
-    run("git", ["switch", branch], { stdio: "inherit" });
+  if (existente) {
+    run("gh", ["api", `repos/${REPO}/issues/comments/${existente}`, "-X", "PATCH", "-F", `body=${body}`], { stdio: "inherit" });
   } else {
-    run("git", ["switch", "-c", branch, `origin/${baseBranch}`], { stdio: "inherit" });
+    run("gh", ["issue", "comment", String(issue.number), "--repo", REPO, "--body", body], { stdio: "inherit" });
   }
-  return branch;
-}
 
-function commitAndPush(issue, filePath, branch, noPush, dryRun) {
-  if (dryRun) return;
-  run("git", ["add", filePath], { stdio: "inherit" });
-  const status = run("git", ["status", "--porcelain", "--", filePath]);
-  if (!status) return;
-  run("git", ["commit", "-m", `docs: add user story for issue ${issue.number}`], { stdio: "inherit" });
-  if (!noPush) {
-    run("git", ["push", "-u", "origin", branch], { stdio: "inherit" });
-  }
-}
-
-function commentIssue(issue, storyPath, branch, projectResult, args) {
-  if (args.noComment || args.dryRun) return;
-  ensureLabel("user-story", "0E8A16", "Issue has a generated user story");
-  ensureLabel("user-story-created", "5319E7", "Automation generated a user story for this issue");
-  const body = [
-    "## User story created",
-    "",
-    `Branch: \`${branch}\``,
-    `User story: \`${storyPath}\``,
-    `Project stage: ${projectResult.added ? "Backlog" : "pending project setup"}`,
-    "",
-    "The issue has been expanded into a user story with inputs, outputs, functional requirements, non-functional requirements, acceptance criteria, edge cases, dependencies, open questions, and a suggested first slice.",
-    "",
-    projectResult.message ? `Project note: ${projectResult.message}` : ""
-  ].filter(Boolean).join("\n");
-  run("gh", ["issue", "comment", String(issue.number), "--repo", REPO, "--body", body], { stdio: "inherit" });
   run("gh", ["issue", "edit", String(issue.number), "--repo", REPO, "--add-label", "user-story,user-story-created"], { stdio: "inherit" });
+  return existente || "nuevo";
 }
+
 
 function ensureLabel(name, color, description) {
   run("gh", [
@@ -503,7 +349,7 @@ function addToProject(config, issue, args) {
   }
 }
 
-async function notify(issue, storyPath, branch, projectResult, args, estado = {}) {
+async function notify(issue, enlace, projectResult, args, estado = {}) {
   if (args.noNotify || !process.env.DISCORD_WEBHOOK_URL) return;
   const { reescrita = false, refinada = true } = estado;
 
@@ -517,8 +363,7 @@ async function notify(issue, storyPath, branch, projectResult, args, estado = {}
 
   const description = [
     `Issue #${issue.number}: ${issue.title}`,
-    `Rama: ${branch}`,
-    `Historia: ${storyPath}`,
+    `Historia publicada en el issue: ${enlace}`,
     `Proyecto: ${projectResult.added ? "Backlog" : projectResult.message}`,
     refinada ? "" : "El agente de refinamiento fallo; se conservo el texto original del issue."
   ].filter(Boolean).join("\n");
@@ -562,18 +407,29 @@ async function processIssue(config, args, issueNumber) {
     return;
   }
 
-  const branch = ensureBranch(config, issue, args.dryRun);
   const storyId = issueId(issue.number);
   const runDir = path.resolve(".agentic-runs", `issue-${issue.number}-${Date.now()}`);
   const provider = args.provider || config.defaultProvider || "codex";
-  const story = runProvider(config, provider, issue, storyId, runDir);
-  const { filePath: storyPath, reescrita } = writeStory(config, issue, story, args.dryRun ? runDir : null);
-  const refinada = !story.includes(MARCA_FALLO);
-  commitAndPush(issue, storyPath, branch, args.noPush, args.dryRun);
+
+  // Si ya habia un comentario de historia, esta corrida lo reescribe.
+  const previo = run("gh", [
+    "api", `repos/${REPO}/issues/${issue.number}/comments`, "--paginate",
+    "--jq", `[.[] | select(.body | startswith("${MARCA_HISTORIA}"))] | length`
+  ]);
+  const reescrita = Number(previo || 0) > 0;
+
+  const resultado = runAgent(config, provider, promptForIssue(issue, storyId), runDir);
+  const story = resultado.ok ? resultado.texto : fallbackStory(issue, storyId, resultado.motivo);
+
   const projectResult = addToProject(config, issue, args);
-  commentIssue(issue, path.relative(process.cwd(), storyPath), branch, projectResult, args);
-  await notify(issue, path.relative(process.cwd(), storyPath), branch, projectResult, args, { reescrita, refinada });
-  console.log(JSON.stringify({ issue: issue.number, branch, storyPath, project: projectResult }, null, 2));
+  publicarHistoria(issue, story, projectResult, args);
+  await notify(issue, issue.url, projectResult, args, { reescrita, refinada: resultado.ok });
+  console.log(JSON.stringify({
+    issue: issue.number,
+    historia: reescrita ? "reescrita" : "nueva",
+    refinada: resultado.ok,
+    project: projectResult
+  }, null, 2));
 }
 
 async function main() {

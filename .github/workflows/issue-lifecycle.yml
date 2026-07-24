@@ -101,3 +101,27 @@ jobs:
           node scripts/issue-stage.mjs \
             --issue-number "${{ github.event.issue.number }}" \
             --stage "${{ steps.stage.outputs.stage }}"
+
+  approve:
+    name: Aprobar historia o plan
+    # "approved" solo o como primera palabra del comentario. La etapa actual
+    # decide si se genera el plan o si se acepta el que ya estaba publicado.
+    if: |
+      github.event_name == 'issue_comment' &&
+      !github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, 'approved') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Avanzar el ciclo de vida
+        env:
+          GH_PROJECT_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          node scripts/issue-approve.mjs --issue-number "${{ github.event.issue.number }}"
