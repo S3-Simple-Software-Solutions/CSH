@@ -39,6 +39,13 @@
       "TestDeploy"
     ]
   },
+  "roadmap": {
+    "owner": "S3-Simple-Software-Solutions",
+    "number": 2,
+    "startFieldName": "Inicio SOW",
+    "dueFieldName": "Entrega SOW",
+    "dueDays": 7
+  },
   "labels": {
     "done": "user-story-created",
     "story": "user-story"
