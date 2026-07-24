@@ -6,6 +6,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 
 const DEFAULT_CONFIG_PATH = "scripts/issue-userstory.config.json";
 const REPO = process.env.GITHUB_REPOSITORY || "S3-Simple-Software-Solutions/CSH";
+// Permite detectar despues si la historia salio del agente o del respaldo.
+const MARCA_FALLO = "Esta historia no se pudo generar";
 
 function parseArgs(argv) {
   const args = {
@@ -221,7 +223,7 @@ function fallbackStory(issue, storyId, motivo) {
   return [
     `# ${storyId}: ${title}`,
     "",
-    "> **Esta historia no se pudo generar.**",
+    `> **${MARCA_FALLO}.**`,
     `> El agente de refinamiento fallo${motivo ? `: ${motivo}` : "."}`,
     "> Lo que sigue es el texto original del issue, sin refinar. Volve a correr el",
     "> intake cuando el proveedor este operativo:",
@@ -365,8 +367,9 @@ function writeStory(config, issue, storyMarkdown, overrideDir = null) {
     storyMarkdown.trim(),
     ""
   ].join("\n");
+  const reescrita = fs.existsSync(filePath);
   fs.writeFileSync(filePath, body);
-  return filePath;
+  return { filePath, reescrita };
 }
 
 function ensureBranch(config, issue, dryRun) {
@@ -500,26 +503,40 @@ function addToProject(config, issue, args) {
   }
 }
 
-async function notify(issue, storyPath, branch, projectResult, args) {
+async function notify(issue, storyPath, branch, projectResult, args, estado = {}) {
   if (args.noNotify || !process.env.DISCORD_WEBHOOK_URL) return;
+  const { reescrita = false, refinada = true } = estado;
+
+  // Una reescritura pisa una historia que ya se habia revisado, asi que se avisa
+  // distinto de un alta. Y si el agente fallo, el aviso no puede decir "listo".
+  const titulo = !refinada
+    ? "User story sin refinar"
+    : reescrita
+      ? "User story reescrita"
+      : "User story nueva";
+
   const description = [
     `Issue #${issue.number}: ${issue.title}`,
-    `Branch: ${branch}`,
-    `Story: ${storyPath}`,
-    `Project: ${projectResult.added ? "Backlog" : projectResult.message}`
-  ].join("\n");
+    `Rama: ${branch}`,
+    `Historia: ${storyPath}`,
+    `Proyecto: ${projectResult.added ? "Backlog" : projectResult.message}`,
+    refinada ? "" : "El agente de refinamiento fallo; se conservo el texto original del issue."
+  ].filter(Boolean).join("\n");
+
   spawn("node", [
     "scripts/agentic-discord.mjs",
     "--title",
-    "New CSH user story",
+    titulo,
     "--description",
     description,
     "--status",
-    "success",
+    refinada ? "success" : "warning",
     "--field",
     `Issue=${issue.url}`,
     "--field",
-    `Stage=Backlog`
+    `Origen=${reescrita ? "reescritura" : "alta"}`,
+    "--field",
+    "Etapa=Backlog"
   ]);
 }
 
@@ -550,11 +567,12 @@ async function processIssue(config, args, issueNumber) {
   const runDir = path.resolve(".agentic-runs", `issue-${issue.number}-${Date.now()}`);
   const provider = args.provider || config.defaultProvider || "codex";
   const story = runProvider(config, provider, issue, storyId, runDir);
-  const storyPath = writeStory(config, issue, story, args.dryRun ? runDir : null);
+  const { filePath: storyPath, reescrita } = writeStory(config, issue, story, args.dryRun ? runDir : null);
+  const refinada = !story.includes(MARCA_FALLO);
   commitAndPush(issue, storyPath, branch, args.noPush, args.dryRun);
   const projectResult = addToProject(config, issue, args);
   commentIssue(issue, path.relative(process.cwd(), storyPath), branch, projectResult, args);
-  await notify(issue, path.relative(process.cwd(), storyPath), branch, projectResult, args);
+  await notify(issue, path.relative(process.cwd(), storyPath), branch, projectResult, args, { reescrita, refinada });
   console.log(JSON.stringify({ issue: issue.number, branch, storyPath, project: projectResult }, null, 2));
 }
 
