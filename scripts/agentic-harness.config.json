@@ -1,0 +1,60 @@
+{
+  "baseBranch": "dev",
+  "branchPrefix": "agent",
+  "autoPr": true,
+  "autoPush": true,
+  "notify": true,
+  "commitPrefix": "chore",
+  "defaultProvider": "codex",
+  "providers": {
+    "codex": {
+      "type": "codex-cli",
+      "command": "codex",
+      "model": "gpt-5.6-sol",
+      "sandbox": "workspace-write",
+      "approval": "never"
+    },
+    "claude": {
+      "type": "claude-cli",
+      "command": "claude",
+      "model": "sonnet",
+      "allowedTools": [
+        "Read",
+        "Edit",
+        "Write",
+        "Bash",
+        "Grep",
+        "Glob"
+      ]
+    },
+    "openai": {
+      "type": "openai-responses",
+      "model": "gpt-5.6-sol",
+      "reasoningEffort": "medium",
+      "verbosity": "medium",
+      "mode": "planner"
+    },
+    "noop": {
+      "type": "noop"
+    }
+  },
+  "readBeforeEditing": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/harness.md",
+    "README.md",
+    "package.json"
+  ],
+  "validationCommands": [
+    "npm run check",
+    "npm run build:server"
+  ],
+  "allowedExistingDirtyGlobs": [
+    "docs/*.docx",
+    "docs/*.pdf",
+    "docs/*.md",
+    "docs/.~lock.*"
+  ],
+  "runRoot": ".agentic-runs",
+  "prLabels": []
+}
