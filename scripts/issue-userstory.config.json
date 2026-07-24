@@ -1,0 +1,46 @@
+{
+  "baseBranch": "dev",
+  "branchPrefix": "issue",
+  "storyRoot": "docs/user-stories",
+  "defaultProvider": "codex",
+  "providers": {
+    "codex": {
+      "type": "codex-cli",
+      "command": "codex",
+      "model": "gpt-5.6-sol",
+      "sandbox": "workspace-write",
+      "approval": "never"
+    },
+    "claude": {
+      "type": "claude-cli",
+      "command": "claude",
+      "model": "sonnet",
+      "allowedTools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ]
+    },
+    "noop": {
+      "type": "noop"
+    }
+  },
+  "project": {
+    "owner": "S3-Simple-Software-Solutions",
+    "title": "CSH User Stories",
+    "number": null,
+    "fieldName": "CSH Stage",
+    "backlogOption": "Backlog",
+    "statusOptions": [
+      "Backlog",
+      "Planning",
+      "Building",
+      "Tests",
+      "TestDeploy"
+    ]
+  },
+  "labels": {
+    "done": "user-story-created",
+    "story": "user-story"
+  }
+}

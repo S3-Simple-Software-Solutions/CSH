@@ -1,0 +1,67 @@
+name: Issue User Story Intake
+
+on:
+  issues:
+    types: [opened, reopened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Issue number to process, or "all" for all open issues
+        required: true
+        default: "all"
+        type: string
+      provider:
+        description: Agent provider
+        required: true
+        default: codex
+        type: choice
+        options:
+          - codex
+          - claude
+          - noop
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: issue-userstory-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  create-user-story:
+    name: Create User Story
+    runs-on: self-hosted
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.issue.labels.*.name, 'user-story-created')
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_PROJECT_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+      PROVIDER: ${{ inputs.provider || 'codex' }}
+
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Configure git author
+        run: |
+          git config user.name "csh-userstory-agent"
+          git config user.email "csh-userstory-agent@users.noreply.github.com"
+
+      - name: Create user story from issue
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$ISSUE_NUMBER" = "all" ]; then
+            node scripts/issue-userstory.mjs --all-open --provider "$PROVIDER"
+          else
+            node scripts/issue-userstory.mjs \
+              --issue-number "$ISSUE_NUMBER" \
+              --provider "$PROVIDER"
+          fi
