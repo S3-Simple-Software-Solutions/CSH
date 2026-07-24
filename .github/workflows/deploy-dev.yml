@@ -34,6 +34,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Notify Discord start
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node scripts/agentic-discord.mjs \
+            --title "CSH dev deploy started" \
+            --description "Deploying dev from ${GITHUB_SHA::7}" \
+            --status info \
+            --field "Environment=dev" \
+            --field "Branch=${GITHUB_REF_NAME}" \
+            --field "Run=$RUN_URL"
+
       - name: Parse ALL_SECRETS
         id: vars
         shell: bash
@@ -212,6 +226,7 @@ jobs:
           ENDSSH
 
       - name: Dev deploy summary
+        if: always()
         shell: bash
         env:
           DEPLOY_SHA: ${{ github.sha }}
@@ -225,3 +240,26 @@ jobs:
             echo "- Puerto: \`${DEV_PORT}\` (csh-dev.service)"
             echo "- Run: $RUN_URL"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notify Discord result
+        if: always()
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          case "$JOB_STATUS" in
+            success) STATUS=success; TITLE="CSH dev deploy succeeded" ;;
+            cancelled) STATUS=warning; TITLE="CSH dev deploy cancelled" ;;
+            *) STATUS=failure; TITLE="CSH dev deploy failed" ;;
+          esac
+
+          node scripts/agentic-discord.mjs \
+            --title "$TITLE" \
+            --description "Dev deploy finished for ${DEPLOY_SHA::7}" \
+            --status "$STATUS" \
+            --field "Environment=dev" \
+            --field "Result=$JOB_STATUS" \
+            --field "Run=$RUN_URL"
