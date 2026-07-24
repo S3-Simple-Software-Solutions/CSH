@@ -1,7 +1,13 @@
 name: User Story
 description: Reportá una necesidad o funcionalidad nueva para CSH
-labels: []
+labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Con que llenes lo que sepas alcanza. El intake automático refina el texto
+        después, así que no hace falta que quede perfecto.
+
   - type: textarea
     id: rol
     attributes:
