@@ -81,12 +81,18 @@ jobs:
           printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
 
+          DATABASE_URL_DEV="$(get DATABASE_URL_DEV)"
+          if [ -z "$DATABASE_URL_DEV" ]; then
+            echo "::error::DATABASE_URL_DEV is missing from ALL_SECRETS (dev must not share the production database)"
+            exit 1
+          fi
+
           # Entorno compartido del servicio dev. Igual que produccion pero con
-          # PORT=1421 y la URL publica del entorno dev.
+          # PORT=1421, la URL publica del entorno dev, y su propia base de datos.
           {
             echo "PORT=${DEV_PORT}"
             echo "HEREDIANO_APP_URL=${DEV_APP_URL}"
-            echo "DATABASE_URL=$(get DATABASE_URL)"
+            echo "DATABASE_URL=${DATABASE_URL_DEV}"
             echo "HEREDIANO_SECRET=$(get HEREDIANO_SECRET)"
             echo "HEREDIANO_USER=$(get HEREDIANO_USER)"
             echo "HEREDIANO_PASS=$(get HEREDIANO_PASS)"
