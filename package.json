@@ -12,7 +12,7 @@
     "build": "npm run build:client && npm run build:server",
     "start": "node dist-server/index.js",
     "check": "tsc -p tsconfig.server.json --noEmit && npm run build:client",
-    "test:unit": "DATABASE_URL=postgres://unit:unit@localhost:5432/unit vitest run --exclude=dist-server/** --exclude=current/** --exclude=releases/**",
+    "test:unit": "DATABASE_URL=postgres://unit:unit@localhost:5432/unit vitest run --exclude=dist-server/** --exclude=current/** --exclude=releases/** --exclude=releases-dev/** --exclude=current-dev/**",
     "agentic": "node scripts/agentic-harness.mjs",
     "agentic:status": "node scripts/agentic-harness.mjs status",
     "agentic:notify-test": "node scripts/agentic-harness.mjs notify-test",
