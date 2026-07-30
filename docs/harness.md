@@ -23,17 +23,31 @@ git fetch origin
 
 If the worktree is dirty, identify whether the changes are yours, the user's, or part of the requested task. Do not discard unrelated changes.
 
-### 2. Start From Main
+### 2. Start From Dev, Not Main
 
-Unless the user explicitly asks to continue from another branch:
+`dev` is the up-to-date branch and the integration point. `main` is production
+and can lag behind. Pick the base with this rule:
 
 ```bash
-git switch main
-git pull --ff-only origin main
+git fetch origin
+if [ "$(git rev-list --count origin/main..origin/dev)" -gt 0 ]; then
+  # dev is ahead of main -> dev is the base
+  git switch dev
+  git pull --ff-only origin dev
+else
+  # dev does not exist or is not ahead -> create it from main and publish it
+  git switch -c dev origin/main 2>/dev/null || git switch dev
+  git push -u origin dev
+fi
 git switch -c feature-name
 ```
 
-Use short branch names in kebab/camel style that match the feature, for example `logEventos`, `fix-login-cookie`, or `event-log`.
+Use short branch names in kebab/camel style that match the feature, for example
+`logEventos`, `fix-login-cookie`, or `event-log`.
+
+Feature work merges into `dev` first. Only `dev` opens a PR into `main`.
+Never branch a feature off `main` directly — that is how `main` ended up with
+commits that never passed through `dev`.
 
 ### 3. Understand The Local Pattern
 
@@ -124,9 +138,22 @@ Good prefixes:
 
 ### 8. Push And Open PR
 
+Feature branches target `dev`, never `main`:
+
 ```bash
 git push -u origin feature-name
-gh pr create --base main --head feature-name --title "feat: short title" --body-file /tmp/pr-body.md
+gh pr create --base dev --head feature-name --title "feat: short title" --body-file /tmp/pr-body.md
+```
+
+Every push to `dev` deploys automatically to the dev environment
+(`.github/workflows/deploy-dev.yml`).
+
+Then keep the `dev -> main` PR current — update it if it exists, create it if
+it does not:
+
+```bash
+gh pr list --base main --head dev --state open
+gh pr create --base main --head dev --title "release: dev -> main" --body-file /tmp/release-body.md
 ```
 
 The PR body should include:
@@ -165,6 +192,29 @@ If CI fails:
 4. Commit and push again.
 
 Do not dismiss CodeQL or security findings unless the user explicitly approves and there is a written rationale.
+
+### 10. Announce The New Version
+
+Every deploy announces itself. This is not optional and not only for
+production — a version nobody knows about is a version nobody tests.
+
+The announcement must always carry these three things:
+
+1. **Which version** — `dev-<short-sha>` for dev, `0.X` for production.
+2. **What it brings** — the commit subjects included in the push, not just
+   the SHA.
+3. **How to try it** — the environment URL, so the reader can verify without
+   asking where it lives.
+
+The deploy workflows already do this through `scripts/agentic-discord.mjs`
+(`deploy-dev.yml` and `deploy.yml`). When a deploy path is added or changed,
+carry these three fields over; do not ship a notification that only reports
+success or failure.
+
+Environments:
+
+- dev: <https://herediano-dev.milocalhost.work> (port 1421, `csh-dev.service`)
+- production: port 8088, `csh.service`
 
 ## Done Definition
 

@@ -255,17 +255,37 @@ jobs:
           JOB_STATUS: ${{ job.status }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DEPLOY_SHA: ${{ github.sha }}
+          COMPARE_URL: ${{ github.event.compare }}
         run: |
+          SHORT_SHA="${DEPLOY_SHA::7}"
+          DEV_VERSION="dev-$SHORT_SHA"
+
           case "$JOB_STATUS" in
-            success) STATUS=success; TITLE="CSH dev deploy succeeded" ;;
-            cancelled) STATUS=warning; TITLE="CSH dev deploy cancelled" ;;
-            *) STATUS=failure; TITLE="CSH dev deploy failed" ;;
+            success) STATUS=success; TITLE="Nueva version en dev: $DEV_VERSION" ;;
+            cancelled) STATUS=warning; TITLE="Deploy a dev cancelado ($DEV_VERSION)" ;;
+            *) STATUS=failure; TITLE="Deploy a dev fallido ($DEV_VERSION)" ;;
           esac
+
+          # Que trae esta version: asunto de cada commit del push.
+          CHANGES="$(git log --no-merges --pretty='- %s' "${{ github.event.before }}..$DEPLOY_SHA" 2>/dev/null | head -10 || true)"
+          if [ -z "$CHANGES" ]; then
+            CHANGES="- $(git log -1 --pretty=%s "$DEPLOY_SHA")"
+          fi
+
+          if [ "$STATUS" = "success" ]; then
+            DESCRIPTION="$(printf 'Probala en %s\n\n**Cambios**\n%s' "$DEV_APP_URL" "$CHANGES")"
+          else
+            DESCRIPTION="$(printf 'El deploy a dev no completo (%s).\n\n**Cambios que intentaba desplegar**\n%s' "$JOB_STATUS" "$CHANGES")"
+          fi
 
           node scripts/agentic-discord.mjs \
             --title "$TITLE" \
-            --description "Dev deploy finished for ${DEPLOY_SHA::7}" \
+            --description "$DESCRIPTION" \
             --status "$STATUS" \
-            --field "Environment=dev" \
-            --field "Result=$JOB_STATUS" \
+            --url "$DEV_APP_URL" \
+            --field "Entorno=dev" \
+            --field "Version=$DEV_VERSION" \
+            --field "Probar=$DEV_APP_URL" \
+            --field "Resultado=$JOB_STATUS" \
+            --field "Diff=${COMPARE_URL:-$RUN_URL}" \
             --field "Run=$RUN_URL"
