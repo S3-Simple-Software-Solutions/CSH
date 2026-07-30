@@ -1,0 +1,12 @@
+2026-07-30 09:15:29 ⮕ cambio de rama: cleandev → dev
+2026-07-30 09:15:29 ▷ arrancando app-csh-dev (estaba detenido)…
+Error: unable to start container "acedcc931cf739465f82e70ce80f929cf5c63f1b815f19f7b3eae7b8bc86c965": crun: cannot stat `/home/tony/Desktop/APP_CSH/data`: No such file or directory: OCI runtime attempted to invoke a command that was not found
+2026-07-30 09:15:35 ✗ fallo start app-csh-dev
+2026-07-30 09:15:41 ⮕ cambio de rama: dev → main
+2026-07-30 09:15:42 ▷ arrancando app-csh-main (estaba detenido)…
+Error: unable to start container "89c2b22d05616f95e537fc235414353bb87b5fe682271f478a04d20c18535583": crun: cannot stat `/home/tony/Desktop/APP_CSH/data`: No such file or directory: OCI runtime attempted to invoke a command that was not found
+2026-07-30 09:15:42 ✗ fallo start app-csh-main
+2026-07-30 09:17:21 ⮕ cambio de rama: main → cleandev
+2026-07-30 09:17:21 ▷ arrancando app-csh-cleandev (estaba detenido)…
+Error: unable to start container "d351f9aa8908444dcac42364556eea23657cd12f6222be96a1bd241b59e9cded": crun: cannot stat `/home/tony/Desktop/APP_CSH/data`: No such file or directory: OCI runtime attempted to invoke a command that was not found
+2026-07-30 09:17:22 ✗ fallo start app-csh-cleandev

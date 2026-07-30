@@ -1,0 +1,46 @@
+name: User Story
+description: Reportá una necesidad o funcionalidad nueva para CSH
+labels: []
+body:
+  - type: textarea
+    id: rol
+    attributes:
+      label: Como (rol)
+      description: ¿Quién necesita esto? (ej. administrador, cliente, recepcionista...)
+    validations:
+      required: false
+
+  - type: textarea
+    id: funcionalidad
+    attributes:
+      label: Quiero (funcionalidad)
+      description: ¿Qué necesita poder hacer?
+    validations:
+      required: true
+
+  - type: textarea
+    id: beneficio
+    attributes:
+      label: Para (beneficio)
+      description: ¿Por qué lo necesita? ¿Qué problema resuelve?
+    validations:
+      required: false
+
+  - type: textarea
+    id: criterios
+    attributes:
+      label: Criterios de aceptación
+      description: ¿Cómo sabemos que esto está terminado? (opcional, un bot lo puede sugerir automáticamente)
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto adicional
+      description: Capturas de pantalla, links, o cualquier otro detalle relevante.
+    validations:
+      required: false
