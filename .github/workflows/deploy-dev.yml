@@ -167,7 +167,9 @@ jobs:
             # dev se redepliega seguido: si ya existe ese SHA, lo reconstruimos.
             rm -rf "$RELEASE_DIR" "$TMP_RELEASE"
             mkdir -p "$TMP_RELEASE"
-            git archive "$DEPLOY_SHA" | tar -x -C "$TMP_RELEASE"
+            # Solo el subarbol app/: el release queda con package.json en su
+            # raiz, asi que npm y systemd siguen funcionando sin cambios.
+            git archive "$DEPLOY_SHA:app" | tar -x -C "$TMP_RELEASE"
 
             cd "$TMP_RELEASE"
             echo "== Installing dependencies ($DEV_VERSION) =="

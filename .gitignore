@@ -7,10 +7,12 @@ server.log
 .env
 .env.*
 !.env.example
-data/hero-bg.bin
-data/*.json
+app/data/hero-bg.bin
+app/data/*.json
 ALL_SECRETS
-.claude/
+# La config del harness si se versiona; el resto de .claude/ es estado local.
+.claude/*
+!.claude/settings.json
 node_modules/
 .playwright-cli/
 output/

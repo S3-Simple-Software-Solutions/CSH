@@ -188,7 +188,9 @@ jobs:
 
               rm -rf "$TMP_RELEASE"
               mkdir -p "$TMP_RELEASE"
-              git archive "$TARGET_SHA" | tar -x -C "$TMP_RELEASE"
+              # Solo el subarbol app/: el release queda con package.json en su
+              # raiz, asi que npm y systemd siguen funcionando sin cambios.
+              git archive "$TARGET_SHA:app" | tar -x -C "$TMP_RELEASE"
 
               cd "$TMP_RELEASE"
               npm ci

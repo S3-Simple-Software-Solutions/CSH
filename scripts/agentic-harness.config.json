@@ -43,11 +43,12 @@
     "CLAUDE.md",
     "docs/harness.md",
     "README.md",
-    "package.json"
+    "app/package.json"
   ],
   "validationCommands": [
-    "npm run check",
-    "npm run build:server"
+    "npm --prefix app ci",
+    "npm --prefix app run check",
+    "npm --prefix app run build:server"
   ],
   "allowedExistingDirtyGlobs": [
     "docs/*.docx",
