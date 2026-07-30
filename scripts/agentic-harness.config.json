@@ -39,10 +39,9 @@
     }
   },
   "readBeforeEditing": [
-    "AGENTS.md",
     "CLAUDE.md",
-    "docs/harness.md",
-    "README.md",
+    "AGENTS.md",
+    "docs/VERIFICATION.md",
     "app/package.json"
   ],
   "validationCommands": [

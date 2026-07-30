@@ -17,6 +17,7 @@ node_modules/
 .playwright-cli/
 output/
 .agentic-runs/
+.harness-runs/
 /current
 /releases/
 /shared/
