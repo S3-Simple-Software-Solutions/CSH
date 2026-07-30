@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git config *)",
+      "Bash(git sparse-checkout *)",
+      "Bash(git ls-tree *)",
+      "Bash(systemctl --user list-units 'csh*' 'app-csh*' --all --no-legend)",
+      "Bash(systemctl --user list-unit-files 'csh*' 'app-csh*')"
+    ]
+  }
+}

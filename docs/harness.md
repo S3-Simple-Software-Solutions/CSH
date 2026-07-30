@@ -1,249 +1,167 @@
-# Agent Harness
 
-This harness is the default workflow for agent-led changes in this repository. It is intentionally lightweight: use it as a repeatable path from request to reviewed PR, not as a large process document.
+# Harness de agentes — CSH
 
-## Principles
+> Contrato general de trabajo para cualquier agente (cursor, Claude Code, Codex, u
+> otro) que edite este repositorio. Es el harness "raíz": las reglas que
+> aplican sin importar la herramienta ni el rol. Los harnesses de rol
+> ([harness_DEV.md](harness_DEV.md), [harness_QA.md](harness_QA.md),
+> [harness_Infra.md](harness_Infra.md)) heredan de este documento y afinan el
+> comportamiento para su dominio — ver §5.
 
-- Work from repository truth, not memory.
-- Keep one branch focused on one concern.
-- Prefer small, reviewable diffs over broad rewrites.
-- Preserve user changes you did not make.
-- Verify behavior before claiming success.
-- Leave enough context for the next agent or human to continue.
+<!-- TODO: una o dos frases de objetivo — qué problema evita este harness,
+     por qué existe (ej. incidentes pasados, ramas divergentes, deploys sin
+     avisar, etc.) -->
 
-## Standard Feature Flow
+## 1. Principios
 
-### 1. Inspect State
+*Descripción:* reglas de fondo, agnósticas de herramienta y de tarea. Todo lo
+demás en este documento es una aplicación concreta de estos principios; si un
+caso nuevo no está cubierto abajo, se resuelve volviendo a estos.
+
+*Ejemplo:*
+
+- Trabajar desde el estado real del repo, no desde memoria de sesiones
+  anteriores.
+- Preservar cambios del usuario que el agente no hizo.
+- Diffs pequeños y revisables antes que reescrituras grandes.
+- cualquier cambio a este harness o otro harness file debe ser publicado inmediatamente. 
+
+<!-- TODO: completar / ajustar la lista de principios -->
+
+## 2. Rama base y flujo de ramas
+
+*Descripción:* de qué rama sale el trabajo, a qué rama apunta cada PR, y qué
+rama nunca se toca directamente. Ver diagrama en
+[diagramas.md § CI/CD](diagramas.md#cicd).
+
+*Ejemplo:*
+
+```text
+dev   -> es la base: toda rama de feature sale de dev y su PR apunta a dev
+main  -> solo recibe PR desde dev (release); nunca push directo ni reset
+```
+
+<!-- TODO: completar reglas de excepción (hotfix, rollback, etc.) -->
+
+## 3. Flujo estándar de tarea
+
+*Descripción:* el camino repetible de "pedido" a "PR revisado", como lista de
+fases. Cada fase se documenta con los comandos/checks concretos de este repo.
+
+*Ejemplo (fase 1, como modelo del nivel de detalle esperado):*
 
 ```bash
+# 1. Inspeccionar estado
 git status --short
 git branch --show-current
 git fetch origin
 ```
 
-If the worktree is dirty, identify whether the changes are yours, the user's, or part of the requested task. Do not discard unrelated changes.
+Fases restantes (completar con el mismo nivel de detalle que la fase 1):
 
-### 2. Start From Dev, Not Main
+1. Inspeccionar estado — ✅ ejemplo arriba
+2. Entender el patrón local antes de editar
+3. Implementar en cambios pequeños
+4. Validar (build/tests/verificación manual)
+5. Revisar el diff
+6. Commit
+7. Push + abrir PR
+8. Vigilar CI
+9. Anunciar el deploy/versión
 
-`dev` is the up-to-date branch and the integration point. `main` is production
-and can lag behind. Pick the base with this rule:
+<!-- TODO: completar fases 2-9 con comandos reales de este repo -->
 
-```bash
-git fetch origin
-if [ "$(git rev-list --count origin/main..origin/dev)" -gt 0 ]; then
-  # dev is ahead of main -> dev is the base
-  git switch dev
-  git pull --ff-only origin dev
-else
-  # dev does not exist or is not ahead -> create it from main and publish it
-  git switch -c dev origin/main 2>/dev/null || git switch dev
-  git push -u origin dev
-fi
-git switch -c feature-name
-```
+## 4. Entornos
 
-Use short branch names in kebab/camel style that match the feature, for example
-`logEventos`, `fix-login-cookie`, or `event-log`.
+*Descripción:* dónde vive cada ambiente, puerto, cómo se despliega y cómo se
+verifica que el deploy tomó. Detalle de infraestructura vigente en
+[diagramas.md](diagramas.md) e [infra.md](infra.md).
 
-Feature work merges into `dev` first. Only `dev` opens a PR into `main`.
-Never branch a feature off `main` directly — that is how `main` ended up with
-commits that never passed through `dev`.
+*Ejemplo:*
 
-### 3. Understand The Local Pattern
+| Entorno | Rama que dispara deploy | Puerto | URL | Cómo verificar |
+|---|---|---|---|---|
+| dev | `dev` | 1421 | herediano-dev.milocalhost.work | `curl 127.0.0.1:1421/healthz` |
+| prod | `main` | 8088 | (completar) | (completar) |
 
-Before editing:
+<!-- TODO: completar filas / URLs / healthchecks reales -->
 
-- Find the existing module, route, schema, component, and style patterns.
-- Read neighboring files before creating abstractions.
-- Prefer existing helpers, routes, repository patterns, and UI conventions.
-- Identify the smallest useful change set.
+## 5. Agentes de rol (QA / DEV / Infra)
 
-Useful commands:
+*Descripción:* este harness cubre el contrato común. Cada rol especializado
+tiene su propio documento con lo específico de su dominio (qué valida, qué
+puede tocar, qué NO debe tocar). Pendiente de definir — por ahora son stubs.
 
-```bash
-find server src -type f | sort
-grep -RIn "search-term" server src --exclude-dir=node_modules
-```
+*Ejemplo (formato esperado de la tabla, a completar cuando se definan):*
 
-Use `rg` if available.
+| Rol | Harness | Responsabilidad | Estado |
+|---|---|---|---|
+| DEV | [harness_DEV.md](harness_DEV.md) | Implementar features/fixes siguiendo §2-§3 | pendiente de definir |
+| QA | [harness_QA.md](harness_QA.md) | Tests y reglas de validación antes de PR | pendiente de definir |
+| Infra | [harness_Infra.md](harness_Infra.md) | Deploy, entornos, secretos, rollback | pendiente de definir |
 
-### 4. Implement In Small Slices
+<!-- TODO: cuando se definan los harness de rol, decidir aquí si un agente de
+     rol puede saltarse alguna regla de este documento raíz o si son
+     estrictamente aditivos -->
 
-- Make backend, frontend, schema, and style changes separately when practical.
-- Keep unrelated cleanup out of the feature.
-- Add migrations/schema guards with `if not exists` where the app bootstrap pattern expects it.
-- Avoid new dependencies unless they clearly reduce risk or match the project.
+## 6. Soporte multi-herramienta (Claude Code / Codex)
 
-### 5. Validate
+*Descripción:* qué es común a cualquier herramienta (todo lo de arriba) y qué
+cambia según la herramienta que ejecuta al agente — dónde vive su config,
+cómo lee este harness, qué permisos tiene por defecto.
 
-Run targeted checks first, then project checks.
+*Ejemplo:*
 
-For frontend or shared changes:
+| | Claude Code | Codex |
+|---|---|---|
+| Config/permisos | `.claude/settings.json` | (completar — config equivalente) |
+| Archivo de entrada al harness | `docs/harness.md` (este archivo) | (completar — ¿`AGENTS.md` en la raíz que apunte aquí?) |
+| Invocación en este repo | sesión interactiva en `cleandev`/rama de trabajo | (completar) |
 
-```bash
-npm run check
-```
+<!-- TODO: completar la columna Codex; decidir si hace falta un AGENTS.md en
+     la raíz del repo que simplemente apunte a docs/harness.md -->
 
-For server changes:
+## 7. Definición de "hecho"
 
-```bash
-npm run build:server
-```
+*Descripción:* checklist mínimo para considerar cerrada una tarea de agente,
+sin importar el rol o la herramienta.
 
-For focused unit tests:
+*Ejemplo:*
 
-```bash
-npx vitest run <test-file> --exclude=dist-server/** --exclude=current/** --exclude=releases/**
-```
+- [ ] El comportamiento pedido está implementado.
+- [ ] Los checks/tests relevantes pasan.
+- [ ] El deploy (si aplica) se anunció con versión + qué trae + cómo probarlo.
 
-For behavior that depends on the app running, start a temporary server on a non-conflicting port:
+<!-- TODO: completar checklist -->
 
-```bash
-PORT=8091 npm start
-```
+## 8. Comunicación y handoff
 
-Then verify with browser or API calls. Stop any foreground server before finishing.
+*Descripción:* cómo el agente avisa lo que hizo y cómo deja el contexto para
+quien continúe — el mismo agente en otra sesión, otro agente, o el humano. No
+es solo "avisar al final": también es dejar suficiente rastro para que el
+siguiente no tenga que re-descubrir el estado desde cero.
 
-### 6. Review The Diff
+*Ejemplo:*
 
-```bash
-git diff --stat
-git diff --check
-git diff
-```
+- **Anuncio de deploy/versión:** siempre incluye qué versión (`dev-<sha>` o
+  `0.X`), qué trae (asuntos de los commits, no solo el SHA) y cómo probarlo
+  (URL/entorno). Un deploy que nadie sabe que existe es un deploy que nadie
+  prueba.
+- **Cuerpo del PR:** resumen, comandos de validación corridos y su resultado,
+  riesgos o pendientes conocidos.
+- **Handoff de trabajo largo (varias sesiones):** nota breve de progreso
+  (objetivo actual, hecho, falta, bloqueos) en el cuerpo del PR o en un
+  archivo temporal — se borra antes de mergear salvo que sea documentación
+  útil de por sí.
 
-Confirm:
+<!-- TODO: completar plantilla exacta de PR body, de nota de progreso, y
+     canal(es) real(es) de anuncio (ej. Discord) -->
 
-- Only intended files changed.
-- No secrets or generated noise were added.
-- No unrelated user changes were reverted.
-- The diff is understandable to a reviewer.
+## 9. Mantenimiento de este harness
 
-### 7. Commit
+*Descripción:* cuándo y cómo se actualiza este documento.
 
-Use a descriptive conventional-style message:
-
-```bash
-git add <files>
-git commit -m "feat: add event ticket log"
-```
-
-Good prefixes:
-
-- `feat:` new user-facing behavior
-- `fix:` bug fix
-- `chore:` tooling or maintenance
-- `docs:` documentation only
-- `test:` tests only
-
-### 8. Push And Open PR
-
-Feature branches target `dev`, never `main`:
-
-```bash
-git push -u origin feature-name
-gh pr create --base dev --head feature-name --title "feat: short title" --body-file /tmp/pr-body.md
-```
-
-Every push to `dev` deploys automatically to the dev environment
-(`.github/workflows/deploy-dev.yml`).
-
-Then keep the `dev -> main` PR current — update it if it exists, create it if
-it does not:
-
-```bash
-gh pr list --base main --head dev --state open
-gh pr create --base main --head dev --title "release: dev -> main" --body-file /tmp/release-body.md
-```
-
-The PR body should include:
-
-- Summary
-- Validation commands and outcomes
-- Screenshots or local URL for UI changes when useful
-- Known risks or follow-ups
-
-Template:
-
-```md
-## Summary
-- ...
-
-## Validation
-- `npm run check`
-- `npm run build:server`
-
-## Notes
-- ...
-```
-
-### 9. Watch CI
-
-```bash
-gh pr view --json statusCheckRollup,mergeStateStatus,reviewDecision
-gh run list --branch feature-name --limit 5
-```
-
-If CI fails:
-
-1. Read the failing job log.
-2. Fix the root cause.
-3. Re-run local validation.
-4. Commit and push again.
-
-Do not dismiss CodeQL or security findings unless the user explicitly approves and there is a written rationale.
-
-### 10. Announce The New Version
-
-Every deploy announces itself. This is not optional and not only for
-production — a version nobody knows about is a version nobody tests.
-
-The announcement must always carry these three things:
-
-1. **Which version** — `dev-<short-sha>` for dev, `0.X` for production.
-2. **What it brings** — the commit subjects included in the push, not just
-   the SHA.
-3. **How to try it** — the environment URL, so the reader can verify without
-   asking where it lives.
-
-The deploy workflows already do this through `scripts/agentic-discord.mjs`
-(`deploy-dev.yml` and `deploy.yml`). When a deploy path is added or changed,
-carry these three fields over; do not ship a notification that only reports
-success or failure.
-
-Environments:
-
-- dev: <https://herediano-dev.milocalhost.work> (port 1421, `csh-dev.service`)
-- production: port 8088, `csh.service`
-
-## Done Definition
-
-A task is done when:
-
-- The requested behavior is implemented.
-- Relevant tests/builds pass.
-- The app behavior was verified when practical.
-- Changes are committed on a feature branch, if the user requested PR-ready work.
-- A PR is opened or the user is told exactly what remains.
-
-## Long-Running Work
-
-For work that spans multiple sessions, keep a short progress note in the PR body or a temporary planning file. Include:
-
-- Current objective
-- Completed steps
-- Remaining steps
-- Validation status
-- Known blockers
-
-Remove temporary planning files before merge unless they are useful project documentation.
-
-## Harness Maintenance
-
-Update this file when an agent repeats a mistake or when the repo's workflow changes. The harness should stay short enough to read quickly and specific enough to prevent common failures.
-
-References:
-
-- Anthropic recommends persistent project instructions via `CLAUDE.md`, plus structured handoff/progress artifacts for long-running agents.
-- OpenAI describes `AGENTS.md` as a concise map that points agents to deeper sources of truth.
-- Community harness guidance generally favors small reviewable PRs, deterministic validation loops, hooks/skills for repeated procedures, and keeping process docs short.
+*Ejemplo:* si un agente repite un error evitable, o el flujo del repo cambia
+(como pasó con la migración de rama base a `dev`, ver memoria
+`never-push-to-main`), se actualiza esta sección correspondiente en el mismo
+PR que corrige el problema — no se deja para después.

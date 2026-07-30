@@ -1,0 +1,1 @@
+#definir test y reglas para el agente QA 
