@@ -51,3 +51,7 @@ node warm.js
 - `/parqueo` public parking availability and payment.
 
 Runtime cache, logs, `.env`, and live parking data are intentionally ignored.
+
+## Diagrams
+
+See [`docs/diagramas.md`](docs/diagramas.md) for architecture, infra, and CI/CD diagrams.
