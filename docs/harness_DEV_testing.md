@@ -30,7 +30,7 @@ Los tests de handler corren contra **Postgres real vía Testcontainers**.
 Requiere Docker corriendo.
 
 ```csharp
-// tests/CSH.Entradas.Tests/EntradasFixture.cs
+// backend/tests/CSH.Entradas.Tests/EntradasFixture.cs
 public class EntradasFixture : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _db = new PostgreSqlBuilder()
@@ -156,6 +156,6 @@ contrato que usa la app.
 ## 5. Correr los tests
 
 ```bash
-dotnet test CSH.slnx                    # requiere Docker corriendo
-npm run test --prefix ClientApp
+dotnet test backend/CSH.slnx                    # requiere Docker corriendo
+npm run test --prefix frontend
 ```
