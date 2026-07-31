@@ -60,7 +60,7 @@ flowchart TB
     classDef datos fill:#f59e0b,color:#0b1220,stroke:#b45309
 
     SPA["ClientApp - React 19 + Vite (mismo origen)"]:::cliente
-    Movil["App movil (otro origen)"]:::cliente
+    Movil["App movil del aficionado - React Native/Expo (otro origen)"]:::cliente
 
     Host["CSH.Host - composicion, autenticacion, ProblemDetails, CORS"]:::host
 
@@ -107,7 +107,7 @@ flowchart LR
     classDef logica fill:#34d399,color:#0b1220,stroke:#047857
 
     SPA[ClientApp]:::cliente
-    Movil[App movil]:::cliente
+    Movil["App movil - Expo"]:::cliente
 
     Cookie["Esquema cookie - ASP.NET Core"]:::host
     Bearer["Esquema bearer - token corto + refresh revocable"]:::host
@@ -119,6 +119,12 @@ flowchart LR
     Movil -->|"Authorization: Bearer"| Bearer --> Principal
     Principal --> CU --> Handlers
 ```
+
+El alcance del móvil es **la app del aficionado**: comprar entradas y parqueo,
+llevar el QR, cuponera y pedidos. La validación de boletos en puerta **no** va
+en esta app: ese caso necesita operar con la red del estadio caída —padrón
+descargado, QR firmado, sincronización con resolución de duplicados— y ese
+requisito no se le arrastra a una app de consumo. Se planifica aparte.
 
 Lo que sí cambia al entrar el móvil:
 
@@ -219,6 +225,39 @@ flowchart TB
     ModUsuarios -->|api.ts| ApiFetch
     ApiFetch --> Backend
 ```
+
+### El móvil comparte los tipos, no los componentes
+
+Expo también es TypeScript, así que los tipos del dominio se escriben una vez y
+se generan desde el OpenAPI del backend. Lo que **no** cruza es la UI: React
+Native no tiene DOM ni CSS, así que los componentes y el sistema de variables de
+Herediano son de la web y no se reutilizan.
+
+```mermaid
+flowchart LR
+    classDef api fill:#34d399,color:#0b1220,stroke:#047857
+    classDef comun fill:#fbbf24,color:#0b1220,stroke:#b45309
+    classDef cliente fill:#60a5fa,color:#0b1220,stroke:#1d4ed8
+
+    OpenAPI["OpenAPI de CSH.Host - /api/v1"]:::api
+    Tipos["Tipos del dominio generados (compartidos)"]:::comun
+
+    Web["ClientApp - componentes y CSS propios"]:::cliente
+    Movil["App Expo - componentes nativos propios"]:::cliente
+
+    FetchWeb["apiFetch - cookie de sesion"]:::comun
+    FetchMovil["apiFetch - bearer + refresh"]:::comun
+
+    OpenAPI --> Tipos
+    Tipos --> Web
+    Tipos --> Movil
+    Web --> FetchWeb --> OpenAPI
+    Movil --> FetchMovil --> OpenAPI
+```
+
+Si el backend cambia un contrato, la regeneración de tipos rompe la compilación
+del cliente que se quedó atrás. Eso es deseable: es el único mecanismo que
+avisa, antes del deploy, que una app instalada va a fallar.
 
 ---
 
