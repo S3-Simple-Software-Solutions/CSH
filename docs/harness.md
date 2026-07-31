@@ -2,6 +2,22 @@
 
 This harness is the default workflow for agent-led changes in this repository. It is intentionally lightweight: use it as a repeatable path from request to reviewed PR, not as a large process document.
 
+## Related Documents
+
+This file covers **process** — how work moves from request to merged PR. The
+technical rules for writing the code live in the DEV harness:
+
+| Document | When to read it |
+|---|---|
+| [`harness_DEV.md`](harness_DEV.md) | Every code task — stack, architecture, running locally |
+| [`harness_DEV_backend.md`](harness_DEV_backend.md) | C#, endpoints, handlers, database |
+| [`harness_DEV_frontend.md`](harness_DEV_frontend.md) | React, TypeScript, CSS |
+| [`harness_DEV_testing.md`](harness_DEV_testing.md) | Every code task |
+
+Those documents describe the **target stack** (.NET 10 + React/TypeScript), not
+what runs in `dev` today. The migration path from the current Node/Express app
+is still undefined — see the open questions at the end of `harness_DEV.md`.
+
 ## Principles
 
 - Work from repository truth, not memory.
