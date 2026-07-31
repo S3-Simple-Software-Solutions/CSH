@@ -128,8 +128,12 @@ jobs:
         run: dotnet publish backend/src/CSH.Host/CSH.Host.csproj --configuration Release --output /tmp/csh-app
 
       - name: Start app
+        # Desde el directorio publicado, no desde el workspace: ASP.NET Core
+        # toma el content root del directorio actual, y wwwroot cuelga de ahi.
+        # Arrancandolo desde otro lado, /healthz responde igual pero la SPA da 404.
+        working-directory: /tmp/csh-app
         run: |
-          ASPNETCORE_URLS="$APP_URL" /tmp/csh-app/CSH.Host > /tmp/csh-app.log 2>&1 &
+          ASPNETCORE_URLS="$APP_URL" ./CSH.Host > /tmp/csh-app.log 2>&1 &
           echo $! > /tmp/csh-app.pid
 
       - name: Wait for health endpoint

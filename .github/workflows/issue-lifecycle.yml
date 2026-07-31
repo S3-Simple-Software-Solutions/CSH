@@ -51,13 +51,40 @@ jobs:
       - name: Notificar a Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Por env, no interpolados en el script: el titulo de un issue lo
+          # escribe cualquiera y el repo es publico. Interpolarlo dentro del
+          # `run` deja que un titulo con comillas ejecute comandos en el runner.
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
-          node scripts/agentic-discord.mjs \
-            --title "Issue nuevo" \
-            --description "Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}" \
-            --status info \
-            --field "Autor=${{ github.event.issue.user.login }}" \
-            --field "Issue=${{ github.event.issue.html_url }}"
+          set -euo pipefail
+
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "Sin DISCORD_WEBHOOK_URL, no se avisa."
+            exit 0
+          fi
+
+          jq -n \
+            --arg desc "Issue #${ISSUE_NUMBER}: ${ISSUE_TITLE}" \
+            --arg autor "$ISSUE_AUTHOR" \
+            --arg url "$ISSUE_URL" \
+            '{embeds: [{
+               title: "Issue nuevo",
+               description: $desc,
+               url: $url,
+               color: 3447003,
+               fields: [
+                 {name: "Autor", value: $autor, inline: true},
+                 {name: "Issue", value: $url}
+               ]
+             }]}' > /tmp/discord.json
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d @/tmp/discord.json \
+            "$DISCORD_WEBHOOK_URL"
 
   stage-command:
     name: Mover etapa por comando
