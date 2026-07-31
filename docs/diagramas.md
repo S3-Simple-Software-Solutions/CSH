@@ -47,20 +47,22 @@ flowchart LR
 
 ## 2. Arquitectura de la solución — monolito modular
 
-Un solo proceso desplegable. Cada bounded context es un `.csproj` separado: el
-compilador enforcea los límites. `CSH.Host` compone; `CSH.Shared` solo lleva
-contratos y primitivos, nunca lógica.
+Un solo proceso desplegable con **dos clientes**: la SPA del sitio y la app
+móvil. Cada bounded context es un `.csproj` separado: el compilador enforcea los
+límites. `CSH.Host` es lo único que conoce HTTP — compone los módulos, autentica
+y traduce errores a Problem Details.
 
 ```mermaid
 flowchart TB
-    classDef spa fill:#60a5fa,color:#0b1220,stroke:#1d4ed8
+    classDef cliente fill:#60a5fa,color:#0b1220,stroke:#1d4ed8
     classDef host fill:#a78bfa,color:#0b1220,stroke:#6d28d9
     classDef modulo fill:#34d399,color:#0b1220,stroke:#047857
-    classDef shared fill:#fbbf24,color:#0b1220,stroke:#b45309
     classDef datos fill:#f59e0b,color:#0b1220,stroke:#b45309
 
-    SPA[ClientApp - React 19 + Vite]:::spa
-    Host[CSH.Host - composicion, auth cookie, ProblemDetails]:::host
+    SPA["ClientApp - React 19 + Vite (mismo origen)"]:::cliente
+    Movil["App movil (otro origen)"]:::cliente
+
+    Host["CSH.Host - composicion, autenticacion, ProblemDetails, CORS"]:::host
 
     Usuarios[CSH.Usuarios]:::modulo
     Entradas[CSH.Entradas]:::modulo
@@ -68,22 +70,16 @@ flowchart TB
     Restaurantes[CSH.Restaurantes]:::modulo
     Cuponera[CSH.Cuponera]:::modulo
 
-    Shared[CSH.Shared - Result, Error, ICurrentUser, contratos, eventos]:::shared
-
     DB[(PostgreSQL - un esquema por modulo)]:::datos
 
-    SPA -->|"/api - mismo origen"| Host
+    SPA -->|"/api - cookie de sesion"| Host
+    Movil -->|"/api - token bearer"| Host
+
     Host --> Usuarios
     Host --> Entradas
     Host --> Parqueo
     Host --> Restaurantes
     Host --> Cuponera
-
-    Usuarios --> Shared
-    Entradas --> Shared
-    Parqueo --> Shared
-    Restaurantes --> Shared
-    Cuponera --> Shared
 
     Usuarios --> DB
     Entradas --> DB
@@ -91,6 +87,55 @@ flowchart TB
     Restaurantes --> DB
     Cuponera --> DB
 ```
+
+Los cinco módulos referencian `CSH.Shared` — `Result<T>`, `Error`,
+`ICurrentUser`, contratos y eventos. No está dibujado a propósito: sería una
+arista desde cada módulo hacia el mismo nodo y no agrega información. La regla
+la dice mejor en una línea: **todos dependen de Shared y Shared no depende de
+nadie.**
+
+### El móvil no cambia los módulos, cambia el borde
+
+Los handlers reciben `ICurrentUser` y no saben por dónde entró la request. Por
+eso agregar un cliente móvil no toca ningún módulo: se agrega un esquema de
+autenticación en `CSH.Host` y ambos terminan en el mismo `ClaimsPrincipal`.
+
+```mermaid
+flowchart LR
+    classDef cliente fill:#60a5fa,color:#0b1220,stroke:#1d4ed8
+    classDef host fill:#a78bfa,color:#0b1220,stroke:#6d28d9
+    classDef logica fill:#34d399,color:#0b1220,stroke:#047857
+
+    SPA[ClientApp]:::cliente
+    Movil[App movil]:::cliente
+
+    Cookie["Esquema cookie - ASP.NET Core"]:::host
+    Bearer["Esquema bearer - token corto + refresh revocable"]:::host
+    Principal[ClaimsPrincipal]:::host
+    CU["ICurrentUser - unica clase que toca HttpContext"]:::host
+    Handlers["Handlers de los modulos"]:::logica
+
+    SPA -->|"Set-Cookie"| Cookie --> Principal
+    Movil -->|"Authorization: Bearer"| Bearer --> Principal
+    Principal --> CU --> Handlers
+```
+
+Lo que sí cambia al entrar el móvil:
+
+- **La decisión de auth se reabre.** `harness_DEV_backend.md` §6 eligió cookie
+  sobre JWT y dejó anotado que una app móvil sería lo que cambiara esa decisión.
+  La cookie se queda para la web; el móvil necesita bearer.
+- **La revocación no se negocia.** El motivo de haber descartado JWT era poder
+  cortar acceso ya (cuenta comprometida, fraude en una apertura de venta). Ese
+  motivo sigue vivo: el token del móvil va corto y el refresh se revoca contra
+  la base — no un JWT largo sin punto de corte.
+- **CORS deja de ser trivial.** Hoy la SPA es mismo origen y no hay política que
+  mantener; el móvil obliga a una lista explícita de orígenes y métodos.
+- **El contrato de la API pasa a ser público.** Una app instalada no se
+  actualiza cuando uno hace deploy: hay que versionar (`/api/v1`), publicar
+  OpenAPI y dejar de romper endpoints sin período de convivencia.
+- **Cambio de alcance formal.** El acta §5 tiene las apps móviles nativas
+  *fuera* de alcance; entra por control de cambios (acta §15).
 
 ### Dentro de un módulo — vertical slices
 
