@@ -16,9 +16,10 @@ infra/
 │   ├── pruebas/
 │   └── produccion/
 └── modules/
-    ├── ambiente/       ← compone los tres de abajo
+    ├── ambiente/       ← compone los de abajo
     ├── red/            ← VPC, subredes, security groups en cadena
     ├── datos/          ← Aurora PostgreSQL Serverless v2
+    ├── identidad/      ← Cognito: administrativos, socios, invitados
     ├── computo/        ← ALB, Auto Scaling Group, warm pool, WAF
     └── registro/       ← ECR
 ```
@@ -88,6 +89,62 @@ el servicio. Reemplaza al symlink `current` de la infra vieja.
 
 Revertir es aplicar el tag anterior. No hay rebuild: la imagen ya existe en ECR
 y se conservan las últimas 20.
+
+## Cuentas de usuario — Cognito
+
+Las cuentas viven en un **user pool por ambiente**, no en una tabla de la
+aplicación. Tres grupos, con precedencia — el número más bajo gana cuando
+alguien pertenece a más de uno:
+
+| Grupo | Precedencia | Quién |
+|---|---:|---|
+| `administrativos` | 1 | Personal del club: taquilla, parqueo, comercial, comunicación |
+| `socios` | 10 | Membresía vigente y sus beneficios |
+| `invitados` | 100 | Aficionado registrado sin membresía |
+
+Consecuencias para el backend, que **contradicen lo que dice hoy
+`docs/harness_DEV_backend.md` §6**:
+
+- `CSH.Usuarios` deja de guardar credenciales. Guarda el perfil y lo relaciona
+  con el `sub` de Cognito, que es el identificador estable de la persona.
+- El token lo emite Cognito y la app lo **valida** contra el issuer del pool
+  (`Cognito__Authority`, que llega por variable de entorno). El harness eligió
+  cookie de ASP.NET Core y descartó JWT; con un proveedor externo eso cambia.
+- La revocación sigue resuelta: token de acceso de 60 minutos, refresco de 30
+  días y `enable_token_revocation`, así que se puede cortar el acceso de una
+  cuenta comprometida sin esperar a que expire.
+- El cliente no tiene secreto: lo usan la SPA y la app móvil, donde un secreto
+  embebido no es un secreto. La protección es PKCE.
+- El atributo `custom:numero_socio` amarra la cuenta con el padrón de
+  membresías (M11) sin duplicar el padrón dentro de Cognito.
+
+El flujo *hosted* de Cognito queda apagado mientras no haya dominio: sin URLs de
+retorno, `allowed_oauth_flows` va vacío. Al definirse el dominio se llenan
+`urls_retorno` y `urls_salida` y se prende solo.
+
+## Endurecimiento de las instancias
+
+Lo que hace el `user_data` además de levantar la app:
+
+- `dnf update --security` al arrancar —la AMI puede tener semanas— y
+  `dnf-automatic` para los parches siguientes: una instancia del grupo puede
+  vivir semanas y nadie entra a actualizarla a mano.
+- **SSH apagado.** El acceso es por SSM Session Manager: sin llaves que rotar ni
+  repartir. Con `sshd` corriendo, un error futuro en el security group volvería
+  a exponerlo.
+- **IMDS a un salto** (`http_put_response_hop_limit = 1`). Alcanza para el
+  `user_data`, que corre en el host, y deja al contenedor sin acceso al servicio
+  de metadatos: sin esto, cualquier cosa que se ejecute dentro del contenedor
+  puede pedir las credenciales del rol de la instancia. La app no las necesita.
+- **Volumen raíz cifrado**: ahí queda `/etc/csh.env` con la clave de la base.
+- **Contenedor con lo mínimo**: `--cap-drop=ALL`, `--security-opt
+  no-new-privileges`, `--read-only` con `/tmp` en tmpfs, y límites de memoria y
+  de procesos para que un runaway no se lleve la instancia.
+- `sysctl` endurecido sin tocar `ip_forward`, que podman necesita para publicar
+  puertos.
+
+> Con `--read-only`, cuando entren las Data Protection keys de ASP.NET hay que
+> persistirlas en la base (como ya indica el harness), no en el disco.
 
 ## Lo que este código todavía no hace
 

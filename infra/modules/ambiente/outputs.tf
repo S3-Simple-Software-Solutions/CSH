@@ -27,3 +27,18 @@ output "vpc_id" {
   description = "VPC del ambiente."
   value       = module.red.vpc_id
 }
+
+output "cognito_pool_id" {
+  description = "User pool del ambiente: administrativos, socios e invitados."
+  value       = module.identidad.pool_id
+}
+
+output "cognito_cliente_id" {
+  description = "App client para la SPA y el movil."
+  value       = module.identidad.cliente_id
+}
+
+output "cognito_autoridad" {
+  description = "Issuer contra el que la app valida los tokens."
+  value       = module.identidad.autoridad
+}

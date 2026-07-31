@@ -110,9 +110,27 @@ resource "aws_launch_template" "app" {
   }
 
   metadata_options {
-    http_tokens                 = "required" # IMDSv2 obligatorio
-    http_endpoint               = "enabled"
-    http_put_response_hop_limit = 2 # el contenedor necesita un salto mas
+    http_tokens   = "required" # IMDSv2 obligatorio
+    http_endpoint = "enabled"
+
+    # Un salto: alcanza para el user_data, que corre en el host, y deja al
+    # contenedor sin acceso al servicio de metadatos. Con dos saltos, cualquier
+    # cosa que se ejecute dentro del contenedor puede pedir las credenciales del
+    # rol de la instancia. La app no las necesita: recibe todo por env.
+    http_put_response_hop_limit = 1
+    instance_metadata_tags      = "disabled"
+  }
+
+  # El volumen raiz guarda /etc/csh.env con la clave de la base y los logs.
+  block_device_mappings {
+    device_name = "/dev/xvda"
+
+    ebs {
+      volume_size           = var.disco_gb
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
   }
 
   monitoring {
@@ -120,14 +138,17 @@ resource "aws_launch_template" "app" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user_data.sh.tftpl", {
-    region        = var.region
-    registro_host = local.registro_host
-    imagen        = var.imagen
-    secreto_arn   = var.secreto_arn
-    db_host       = var.db_host
-    db_puerto     = var.db_puerto
-    db_nombre     = var.db_nombre
-    puerto        = var.puerto_app
+    region             = var.region
+    registro_host      = local.registro_host
+    imagen             = var.imagen
+    secreto_arn        = var.secreto_arn
+    db_host            = var.db_host
+    db_puerto          = var.db_puerto
+    db_nombre          = var.db_nombre
+    puerto             = var.puerto_app
+    memoria_contenedor = var.memoria_contenedor
+    cognito_autoridad  = var.cognito_autoridad
+    cognito_cliente_id = var.cognito_cliente_id
   }))
 
   tag_specifications {

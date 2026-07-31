@@ -72,6 +72,32 @@ variable "proteger_borrado" {
   default     = false
 }
 
+# --- Identidad (Cognito) ---
+
+variable "urls_retorno" {
+  description = "URLs de retorno del login. Vacias mientras el dominio no exista."
+  type        = list(string)
+  default     = []
+}
+
+variable "urls_salida" {
+  description = "URLs de retorno del logout."
+  type        = list(string)
+  default     = []
+}
+
+variable "prefijo_dominio" {
+  description = "Prefijo del dominio hosted de Cognito, unico por region."
+  type        = string
+  default     = null
+}
+
+variable "seguridad_avanzada" {
+  description = "Deteccion de credenciales comprometidas en Cognito. Tiene costo por usuario activo."
+  type        = bool
+  default     = false
+}
+
 # --- Computo ---
 
 variable "puerto_app" {

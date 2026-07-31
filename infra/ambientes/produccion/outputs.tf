@@ -17,3 +17,13 @@ output "db_endpoint" {
   description = "Base de produccion."
   value       = module.ambiente.db_endpoint
 }
+
+output "cognito_pool_id" {
+  description = "User pool de produccion: administrativos, socios e invitados."
+  value       = module.ambiente.cognito_pool_id
+}
+
+output "cognito_cliente_id" {
+  description = "App client de produccion para la SPA y el movil."
+  value       = module.ambiente.cognito_cliente_id
+}

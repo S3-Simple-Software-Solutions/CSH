@@ -29,6 +29,20 @@ module "datos" {
   tags             = var.tags
 }
 
+# Las cuentas viven en Cognito, una por ambiente: las de dev no son las de
+# produccion, igual que las bases.
+module "identidad" {
+  source = "../identidad"
+
+  ambiente           = var.ambiente
+  urls_retorno       = var.urls_retorno
+  urls_salida        = var.urls_salida
+  prefijo_dominio    = var.prefijo_dominio
+  seguridad_avanzada = var.seguridad_avanzada
+  proteger_borrado   = var.proteger_borrado
+  tags               = var.tags
+}
+
 # El repositorio de imagenes es uno solo para los tres ambientes y se crea en
 # ambientes/comun. Se busca por nombre en vez de leer su state: asi los
 # ambientes no dependen del state de otro.
@@ -53,6 +67,9 @@ module "computo" {
   db_host     = module.datos.endpoint
   db_puerto   = module.datos.puerto
   db_nombre   = module.datos.nombre_base
+
+  cognito_autoridad  = module.identidad.autoridad
+  cognito_cliente_id = module.identidad.cliente_id
 
   puerto_app                = var.puerto_app
   tipo_instancia            = var.tipo_instancia

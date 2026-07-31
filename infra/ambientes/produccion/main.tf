@@ -68,6 +68,10 @@ module "ambiente" {
 
   waf = true
 
+  # Deteccion de credenciales comprometidas en Cognito. Cuesta por usuario
+  # activo, asi que solo aca: es donde una cuenta tomada compra entradas.
+  seguridad_avanzada = true
+
   # Las aperturas conocidas se agendan aca. Ejemplo comentado para no dejar una
   # agenda inventada corriendo:
   # agenda = {

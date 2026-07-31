@@ -71,6 +71,28 @@ variable "tipo_instancia" {
   default     = "t3.small"
 }
 
+variable "disco_gb" {
+  description = "Tamano del volumen raiz. Va cifrado: guarda el archivo de entorno con la clave de la base."
+  type        = number
+  default     = 20
+}
+
+variable "memoria_contenedor" {
+  description = "Techo de memoria del contenedor, para que un runaway no se lleve la instancia."
+  type        = string
+  default     = "1g"
+}
+
+variable "cognito_autoridad" {
+  description = "Issuer del user pool de Cognito. La app valida los tokens contra esta autoridad."
+  type        = string
+}
+
+variable "cognito_cliente_id" {
+  description = "App client de Cognito que usan la SPA y el movil."
+  type        = string
+}
+
 variable "instancias_minimas" {
   description = "Piso del Auto Scaling Group."
   type        = number
