@@ -1,18 +1,12 @@
 # Diagramas
 
-Mermaid. Describen el **estado destino** del proyecto: monolito modular .NET 10 +
-React 19 (ver [`harness_DEV.md`](harness_DEV.md)) desplegado sobre AWS con DR en
-una segunda región (ver [`infra.md`](infra.md)).
-
-Lo que corre hoy (app Node/Express sobre túnel ngrok) está al final, en
-[§7 Estado actual](#7-estado-actual-transitorio), marcado como transitorio.
-
-Se actualizan en cada move de `dev` a `main`. Issue relacionado:
-[#45](https://github.com/S3-Simple-Software-Solutions/CSH/issues/45).
+Estado destino: monolito modular .NET 10 + React 19 ([`harness_DEV.md`](harness_DEV.md))
+sobre AWS con DR en segunda región ([`infra.md`](infra.md)). Se actualizan en cada
+move de `dev` a `main`. Issue: [#45](https://github.com/S3-Simple-Software-Solutions/CSH/issues/45).
 
 ---
 
-## 1. Contexto — quién usa la plataforma y con qué habla
+## 1. Contexto
 
 ```mermaid
 flowchart LR
@@ -46,11 +40,6 @@ flowchart LR
 ---
 
 ## 2. Arquitectura de la solución — monolito modular
-
-Un solo proceso desplegable con **dos clientes**: la SPA del sitio y la app
-móvil. Cada bounded context es un `.csproj` separado: el compilador enforcea los
-límites. `CSH.Host` es lo único que conoce HTTP — compone los módulos, autentica
-y traduce errores a Problem Details.
 
 ```mermaid
 flowchart TB
@@ -88,17 +77,7 @@ flowchart TB
     Cuponera --> DB
 ```
 
-Los cinco módulos referencian `CSH.Shared` — `Result<T>`, `Error`,
-`ICurrentUser`, contratos y eventos. No está dibujado a propósito: sería una
-arista desde cada módulo hacia el mismo nodo y no agrega información. La regla
-la dice mejor en una línea: **todos dependen de Shared y Shared no depende de
-nadie.**
-
-### El móvil no cambia los módulos, cambia el borde
-
-Los handlers reciben `ICurrentUser` y no saben por dónde entró la request. Por
-eso agregar un cliente móvil no toca ningún módulo: se agrega un esquema de
-autenticación en `CSH.Host` y ambos terminan en el mismo `ClaimsPrincipal`.
+### Autenticación por tipo de cliente
 
 ```mermaid
 flowchart LR
@@ -120,30 +99,7 @@ flowchart LR
     Principal --> CU --> Handlers
 ```
 
-El alcance del móvil es **la app del aficionado**: comprar entradas y parqueo,
-llevar el QR, cuponera y pedidos. La validación de boletos en puerta **no** va
-en esta app: ese caso necesita operar con la red del estadio caída —padrón
-descargado, QR firmado, sincronización con resolución de duplicados— y ese
-requisito no se le arrastra a una app de consumo. Se planifica aparte.
-
-Lo que sí cambia al entrar el móvil:
-
-- **La decisión de auth se reabre.** `harness_DEV_backend.md` §6 eligió cookie
-  sobre JWT y dejó anotado que una app móvil sería lo que cambiara esa decisión.
-  La cookie se queda para la web; el móvil necesita bearer.
-- **La revocación no se negocia.** El motivo de haber descartado JWT era poder
-  cortar acceso ya (cuenta comprometida, fraude en una apertura de venta). Ese
-  motivo sigue vivo: el token del móvil va corto y el refresh se revoca contra
-  la base — no un JWT largo sin punto de corte.
-- **CORS deja de ser trivial.** Hoy la SPA es mismo origen y no hay política que
-  mantener; el móvil obliga a una lista explícita de orígenes y métodos.
-- **El contrato de la API pasa a ser público.** Una app instalada no se
-  actualiza cuando uno hace deploy: hay que versionar (`/api/v1`), publicar
-  OpenAPI y dejar de romper endpoints sin período de convivencia.
-- **Cambio de alcance formal.** El acta §5 tiene las apps móviles nativas
-  *fuera* de alcance; entra por control de cambios (acta §15).
-
-### Dentro de un módulo — vertical slices
+### Dentro de un módulo — vertical slice
 
 ```mermaid
 flowchart LR
@@ -165,8 +121,6 @@ flowchart LR
 ---
 
 ## 3. Comunicación entre módulos
-
-Dos patrones, nunca una referencia directa entre módulos.
 
 ```mermaid
 flowchart LR
@@ -226,12 +180,7 @@ flowchart TB
     ApiFetch --> Backend
 ```
 
-### El móvil comparte los tipos, no los componentes
-
-Expo también es TypeScript, así que los tipos del dominio se escriben una vez y
-se generan desde el OpenAPI del backend. Lo que **no** cruza es la UI: React
-Native no tiene DOM ni CSS, así que los componentes y el sistema de variables de
-Herediano son de la web y no se reutilizan.
+### Contrato compartido con el móvil
 
 ```mermaid
 flowchart LR
@@ -255,16 +204,9 @@ flowchart LR
     Movil --> FetchMovil --> OpenAPI
 ```
 
-Si el backend cambia un contrato, la regeneración de tipos rompe la compilación
-del cliente que se quedó atrás. Eso es deseable: es el único mecanismo que
-avisa, antes del deploy, que una app instalada va a fallar.
-
 ---
 
 ## 5. Infraestructura destino — AWS región primaria ("blue")
-
-Corresponde a [`infra.md` §Decisiones](infra.md). Sin NAT Gateway: las instancias
-viven en subred pública y el security group solo acepta tráfico del ALB.
 
 ```mermaid
 flowchart TB
@@ -294,7 +236,7 @@ flowchart TB
     ASG --> Secrets
 ```
 
-### Cómo escala en una apertura de venta
+### Escalado en una apertura de venta
 
 ```mermaid
 flowchart LR
@@ -314,10 +256,7 @@ flowchart LR
 
 ---
 
-## 6. DR — segunda región AWS ("green"), opción recomendada
-
-Cubre una interrupción regional de AWS. Failover automático posible; **failback
-siempre manual**, por riesgo de conflicto de escrituras.
+## 6. DR — segunda región AWS ("green")
 
 ```mermaid
 flowchart TB
@@ -358,10 +297,6 @@ flowchart TB
 
 ## 7. CI/CD
 
-Flujo del harness: la feature va a `dev`, `dev` despliega solo, y únicamente
-`dev` abre PR a `main`. Todo deploy anuncia versión, cambios y URL
-([`harness.md` §10](harness.md)).
-
 ```mermaid
 flowchart LR
     classDef issue fill:#f472b6,color:#0b1220,stroke:#be185d
@@ -392,10 +327,6 @@ flowchart LR
 ---
 
 ## 8. Flujo crítico — compra de entrada
-
-El punto donde se concentra el riesgo del proyecto: dos aficionados peleando la
-misma butaca en una apertura de venta, más el webhook de Stripe que puede llegar
-duplicado o antes que la redirección del usuario.
 
 ```mermaid
 sequenceDiagram
@@ -431,11 +362,6 @@ sequenceDiagram
 
 ## 9. Estado actual (transitorio)
 
-Lo que está corriendo hoy, **antes** de la reconstrucción: app Node/Express
-servida por systemd, expuesta por un túnel ngrok hacia el runner self-hosted.
-Este diagrama existe para saber de dónde salimos; desaparece cuando el destino
-de §5 esté en pie.
-
 ```mermaid
 flowchart LR
     classDef edge fill:#f472b6,color:#0b1220,stroke:#be185d
@@ -459,7 +385,3 @@ flowchart LR
     Prod --> DB
     DevEnv --> DB
 ```
-
-**Riesgos vigentes de este montaje** (ver acta §12): el túnel ngrok como
-dependencia del despliegue (R8), y la separación de bases de datos entre
-ambientes (R1), hoy resuelta solo parcialmente vía `DATABASE_URL_DEV`.
