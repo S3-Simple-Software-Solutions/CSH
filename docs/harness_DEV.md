@@ -49,17 +49,27 @@ CSH.sln
 ├── src/
 │   ├── CSH.Host/              ← entry point delgado: compone módulos y arranca la app
 │   ├── CSH.Shared/            ← kernel compartido: Result<T>, contratos, eventos
-│   ├── CSH.Entradas/          ← bounded context completo
-│   ├── CSH.Parqueo/
-│   ├── CSH.Restaurantes/
-│   ├── CSH.Usuarios/
-│   └── CSH.Cuponera/
+│   ├── CSH.Entradas/          ← bounded context completo (M1)
+│   ├── CSH.Parqueo/           ← (M2)
+│   ├── CSH.Cuponera/          ← (M3)
+│   ├── CSH.Restaurantes/      ← (M4)
+│   ├── CSH.Salones/           ← alquiler de espacios (M5)
+│   ├── CSH.Sitio/             ← contenido: jugadores, noticias, contacto (M6)
+│   ├── CSH.Usuarios/          ← cuentas, roles, auditoría (M7)
+│   ├── CSH.Analytics/         ← (M8)
+│   ├── CSH.Red/               ← portal cautivo del wifi del estadio (M10)
+│   └── CSH.Membresias/        ← socios: cuota, carné QR, beneficios (M11)
 ├── tests/
 │   ├── CSH.Entradas.Tests/
 │   ├── CSH.Parqueo.Tests/
 │   └── ...
 └── ClientApp/                 ← SPA React (ver harness_DEV_frontend.md)
 ```
+
+Los códigos `M1`–`M11` son las épicas del
+[board del proyecto](https://github.com/orgs/S3-Simple-Software-Solutions/projects/2),
+que es donde vive el alcance. `M9` es la app móvil del aficionado (React Native
+/ Expo): consume la misma API pero no es un proyecto de esta solución.
 
 Detalle de la estructura interna de un módulo backend:
 [`harness_DEV_backend.md`](harness_DEV_backend.md).
