@@ -205,33 +205,10 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    classDef spa fill:#60a5fa,color:#0b1220,stroke:#1d4ed8
-    classDef comun fill:#fbbf24,color:#0b1220,stroke:#b45309
-    classDef api fill:#34d399,color:#0b1220,stroke:#047857
 
-    Main[main.tsx - router]:::spa
-    ModEntradas[modules/entradas]:::spa
-    ModParqueo[modules/parqueo]:::spa
-    ModUsuarios[modules/usuarios]:::spa
-    SharedFe[shared/ - components, hooks]:::comun
-    ApiFetch[shared/utils/api.ts - apiFetch, unico fetch]:::comun
-    Backend["/api - CSH.Host"]:::api
-
-    Main --> ModEntradas
-    Main --> ModParqueo
-    Main --> ModUsuarios
-
-    ModEntradas --> SharedFe
-    ModParqueo --> SharedFe
-    ModUsuarios --> SharedFe
-
-    ModEntradas -->|api.ts| ApiFetch
-    ModParqueo -->|api.ts| ApiFetch
-    ModUsuarios -->|api.ts| ApiFetch
-    ApiFetch --> Backend
 ```
 
-### Contrato compartido con el móvil
+### API compartida con el móvil
 
 ```mermaid
 flowchart LR
@@ -251,7 +228,7 @@ flowchart LR
     OpenAPI --> Tipos
     Tipos --> Web
     Tipos --> Movil
-    Web --> FetchWeb --> OpenAPI
+    Web --> FetchWeb 
     Movil --> FetchMovil --> OpenAPI
 ```
 
