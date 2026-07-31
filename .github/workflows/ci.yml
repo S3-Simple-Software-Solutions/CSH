@@ -1,0 +1,216 @@
+name: CI
+
+# Los cinco gates del harness (docs/harness_DEV.md §4) sobre la estructura
+# backend/ + frontend/. Corre en los PR hacia dev y hacia main: la feature entra
+# a dev por PR, y solo dev abre PR a main, asi que las dos puertas necesitan
+# guardia.
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  NODE_VERSION: "20"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  backend:
+    name: Backend (build + tests)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore backend/CSH.slnx
+
+      - name: Build
+        # Directory.Build.props tiene TreatWarningsAsErrors: un warning corta acá.
+        run: dotnet build backend/CSH.slnx --configuration Release --no-restore
+
+      - name: Test
+        # Cuando entren los tests de handler con Testcontainers, el runner ya
+        # trae Docker: no hace falta agregar un servicio de Postgres.
+        run: dotnet test backend/CSH.slnx --configuration Release --no-build --verbosity normal
+
+  frontend:
+    name: Frontend (lint + typecheck + tests + build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix frontend
+
+      - name: Lint
+        run: npm run lint --prefix frontend
+
+      - name: Typecheck
+        run: npm run typecheck --prefix frontend
+
+      - name: Unit tests
+        run: npm run test --prefix frontend
+
+      - name: Build
+        # Compila hacia backend/src/CSH.Host/wwwroot (frontend/vite.config.ts).
+        run: npm run build --prefix frontend
+
+  app-health:
+    name: Build and Health Check
+    runs-on: ubuntu-latest
+
+    env:
+      APP_URL: http://127.0.0.1:8088
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build SPA into wwwroot
+        run: |
+          npm ci --prefix frontend
+          npm run build --prefix frontend
+
+      - name: Publish host
+        run: dotnet publish backend/src/CSH.Host/CSH.Host.csproj --configuration Release --output /tmp/csh-app
+
+      - name: Start app
+        run: |
+          ASPNETCORE_URLS="$APP_URL" /tmp/csh-app/CSH.Host > /tmp/csh-app.log 2>&1 &
+          echo $! > /tmp/csh-app.pid
+
+      - name: Wait for health endpoint
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "$APP_URL/healthz" > /tmp/csh-health.json; then
+              cat /tmp/csh-health.json
+              grep -q '"estado":"ok"' /tmp/csh-health.json
+              exit 0
+            fi
+            echo "Esperando el health de la app... ($attempt/30)"
+            sleep 2
+          done
+          echo "La app no respondio el health check"
+          cat /tmp/csh-app.log
+          exit 1
+
+      - name: Check SPA response
+        # Verifica que el Host esté sirviendo la SPA compilada desde wwwroot y
+        # no un 404: sin esto, un build de Vite que no llegó a wwwroot pasa.
+        run: |
+          curl --fail --silent --show-error "$APP_URL/" > /tmp/csh-home.html
+          grep -q '<div id="root"></div>' /tmp/csh-home.html
+
+      - name: Upload app logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csh-app-health-logs
+          path: /tmp/csh-app.log
+
+      - name: Stop app
+        if: always()
+        run: |
+          if [ -f /tmp/csh-app.pid ]; then
+            kill "$(cat /tmp/csh-app.pid)" || true
+          fi
+
+  notify:
+    name: Notify Discord
+    if: always()
+    runs-on: ubuntu-latest
+    needs:
+      - dependency-review
+      - backend
+      - frontend
+      - app-health
+
+    steps:
+      - name: Notify Discord result
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          NEEDS_JSON: ${{ toJson(needs) }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          # En un PR desde un fork el secret no existe: no es una falla del CI.
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "Sin DISCORD_WEBHOOK_URL, no se avisa."
+            exit 0
+          fi
+
+          if grep -q '"result":"failure"' <<<"$NEEDS_JSON"; then
+            TITLE="CI en rojo"; COLOR=15548997
+          elif grep -q '"result":"cancelled"' <<<"$NEEDS_JSON"; then
+            TITLE="CI cancelado"; COLOR=16776960
+          else
+            TITLE="CI en verde"; COLOR=5763719
+          fi
+
+          jq -n \
+            --arg title "$TITLE" \
+            --arg desc "$GITHUB_EVENT_NAME sobre $GITHUB_REF_NAME (${GITHUB_SHA::7})" \
+            --arg url "$RUN_URL" \
+            --argjson color "$COLOR" \
+            '{embeds: [{title: $title, description: $desc, url: $url, color: $color}]}' \
+            > /tmp/discord.json
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d @/tmp/discord.json \
+            "$DISCORD_WEBHOOK_URL"
