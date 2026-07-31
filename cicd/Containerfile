@@ -1,0 +1,48 @@
+# Imagen de la app: compila el frontend, lo mete en wwwroot y publica el Host.
+# El contexto de build es la raiz del repo:
+#   podman build -f cicd/Containerfile -t csh:dev .
+#
+# Se compila adentro a proposito: ni el runner ni el servidor necesitan tener
+# instalados el SDK de .NET ni Node.
+
+# --- 1. SPA -----------------------------------------------------------------
+FROM docker.io/library/node:20-alpine AS frontend
+WORKDIR /src
+
+# Las dependencias primero: mientras package-lock.json no cambie, esta capa
+# se reusa y el build no vuelve a bajar node_modules.
+COPY frontend/package.json frontend/package-lock.json frontend/
+RUN npm ci --prefix frontend
+
+COPY frontend/ frontend/
+
+# vite.config.ts publica en ../backend/src/CSH.Host/wwwroot, fuera de frontend/.
+RUN mkdir -p backend/src/CSH.Host && npm run build --prefix frontend
+
+# --- 2. Backend -------------------------------------------------------------
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend
+WORKDIR /src
+
+COPY backend/ backend/
+RUN dotnet restore backend/CSH.slnx
+
+COPY --from=frontend /src/backend/src/CSH.Host/wwwroot backend/src/CSH.Host/wwwroot
+RUN dotnet publish backend/src/CSH.Host/CSH.Host.csproj \
+      --configuration Release \
+      --no-restore \
+      --output /app
+
+# --- 3. Runtime -------------------------------------------------------------
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+
+COPY --from=backend /app .
+
+# El puerto de adentro es fijo; el de afuera lo decide el deploy (dev usa 1421).
+ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+EXPOSE 8080
+
+# Sin root adentro del contenedor.
+USER $APP_UID
+
+ENTRYPOINT ["./CSH.Host"]

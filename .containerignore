@@ -1,0 +1,12 @@
+# Lo que no tiene por que viajar al contexto de build.
+.git/
+docs/
+*.pdf
+node_modules/
+frontend/node_modules/
+backend/**/bin/
+backend/**/obj/
+backend/src/CSH.Host/wwwroot/
+*.log
+.env
+.env.*

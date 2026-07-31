@@ -1,14 +1,16 @@
 name: Deploy CSH (dev)
 
-# Espejo del pipeline de produccion (deploy.yml) pero para la rama dev.
-# Cada push a dev se despliega automaticamente al entorno dev:
-#   herediano-dev.milocalhost.work  ->  nginx  ->  127.0.0.1:1421  (csh-dev.service)
-# A diferencia de produccion, NO crea versiones de release (0.X) ni publica
-# releases en GitHub: dev es un entorno de prueba (los PR van dev -> main).
+# Cada push a dev se despliega al entorno dev:
+#   herediano-dev.milocalhost.work -> nginx -> 127.0.0.1:1421 -> contenedor csh-dev-1421
+#
+# La app se compila DENTRO del contenedor (cicd/Containerfile), asi que el
+# servidor no necesita tener instalados el SDK de .NET ni Node: solo podman.
+# A diferencia de produccion, no crea versiones de release ni publica en GitHub.
 
 on:
   push:
     branches: [dev]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -34,29 +36,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Notify Discord start
-        shell: bash
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          node scripts/agentic-discord.mjs \
-            --title "CSH dev deploy started" \
-            --description "Deploying dev from ${GITHUB_SHA::7}" \
-            --status info \
-            --field "Environment=dev" \
-            --field "Branch=${GITHUB_REF_NAME}" \
-            --field "Run=$RUN_URL"
-
       - name: Parse ALL_SECRETS
         id: vars
         shell: bash
         env:
           ALL_SECRETS: ${{ secrets.ALL_SECRETS }}
-          # Pagos: secrets individuales (no van dentro de ALL_SECRETS para no
-          # tener que reconstruir ese archivo monolitico al agregarlos).
-          HEREDIANO_STRIPE_SECRET_KEY: ${{ secrets.HEREDIANO_STRIPE_SECRET_KEY }}
-          HEREDIANO_STRIPE_WEBHOOK_SECRET: ${{ secrets.HEREDIANO_STRIPE_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
 
@@ -81,76 +65,30 @@ jobs:
           printf '%s' "$DEPLOY_SSH_KEY_B64" | base64 -d > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
 
-          DATABASE_URL_DEV="$(get DATABASE_URL_DEV)"
-          if [ -z "$DATABASE_URL_DEV" ]; then
-            echo "::error::DATABASE_URL_DEV is missing from ALL_SECRETS (dev must not share the production database)"
-            exit 1
-          fi
-
-          # Entorno compartido del servicio dev. Igual que produccion pero con
-          # PORT=1421, la URL publica del entorno dev, y su propia base de datos.
-          {
-            echo "PORT=${DEV_PORT}"
-            echo "HEREDIANO_APP_URL=${DEV_APP_URL}"
-            echo "DATABASE_URL=${DATABASE_URL_DEV}"
-            echo "HEREDIANO_SECRET=$(get HEREDIANO_SECRET)"
-            echo "HEREDIANO_USER=$(get HEREDIANO_USER)"
-            echo "HEREDIANO_PASS=$(get HEREDIANO_PASS)"
-            echo "HEREDIANO_ADMIN_USER=$(get HEREDIANO_ADMIN_USER)"
-            echo "HEREDIANO_ADMIN_EMAIL=$(get HEREDIANO_ADMIN_EMAIL)"
-            echo "HEREDIANO_ADMIN_PASS=$(get HEREDIANO_ADMIN_PASS)"
-            echo "HEREDIANO_CONTACT_EMAIL=$(get HEREDIANO_CONTACT_EMAIL)"
-            echo "HEREDIANO_SESSION_HOURS=$(get HEREDIANO_SESSION_HOURS)"
-            echo "HEREDIANO_ADMIN_SESSION_HOURS=$(get HEREDIANO_ADMIN_SESSION_HOURS)"
-            echo "HEREDIANO_SMTP_HOST=$(get HEREDIANO_SMTP_HOST)"
-            echo "HEREDIANO_SMTP_PORT=$(get HEREDIANO_SMTP_PORT)"
-            echo "HEREDIANO_SMTP_SECURE=$(get HEREDIANO_SMTP_SECURE)"
-            echo "HEREDIANO_MAIL_FROM=$(get HEREDIANO_MAIL_FROM)"
-            echo "HEREDIANO_SMTP_USER=$(get HEREDIANO_SMTP_USER)"
-            echo "HEREDIANO_SMTP_PASS=$(get HEREDIANO_SMTP_PASS)"
-            echo "HEREDIANO_STRIPE_SECRET_KEY=${HEREDIANO_STRIPE_SECRET_KEY}"
-            echo "HEREDIANO_STRIPE_WEBHOOK_SECRET=${HEREDIANO_STRIPE_WEBHOOK_SECRET}"
-          } > /tmp/app.env
-
       - name: Deploy dev via SSH
         shell: bash
         env:
           DEPLOY_SHA: ${{ github.sha }}
-          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           NGROK_HOST: ${{ steps.vars.outputs.ngrok_host }}
           NGROK_PORT: ${{ steps.vars.outputs.ngrok_port }}
           DEPLOY_USER: ${{ steps.vars.outputs.deploy_user }}
         run: |
           set -euo pipefail
 
-          scp -i /tmp/deploy_key \
-              -P "$NGROK_PORT" \
-              -o StrictHostKeyChecking=no \
-              /tmp/app.env \
-              "$DEPLOY_USER@$NGROK_HOST:/tmp/csh-dev-app.env"
-
           ssh -i /tmp/deploy_key \
               -p "$NGROK_PORT" \
               -o StrictHostKeyChecking=no \
               "$DEPLOY_USER@$NGROK_HOST" \
-              "APP_ROOT='$APP_ROOT' REPO_URL='$REPO_URL' DEPLOY_SHA='$DEPLOY_SHA' RUN_URL='$RUN_URL' DEV_PORT='$DEV_PORT' bash -se" <<'ENDSSH'
+              "APP_ROOT='$APP_ROOT' REPO_URL='$REPO_URL' DEPLOY_SHA='$DEPLOY_SHA' DEV_PORT='$DEV_PORT' bash -se" <<'ENDSSH'
             set -euo pipefail
 
             SHORT_SHA="${DEPLOY_SHA::7}"
             DEV_VERSION="dev-$SHORT_SHA"
-            SHARED_ENV="$APP_ROOT/shared/.env.dev"
-            RELEASES_DIR="$APP_ROOT/releases-dev"
-            CURRENT_LINK="$APP_ROOT/current-dev"
             SOURCE_DIR="$APP_ROOT/source"
-            RELEASE_DIR="$RELEASES_DIR/$DEV_VERSION"
-            TMP_RELEASE="$RELEASES_DIR/.tmp-$DEV_VERSION-$$"
+            CONTAINER="csh-dev-$DEV_PORT"
 
-            echo "== Preparing dev deploy: $DEV_VERSION =="
-            mkdir -p "$APP_ROOT/shared" "$RELEASES_DIR"
-            install -m 600 /tmp/csh-dev-app.env "$SHARED_ENV"
-            rm -f /tmp/csh-dev-app.env
+            echo "== Preparando deploy dev: $DEV_VERSION =="
 
-            # Checkout solo para fetch de commits; los releases son inmutables.
             if [ ! -d "$SOURCE_DIR/.git" ]; then
               if [ -d "$APP_ROOT/.git" ]; then
                 SOURCE_DIR="$APP_ROOT"
@@ -164,70 +102,41 @@ jobs:
             git fetch --prune origin dev
             git rev-parse --verify "$DEPLOY_SHA^{commit}" >/dev/null
 
-            # dev se redepliega seguido: si ya existe ese SHA, lo reconstruimos.
-            rm -rf "$RELEASE_DIR" "$TMP_RELEASE"
-            mkdir -p "$TMP_RELEASE"
-            git archive "$DEPLOY_SHA" | tar -x -C "$TMP_RELEASE"
+            # El build sale de un arbol limpio del commit desplegado, no del
+            # working tree del servidor, que puede tener cambios sin commitear.
+            BUILD_DIR="$(mktemp -d)"
+            trap 'rm -rf "$BUILD_DIR"' EXIT
+            git archive "$DEPLOY_SHA" | tar -x -C "$BUILD_DIR"
 
-            cd "$TMP_RELEASE"
-            echo "== Installing dependencies ($DEV_VERSION) =="
-            npm ci
-            echo "== Building ($DEV_VERSION) =="
-            npm run build
+            echo "== Construyendo imagen ($DEV_VERSION) =="
+            cd "$BUILD_DIR"
+            podman build -f cicd/Containerfile -t "csh:$DEV_VERSION" -t csh:dev .
 
-            cat > RELEASE_MANIFEST.json <<EOF
-          {
-            "version": "$DEV_VERSION",
-            "sha": "$DEPLOY_SHA",
-            "source": "push-to-dev",
-            "runUrl": "$RUN_URL",
-            "deployedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          }
-          EOF
-
-            mv "$TMP_RELEASE" "$RELEASE_DIR"
-            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
-
-            # El entorno dev pasa a ser servido por systemd (no por el contenedor
-            # podman standalone). Liberamos el puerto 1421 si lo tenia podman.
-            podman rm -f csh-dev-1421 >/dev/null 2>&1 || true
-
-            echo "== Ensuring csh-dev.service points at current-dev =="
-            mkdir -p ~/.config/systemd/user
-            cat > ~/.config/systemd/user/csh-dev.service <<UNIT
-          [Unit]
-          Description=CSH Herediano app (dev / 1421)
-          After=network.target
-
-          [Service]
-          Type=simple
-          WorkingDirectory=$CURRENT_LINK
-          EnvironmentFile=$SHARED_ENV
-          ExecStart=/bin/bash -lc 'npm start'
-          Restart=always
-          RestartSec=3
-
-          [Install]
-          WantedBy=default.target
-          UNIT
-
-            systemctl --user daemon-reload
-            systemctl --user enable csh-dev.service
-            systemctl --user restart csh-dev.service
+            echo "== Reemplazando el contenedor =="
+            # El puerto lo pudo haber tomado el servicio systemd del stack viejo.
+            systemctl --user disable --now csh-dev.service >/dev/null 2>&1 || true
+            podman rm -f "$CONTAINER" >/dev/null 2>&1 || true
+            podman run -d \
+              --name "$CONTAINER" \
+              --restart=always \
+              -p "$DEV_PORT:8080" \
+              "csh:$DEV_VERSION"
 
             echo "== Health check (dev :$DEV_PORT) =="
             for attempt in {1..30}; do
               if curl --fail --silent --show-error "http://127.0.0.1:$DEV_PORT/healthz"; then
-                echo "Health check passed for $DEV_VERSION"
+                echo ""
+                echo "Health check OK para $DEV_VERSION"
+                # Sin esto, cada deploy deja una imagen y el disco se llena solo.
+                podman image prune -f >/dev/null 2>&1 || true
                 exit 0
               fi
-              echo "Waiting for dev app health... ($attempt/30)"
+              echo "Esperando el health de dev... ($attempt/30)"
               sleep 2
             done
 
-            echo "Health check failed for $DEV_VERSION"
-            systemctl --user status csh-dev.service --no-pager || true
-            journalctl --user -u csh-dev.service -n 100 --no-pager || true
+            echo "Health check fallido para $DEV_VERSION"
+            podman logs --tail 100 "$CONTAINER" || true
             exit 1
           ENDSSH
 
@@ -241,9 +150,9 @@ jobs:
           {
             echo "### CSH dev deploy"
             echo ""
-            echo "- Entorno: https://herediano-dev.milocalhost.work"
+            echo "- Entorno: ${DEV_APP_URL}"
             echo "- Commit: \`$DEPLOY_SHA\`"
-            echo "- Puerto: \`${DEV_PORT}\` (csh-dev.service)"
+            echo "- Puerto: \`${DEV_PORT}\` (contenedor csh-dev-${DEV_PORT})"
             echo "- Run: $RUN_URL"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -256,36 +165,60 @@ jobs:
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DEPLOY_SHA: ${{ github.sha }}
           COMPARE_URL: ${{ github.event.compare }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
+          set -euo pipefail
+
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "Sin DISCORD_WEBHOOK_URL, no se avisa."
+            exit 0
+          fi
+
           SHORT_SHA="${DEPLOY_SHA::7}"
           DEV_VERSION="dev-$SHORT_SHA"
 
           case "$JOB_STATUS" in
-            success) STATUS=success; TITLE="Nueva version en dev: $DEV_VERSION" ;;
-            cancelled) STATUS=warning; TITLE="Deploy a dev cancelado ($DEV_VERSION)" ;;
-            *) STATUS=failure; TITLE="Deploy a dev fallido ($DEV_VERSION)" ;;
+            success)   TITLE="Nueva version en dev: $DEV_VERSION"; COLOR=5763719 ;;
+            cancelled) TITLE="Deploy a dev cancelado ($DEV_VERSION)"; COLOR=16776960 ;;
+            *)         TITLE="Deploy a dev fallido ($DEV_VERSION)"; COLOR=15548997 ;;
           esac
 
-          # Que trae esta version: asunto de cada commit del push.
-          CHANGES="$(git log --no-merges --pretty='- %s' "${{ github.event.before }}..$DEPLOY_SHA" 2>/dev/null | head -10 || true)"
+          # Que trae esta version: el asunto de cada commit del push. El harness
+          # (§10) pide siempre version, cambios y como probarla.
+          CHANGES="$(git log --no-merges --pretty='- %s' "${BEFORE_SHA}..${DEPLOY_SHA}" 2>/dev/null | head -10 || true)"
           if [ -z "$CHANGES" ]; then
             CHANGES="- $(git log -1 --pretty=%s "$DEPLOY_SHA")"
           fi
 
-          if [ "$STATUS" = "success" ]; then
-            DESCRIPTION="$(printf 'Probala en %s\n\n**Cambios**\n%s' "$DEV_APP_URL" "$CHANGES")"
+          if [ "$JOB_STATUS" = "success" ]; then
+            DESC="$(printf 'Probala en %s\n\n**Cambios**\n%s' "$DEV_APP_URL" "$CHANGES")"
           else
-            DESCRIPTION="$(printf 'El deploy a dev no completo (%s).\n\n**Cambios que intentaba desplegar**\n%s' "$JOB_STATUS" "$CHANGES")"
+            DESC="$(printf 'El deploy a dev no completo (%s).\n\n**Cambios que intentaba desplegar**\n%s' "$JOB_STATUS" "$CHANGES")"
           fi
 
-          node scripts/agentic-discord.mjs \
-            --title "$TITLE" \
-            --description "$DESCRIPTION" \
-            --status "$STATUS" \
-            --url "$DEV_APP_URL" \
-            --field "Entorno=dev" \
-            --field "Version=$DEV_VERSION" \
-            --field "Probar=$DEV_APP_URL" \
-            --field "Resultado=$JOB_STATUS" \
-            --field "Diff=${COMPARE_URL:-$RUN_URL}" \
-            --field "Run=$RUN_URL"
+          jq -n \
+            --arg title "$TITLE" \
+            --arg desc "$DESC" \
+            --arg url "$DEV_APP_URL" \
+            --arg version "$DEV_VERSION" \
+            --arg run "$RUN_URL" \
+            --arg diff "${COMPARE_URL:-$RUN_URL}" \
+            --argjson color "$COLOR" \
+            '{embeds: [{
+               title: $title,
+               description: $desc,
+               url: $url,
+               color: $color,
+               fields: [
+                 {name: "Entorno", value: "dev", inline: true},
+                 {name: "Version", value: $version, inline: true},
+                 {name: "Probar", value: $url},
+                 {name: "Diff", value: $diff},
+                 {name: "Run", value: $run}
+               ]
+             }]}' > /tmp/discord.json
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d @/tmp/discord.json \
+            "$DISCORD_WEBHOOK_URL"
