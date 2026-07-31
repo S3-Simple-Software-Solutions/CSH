@@ -1,0 +1,18 @@
+<Project>
+
+  <!--
+    Capa 2 del enforcement (docs/harness_DEV.md §5): lo que el compilador puede
+    garantizar solo, para toda la solucion y sin que cada .csproj lo repita.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <!-- Un warning que nadie mira es un error que nadie arregla. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+</Project>

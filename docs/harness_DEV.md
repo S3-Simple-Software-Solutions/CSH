@@ -46,7 +46,7 @@ un directorio por caso de uso.
 ### Estructura de la solución
 
 ```
-CSH.sln
+CSH.slnx
 ├── src/
 │   ├── CSH.Host/              ← entry point delgado: compone módulos y arranca la app
 │   ├── CSH.Shared/            ← kernel compartido: Result<T>, contratos, eventos
@@ -107,7 +107,7 @@ Estas aplican a toda tarea, sin importar la capa:
 
 ```bash
 # 1. Dependencias
-dotnet restore CSH.sln
+dotnet restore CSH.slnx
 npm install --prefix ClientApp
 
 # 2. Connection string local — user-secrets, NUNCA en appsettings.json
@@ -155,6 +155,14 @@ proxy de Vite apunta a un puerto fijo.
   en vez de por Vite, el origen no coincide con el del login. Usá 5173.
 - **`dotnet watch` no toma un archivo nuevo:** reiniciarlo. El watcher no
   siempre detecta archivos creados fuera del editor.
+- **No crear un namespace que termine en `.Results`.** Colisiona con
+  `Microsoft.AspNetCore.Http.Results`, y el compilador resuelve `Results.Ok(...)`
+  contra el namespace propio: `error CS0234: el nombre 'Ok' no existe`. Por eso
+  `Result<T>` y `Error` viven en `CSH.Shared` a secas, aunque los archivos estén
+  en la carpeta `Results/`.
+- **El alias `@/` del frontend se declara en dos lados:** `vite.config.ts` para
+  el bundler y `tsconfig.app.json` para el compilador. Si falta uno, el build
+  pasa y el typecheck falla, o al revés.
 
 ---
 
@@ -162,8 +170,8 @@ proxy de Vite apunta a un puerto fijo.
 
 ```bash
 # Backend
-dotnet build CSH.sln
-dotnet test CSH.sln                    # requiere Docker corriendo (Testcontainers)
+dotnet build CSH.slnx
+dotnet test CSH.slnx                    # requiere Docker corriendo (Testcontainers)
 
 # Frontend
 npm run typecheck --prefix ClientApp   # tsc --noEmit

@@ -156,6 +156,6 @@ contrato que usa la app.
 ## 5. Correr los tests
 
 ```bash
-dotnet test CSH.sln                    # requiere Docker corriendo
+dotnet test CSH.slnx                    # requiere Docker corriendo
 npm run test --prefix ClientApp
 ```

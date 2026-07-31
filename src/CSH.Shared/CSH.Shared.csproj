@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    TargetFramework, Nullable e ImplicitUsings vienen de Directory.Build.props.
+
+    La referencia al framework de ASP.NET Core existe para que ResultExtensions
+    pueda mapear Result<T> a IResult. No agrega una dependencia nueva al grafo:
+    los modulos ya dependen del framework porque contienen endpoints.
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>
