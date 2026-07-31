@@ -190,6 +190,35 @@ handler; las reglas de negocio van dentro del handler y devuelven `Error`.
 - `AsNoTracking()` en toda query de solo lectura.
 - Nada de lógica de negocio en el repositorio: recibe y devuelve entidades.
 
+### Un esquema y un historial de migraciones por módulo
+
+Todos los módulos comparten la misma base PostgreSQL, cada uno en su esquema.
+Eso exige **dos** configuraciones, no una:
+
+```csharp
+// 1. Las tablas del módulo van a su esquema
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.HasDefaultSchema("entradas");
+    modelBuilder.ApplyConfigurationsFromAssembly(typeof(EntradasDbContext).Assembly);
+}
+```
+
+```csharp
+// 2. El historial de migraciones TAMBIÉN va a su esquema
+services.AddDbContext<EntradasDbContext>(opt =>
+    opt.UseNpgsql(config.GetConnectionString("Default"), npgsql =>
+        npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "entradas")));
+```
+
+**La segunda es la que se olvida, y rompe todo.** Sin ella, cada `DbContext`
+escribe en `public.__EFMigrationsHistory`: `dotnet ef` del módulo B ve las
+migraciones del módulo A, cree que ya se aplicaron, y deja la base a medias sin
+avisar.
+
+Se descartó una base por módulo: multiplica el costo de operación y hace
+imposible cualquier consulta que cruce módulos, que analytics va a necesitar.
+
 ### Concurrencia
 
 En operaciones donde dos usuarios pueden competir por el mismo recurso
@@ -374,6 +403,9 @@ public class NombreModuloDbContext(DbContextOptions<NombreModuloDbContext> optio
 }
 ```
 
+El historial de migraciones va al mismo esquema — se configura en el registro
+del módulo (paso 5), no acá. Ver §5.
+
 ### 4. Crear la primera migración
 
 ```bash
@@ -394,7 +426,8 @@ public static class NombreModuloModule
         this IServiceCollection services, IConfiguration config)
     {
         services.AddDbContext<NombreModuloDbContext>(opt =>
-            opt.UseNpgsql(config.GetConnectionString("Default")));
+            opt.UseNpgsql(config.GetConnectionString("Default"), npgsql =>
+                npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "nombre_modulo")));
         services.AddScoped<INombreModuloRepository, NombreModuloRepository>();
         services.AddScoped<PrimerCasoHandler>();
         return services;
