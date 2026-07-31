@@ -3,11 +3,11 @@ bin/
 obj/
 *.user
 # La SPA compilada la genera `npm run build`; no se commitea.
-src/CSH.Host/wwwroot/
+backend/src/CSH.Host/wwwroot/
 
 # --- Node / Vite ---
 node_modules/
-ClientApp/node_modules/
+frontend/node_modules/
 
 # --- Restos del stack anterior ---
 cache/

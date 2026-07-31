@@ -2,7 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
-// El puerto del backend esta fijado en src/CSH.Host/Properties/launchSettings.json.
+// El puerto del backend esta fijado en
+// backend/src/CSH.Host/Properties/launchSettings.json.
 // Si cambia alla, tiene que cambiar aca (docs/harness_DEV.md §3).
 const API = 'http://127.0.0.1:5080'
 
@@ -25,7 +26,7 @@ export default defineConfig({
   },
   build: {
     // El Host sirve la SPA compilada desde wwwroot.
-    outDir: '../src/CSH.Host/wwwroot',
+    outDir: '../backend/src/CSH.Host/wwwroot',
     emptyOutDir: true,
   },
 })

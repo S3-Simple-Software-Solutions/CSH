@@ -11,7 +11,7 @@ El frontend espeja los bounded contexts del backend: un directorio en
 `modules/` por cada módulo de la solución.
 
 ```
-ClientApp/src/
+frontend/src/
 ├── modules/                 ← un directorio por bounded context
 │   ├── entradas/
 │   │   ├── api.ts           ← llamadas API tipadas de este módulo

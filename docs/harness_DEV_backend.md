@@ -377,9 +377,9 @@ Seguir estos pasos en orden. Un módulo incompleto no se mergea.
 ### 1. Crear el proyecto y agregarlo a la solución
 
 ```bash
-dotnet new classlib -n CSH.NombreModulo -o src/CSH.NombreModulo
-dotnet sln add src/CSH.NombreModulo/CSH.NombreModulo.csproj
-dotnet add src/CSH.NombreModulo reference src/CSH.Shared/CSH.Shared.csproj
+dotnet new classlib -n CSH.NombreModulo -o backend/src/CSH.NombreModulo
+dotnet sln add backend/src/CSH.NombreModulo/CSH.NombreModulo.csproj
+dotnet add backend/src/CSH.NombreModulo reference backend/src/CSH.Shared/CSH.Shared.csproj
 ```
 
 ### 2. Crear la estructura interna
@@ -410,8 +410,8 @@ del módulo (paso 5), no acá. Ver §5.
 
 ```bash
 dotnet ef migrations add Init \
-  --project src/CSH.NombreModulo \
-  --startup-project src/CSH.Host \
+  --project backend/src/CSH.NombreModulo \
+  --startup-project backend/src/CSH.Host \
   --context NombreModuloDbContext \
   --output-dir Infrastructure/Migrations
 ```
@@ -451,14 +451,14 @@ app.MapNombreModuloEndpoints();
 ### 6. Crear el proyecto de tests
 
 ```bash
-dotnet new xunit -n CSH.NombreModulo.Tests -o tests/CSH.NombreModulo.Tests
-dotnet sln add tests/CSH.NombreModulo.Tests/CSH.NombreModulo.Tests.csproj
-dotnet add tests/CSH.NombreModulo.Tests reference src/CSH.NombreModulo/CSH.NombreModulo.csproj
+dotnet new xunit -n CSH.NombreModulo.Tests -o backend/tests/CSH.NombreModulo.Tests
+dotnet sln add backend/tests/CSH.NombreModulo.Tests/CSH.NombreModulo.Tests.csproj
+dotnet add backend/tests/CSH.NombreModulo.Tests reference backend/src/CSH.NombreModulo/CSH.NombreModulo.csproj
 ```
 
 ### 7. Verificar antes de commitear
 
 ```bash
-dotnet build CSH.slnx
-dotnet test CSH.slnx
+dotnet build backend/CSH.slnx
+dotnet test backend/CSH.slnx
 ```

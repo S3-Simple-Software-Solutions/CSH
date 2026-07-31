@@ -51,7 +51,7 @@ flowchart TB
     classDef datos fill:#f59e0b,color:#0b1220,stroke:#b45309
     classDef externo fill:#f472b6,color:#0b1220,stroke:#be185d
 
-    SPA["ClientApp - React 19 + Vite (mismo origen)"]:::cliente
+    SPA["frontend - React 19 + Vite (mismo origen)"]:::cliente
     Movil["App movil del aficionado - React Native/Expo (otro origen)"]:::cliente
 
     Host["CSH.Host - composicion, autenticacion, ProblemDetails, CORS"]:::host
@@ -107,7 +107,7 @@ flowchart LR
     classDef host fill:#a78bfa,color:#0b1220,stroke:#6d28d9
     classDef logica fill:#34d399,color:#0b1220,stroke:#047857
 
-    SPA[ClientApp]:::cliente
+    SPA[frontend]:::cliente
     Movil["App movil - Expo"]:::cliente
 
     Cookie["Esquema cookie - ASP.NET Core"]:::host
@@ -242,7 +242,7 @@ flowchart LR
     OpenAPI["OpenAPI de CSH.Host - /api/v1"]:::api
     Tipos["Tipos del dominio generados (compartidos)"]:::comun
 
-    Web["ClientApp - componentes y CSS propios"]:::cliente
+    Web["frontend - componentes y CSS propios"]:::cliente
     Movil["App Expo - componentes nativos propios"]:::cliente
 
     FetchWeb["apiFetch - cookie de sesion"]:::comun
@@ -383,7 +383,7 @@ flowchart LR
 sequenceDiagram
     autonumber
     actor A as Aficionado
-    participant SPA as ClientApp
+    participant SPA as frontend
     participant EP as Endpoint
     participant H as ComprarEntradaHandler
     participant DB as PostgreSQL

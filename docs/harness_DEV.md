@@ -43,13 +43,18 @@ solución. El compilador enforcea los límites — no la disciplina humana.
 Dentro de cada módulo, la funcionalidad se organiza en **vertical slices**:
 un directorio por caso de uso.
 
-### Estructura de la solución
+### Estructura del repositorio
+
+La raíz separa las dos mitades. Cada una conserva la convención de su
+ecosistema puertas adentro:
 
 ```
-CSH.slnx
+backend/                        ← .NET
+├── CSH.slnx
+├── Directory.Build.props       ← nullable + warnings como errores, para toda la solución
 ├── src/
 │   ├── CSH.Host/              ← entry point delgado: compone módulos y arranca la app
-│   ├── CSH.Shared/            ← kernel compartido: Result<T>, contratos, eventos
+│   ├── CSH.Shared/            ← kernel compartido: Result<T>, Error, contratos, eventos
 │   ├── CSH.Entradas/          ← bounded context completo (M1)
 │   ├── CSH.Parqueo/           ← (M2)
 │   ├── CSH.Cuponera/          ← (M3)
@@ -60,12 +65,22 @@ CSH.slnx
 │   ├── CSH.Analytics/         ← (M8)
 │   ├── CSH.Red/               ← portal cautivo del wifi del estadio (M10)
 │   └── CSH.Membresias/        ← socios: cuota, carné QR, beneficios (M11)
-├── tests/
-│   ├── CSH.Entradas.Tests/
-│   ├── CSH.Parqueo.Tests/
-│   └── ...
-└── ClientApp/                 ← SPA React (ver harness_DEV_frontend.md)
+└── tests/
+    ├── CSH.Entradas.Tests/
+    ├── CSH.Parqueo.Tests/
+    └── ...
+
+frontend/                       ← SPA React (ver harness_DEV_frontend.md)
+├── src/
+└── (los tests viven junto al código, no en un directorio aparte)
+
+docs/                           ← el harness y el glosario
+.github/                        ← workflows
 ```
+
+No se usa `src/` ni `tests/` en la raíz: en la aplicación anterior de este
+mismo repo `src/` era el frontend, y reciclar el nombre para el backend
+garantiza confusión.
 
 Los códigos `M1`–`M11` son las épicas del
 [board del proyecto](https://github.com/orgs/S3-Simple-Software-Solutions/projects/2),
@@ -87,7 +102,7 @@ Estas aplican a toda tarea, sin importar la capa:
 - **`CSH.Shared` se mantiene delgado:** solo primitivos (`Result<T>`, `Error`, contratos, eventos). Nunca lógica de negocio — eso crea acoplamiento oculto.
 - **Cada módulo es dueño de su `DbContext` y sus migraciones.** Comparten la misma base PostgreSQL pero con esquemas separados (`entradas.*`, `parqueo.*`, etc.).
 - **Cada feature es un slice vertical:** endpoint + request/response + handler en el mismo directorio.
-- **El frontend espeja los bounded contexts del backend:** un directorio en `ClientApp/src/modules/` por módulo.
+- **El frontend espeja los bounded contexts del backend:** un directorio en `frontend/src/modules/` por módulo.
 
 ---
 
@@ -107,17 +122,17 @@ Estas aplican a toda tarea, sin importar la capa:
 
 ```bash
 # 1. Dependencias
-dotnet restore CSH.slnx
-npm install --prefix ClientApp
+dotnet restore backend/CSH.slnx
+npm install --prefix frontend
 
 # 2. Connection string local — user-secrets, NUNCA en appsettings.json
 dotnet user-secrets set "ConnectionStrings:Default" \
   "Host=localhost;Database=csh_dev;Username=postgres;Password=<tu-clave>" \
-  --project src/CSH.Host
+  --project backend/src/CSH.Host
 
 # 3. Aplicar las migraciones de cada módulo (una por DbContext)
-dotnet ef database update --project src/CSH.Entradas --startup-project src/CSH.Host --context EntradasDbContext
-dotnet ef database update --project src/CSH.Parqueo  --startup-project src/CSH.Host --context ParqueoDbContext
+dotnet ef database update --project backend/src/CSH.Entradas --startup-project backend/src/CSH.Host --context EntradasDbContext
+dotnet ef database update --project backend/src/CSH.Parqueo  --startup-project backend/src/CSH.Host --context ParqueoDbContext
 # …repetir por cada módulo
 ```
 
@@ -125,12 +140,12 @@ dotnet ef database update --project src/CSH.Parqueo  --startup-project src/CSH.H
 
 ```bash
 # Terminal 1 — backend con hot reload
-dotnet watch --project src/CSH.Host
+dotnet watch --project backend/src/CSH.Host
 ```
 
 ```bash
 # Terminal 2 — frontend
-npm run dev --prefix ClientApp
+npm run dev --prefix frontend
 ```
 
 Se trabaja contra **`http://localhost:5173`** (Vite), no contra el puerto del
@@ -139,8 +154,8 @@ que en producción y las cookies de sesión funcionan igual que en el deploy.
 
 | Proceso | Puerto | Definido en |
 |---|---|---|
-| Vite (lo que abrís en el browser) | 5173 | `ClientApp/vite.config.ts` |
-| CSH.Host (API) | 5080 | `src/CSH.Host/Properties/launchSettings.json` |
+| Vite (lo que abrís en el browser) | 5173 | `frontend/vite.config.ts` |
+| CSH.Host (API) | 5080 | `backend/src/CSH.Host/Properties/launchSettings.json` |
 
 Si cambiás el puerto del backend, hay que cambiarlo **en los dos lados** — el
 proxy de Vite apunta a un puerto fijo.
@@ -150,7 +165,7 @@ proxy de Vite apunta a un puerto fijo.
 - **Varios `DbContext` en la solución:** todo comando `dotnet ef` necesita
   `--context`. Sin ese flag falla con "More than one DbContext was found".
 - **Migración en el proyecto equivocado:** `--project` es el módulo dueño de la
-  migración; `--startup-project` es siempre `src/CSH.Host`.
+  migración; `--startup-project` es siempre `backend/src/CSH.Host`.
 - **Cookie de sesión que no pega:** si estás entrando por el puerto del backend
   en vez de por Vite, el origen no coincide con el del login. Usá 5173.
 - **`dotnet watch` no toma un archivo nuevo:** reiniciarlo. El watcher no
@@ -170,13 +185,13 @@ proxy de Vite apunta a un puerto fijo.
 
 ```bash
 # Backend
-dotnet build CSH.slnx
-dotnet test CSH.slnx                    # requiere Docker corriendo (Testcontainers)
+dotnet build backend/CSH.slnx
+dotnet test backend/CSH.slnx                    # requiere Docker corriendo (Testcontainers)
 
 # Frontend
-npm run typecheck --prefix ClientApp   # tsc --noEmit
-npm run test --prefix ClientApp        # Vitest
-npm run build --prefix ClientApp       # build de producción
+npm run typecheck --prefix frontend   # tsc --noEmit
+npm run test --prefix frontend        # Vitest
+npm run build --prefix frontend       # build de producción
 ```
 
 Ningún PR llega a revisión con errores de compilación, de tipos, o con tests
