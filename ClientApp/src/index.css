@@ -1,0 +1,114 @@
+/*
+  Sistema de variables de Herediano. Ninguna pantalla hardcodea un color:
+  todo sale de estas variables (docs/harness_DEV_frontend.md §6).
+  Tema oscuro por defecto; el claro se activa con html[data-theme='light'].
+*/
+:root {
+  color-scheme: dark;
+
+  --bg: #0a0908;
+  --surface: #13100e;
+  --paper: #f7f1df;
+  --muted: #aa9d84;
+  --gold: #c9a961;
+  --gold-bright: #ffc72c;
+  --red: #d62828;
+  --ok: #7ee2a0;
+  --line: rgba(247, 241, 223, 0.12);
+
+  --font-body: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Big Shoulders Display', Impact, sans-serif;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f3efe6;
+  --surface: #fffdf8;
+  --paper: #221c15;
+  --muted: #6d6250;
+  --gold: #8a6d24;
+  --gold-bright: #a07a00;
+  --ok: #15803d;
+  --line: rgba(34, 28, 21, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--paper);
+  font-family: var(--font-body);
+  line-height: 1.6;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+h1 {
+  font-family: var(--font-display);
+  color: var(--gold-bright);
+  margin: 0 0 8px;
+}
+
+h2 {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  margin-top: 0;
+}
+
+section {
+  margin-top: 32px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.error {
+  color: var(--red);
+}
+
+.loading-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: girar 0.7s linear infinite;
+}
+
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

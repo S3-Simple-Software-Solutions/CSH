@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CSH.Host/CSH.Host.csproj" />
+    <Project Path="src/CSH.Shared/CSH.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CSH.Shared.Tests/CSH.Shared.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -459,6 +459,6 @@ dotnet add tests/CSH.NombreModulo.Tests reference src/CSH.NombreModulo/CSH.Nombr
 ### 7. Verificar antes de commitear
 
 ```bash
-dotnet build CSH.sln
-dotnet test CSH.sln
+dotnet build CSH.slnx
+dotnet test CSH.slnx
 ```
