@@ -1,0 +1,73 @@
+#!/bin/bash
+# Arranque de una instancia de la aplicacion.
+#
+# La AMI es estandar de Amazon Linux 2023: no se hornea nada por release. Lo
+# unico que la instancia necesita es podman, y la version que trae el repo de
+# AL2023 se actualiza sola. El artefacto de release es la imagen de ECR.
+set -euo pipefail
+exec > >(tee /var/log/csh-arranque.log) 2>&1
+
+dnf install -y podman jq
+
+# --- Credenciales del registro ----------------------------------------------
+aws ecr get-login-password --region ${region} \
+  | podman login --username AWS --password-stdin ${registro_host}
+
+# --- Clave de la base --------------------------------------------------------
+# La administra RDS en Secrets Manager: no viaja por Terraform ni por el CI.
+SECRETO="$(aws secretsmanager get-secret-value \
+  --secret-id ${secreto_arn} \
+  --region ${region} \
+  --query SecretString --output text)"
+
+DB_USUARIO="$(jq -r .username <<<"$SECRETO")"
+DB_CLAVE="$(jq -r .password <<<"$SECRETO")"
+
+umask 077
+cat > /etc/csh.env <<EOF
+ASPNETCORE_URLS=http://0.0.0.0:${puerto}
+ConnectionStrings__Default=Host=${db_host};Port=${db_puerto};Database=${db_nombre};Username=$DB_USUARIO;Password=$DB_CLAVE;SSL Mode=Require;Trust Server Certificate=true
+EOF
+umask 022
+
+unset SECRETO DB_CLAVE
+
+# --- La aplicacion -----------------------------------------------------------
+podman pull ${imagen}
+
+cat > /etc/systemd/system/csh.service <<'UNIT'
+[Unit]
+Description=CSH
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=-/usr/bin/podman rm -f csh
+ExecStart=/usr/bin/podman run --rm --name csh \
+  --env-file /etc/csh.env \
+  -p ${puerto}:${puerto} \
+  ${imagen}
+ExecStop=/usr/bin/podman stop csh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now csh.service
+
+# El ALB saca de rotacion la instancia si esto no responde.
+for intento in $(seq 1 30); do
+  if curl --fail --silent "http://127.0.0.1:${puerto}/healthz"; then
+    echo "La app respondio el health check"
+    exit 0
+  fi
+  echo "Esperando el arranque de la app... ($intento/30)"
+  sleep 2
+done
+
+echo "La app no arranco"
+systemctl status csh.service --no-pager || true
+exit 1
