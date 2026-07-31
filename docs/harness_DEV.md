@@ -271,16 +271,20 @@ cual escribir las reglas — antes son tests sobre código que no existe.
 
 ## 7. Estado de este documento y preguntas abiertas
 
-**Este harness describe el stack destino, no el que corre hoy.** La aplicación
-en `app/` es TypeScript + Express + React JSX. Nada de lo que está acá está
-validado contra código real: los ejemplos no se compilaron nunca.
+**Este harness describe el stack destino. La solución .NET todavía no existe.**
+Ningún ejemplo de este documento ni de los de capa está compilado.
+
+En `dev` no queda código de aplicación: el commit `b051ba6` removió la app
+anterior (TypeScript + Express + React JSX). Esa app sigue viva en `main`, que
+es lo que corre en producción hoy.
 
 Antes de tratar este documento como fuente de verdad hay que resolver:
 
-**1. La ruta de migración.** Hay usuarios comprando entradas contra la app
-actual. No está decidido si se reescribe de una, módulo por módulo (strangler
-fig), o si conviven los dos. Sin esa decisión, este documento describe un
-destino al que nadie sabe cómo llegar.
+**1. La convivencia con producción.** Hay usuarios comprando entradas contra la
+app de `main`. Mientras `dev` no tenga una solución .NET que la reemplace, un
+release `dev → main` borraría producción. Falta decidir cómo se hace el corte:
+si la solución nueva se termina antes de tocar `main`, o si los dos conviven
+durante la transición.
 
 **2. Glosario del dominio.** Redactado en [`glosario.md`](glosario.md), a partir
 de leer la aplicación anterior. Queda pendiente **validar cuatro decisiones**
