@@ -58,6 +58,8 @@ flowchart TB
     Parqueo[CSH.Parqueo]:::modulo
     Restaurantes[CSH.Restaurantes]:::modulo
     Cuponera[CSH.Cuponera]:::modulo
+    Membresias["CSH.Membresias - socios, cuota, carne QR"]:::modulo
+    Red["CSH.Red - portal cautivo del estadio"]:::modulo
 
     DB[(PostgreSQL - un esquema por modulo)]:::datos
 
@@ -69,12 +71,16 @@ flowchart TB
     Host --> Parqueo
     Host --> Restaurantes
     Host --> Cuponera
+    Host --> Membresias
+    Host --> Red
 
     Usuarios --> DB
     Entradas --> DB
     Parqueo --> DB
     Restaurantes --> DB
     Cuponera --> DB
+    Membresias --> DB
+    Red --> DB
 ```
 
 ### Autenticación por tipo de cliente
