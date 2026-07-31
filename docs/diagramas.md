@@ -24,6 +24,7 @@ flowchart LR
     Stripe[Stripe - pagos]:::externo
     Correo[Correo transaccional]:::externo
     WhatsApp[WhatsApp - Twilio]:::externo
+    Aruba[Aruba - wifi del estadio]:::externo
     Discord[Discord - avisos de deploy]:::externo
 
     Aficionado --> CSH
@@ -34,6 +35,7 @@ flowchart LR
     CSH --> Stripe
     CSH --> Correo
     CSH --> WhatsApp
+    CSH <--> Aruba
     CSH --> Discord
 ```
 
@@ -47,6 +49,7 @@ flowchart TB
     classDef host fill:#a78bfa,color:#0b1220,stroke:#6d28d9
     classDef modulo fill:#34d399,color:#0b1220,stroke:#047857
     classDef datos fill:#f59e0b,color:#0b1220,stroke:#b45309
+    classDef externo fill:#f472b6,color:#0b1220,stroke:#be185d
 
     SPA["ClientApp - React 19 + Vite (mismo origen)"]:::cliente
     Movil["App movil del aficionado - React Native/Expo (otro origen)"]:::cliente
@@ -59,7 +62,12 @@ flowchart TB
     Restaurantes[CSH.Restaurantes]:::modulo
     Cuponera[CSH.Cuponera]:::modulo
     Membresias["CSH.Membresias - socios, cuota, carne QR"]:::modulo
+    Salones[CSH.Salones]:::modulo
+    Sitio["CSH.Sitio - contenido y noticias"]:::modulo
+    Analytics[CSH.Analytics]:::modulo
     Red["CSH.Red - portal cautivo del estadio"]:::modulo
+
+    Aruba["Controlador wifi Aruba"]:::externo
 
     DB[(PostgreSQL - un esquema por modulo)]:::datos
 
@@ -72,6 +80,9 @@ flowchart TB
     Host --> Restaurantes
     Host --> Cuponera
     Host --> Membresias
+    Host --> Salones
+    Host --> Sitio
+    Host --> Analytics
     Host --> Red
 
     Usuarios --> DB
@@ -80,7 +91,12 @@ flowchart TB
     Restaurantes --> DB
     Cuponera --> DB
     Membresias --> DB
+    Salones --> DB
+    Sitio --> DB
+    Analytics --> DB
     Red --> DB
+
+    Red <-->|"API / RADIUS"| Aruba
 ```
 
 ### Autenticación por tipo de cliente
@@ -103,6 +119,35 @@ flowchart LR
     SPA -->|"Set-Cookie"| Cookie --> Principal
     Movil -->|"Authorization: Bearer"| Bearer --> Principal
     Principal --> CU --> Handlers
+```
+
+### Portal cautivo del wifi — Aruba
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor A as Aficionado
+    participant AP as Aruba (AP / controlador)
+    participant P as Portal CSH
+    participant R as CSH.Red
+    participant M as CSH.Membresias
+
+    A->>AP: Se conecta al SSID del estadio
+    AP-->>A: Redirige al portal (MAC, AP, url original)
+    A->>P: Abre el portal e inicia sesion
+    P->>R: POST /api/red/acceso
+    R->>M: Consulta membresia vigente (contrato en CSH.Shared)
+    alt Sin acceso
+        M-->>R: No vigente
+        R-->>P: 403 ProblemDetails
+        P-->>A: Motivo y como resolverlo
+    else Con acceso
+        M-->>R: Vigente
+        R->>AP: Autoriza la sesion (API / RADIUS CoA) con vigencia
+        R->>R: Registra en bitacora
+        AP-->>A: Navegacion habilitada
+        P-->>A: Pagina de bienvenida
+    end
 ```
 
 ### Dentro de un módulo — vertical slice
