@@ -11,6 +11,7 @@ que leer además el documento de la capa correspondiente.
 | C#, endpoints, handlers, base de datos | [`harness_DEV_backend.md`](harness_DEV_backend.md) |
 | React, TypeScript, CSS | [`harness_DEV_frontend.md`](harness_DEV_frontend.md) |
 | Cualquier cambio de código (siempre) | [`harness_DEV_testing.md`](harness_DEV_testing.md) |
+| Nombrar cualquier cosa del dominio (siempre) | [`glosario.md`](glosario.md) |
 
 ---
 
@@ -175,7 +176,89 @@ en rojo.
 
 ---
 
-## 5. Lo que un agente DEV NO debe tocar
+## 5. Cómo se hacen cumplir estas reglas
+
+Una regla que solo vive en prosa se rompe en tres semanas. Estas son las capas
+que las sostienen, de la más barata a la más cara.
+
+### Capa 1 — Referencias de proyecto (gratis)
+
+**La barrera más fuerte ya está en el diseño.** Si `CSH.Entradas` no tiene un
+`ProjectReference` a `CSH.Parqueo`, el import no compila. No hace falta ningún
+test para el límite entre módulos.
+
+Lo que hay que vigilar es que **nadie agregue la referencia**. Eso se ve en el
+diff de cualquier PR como un cambio en un `.csproj` — si aparece uno, es una
+decisión de arquitectura y se discute, no se aprueba de corrido.
+
+### Capa 2 — Compilador y analyzers
+
+En `Directory.Build.props`, para toda la solución:
+
+```xml
+<Nullable>enable</Nullable>
+<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+```
+
+Del lado del frontend, `"strict": true` en `tsconfig.json` cubre el equivalente.
+
+### Capa 3 — Tests de arquitectura (ArchUnitNET)
+
+Para lo que el compilador no puede ver. Cuatro reglas, en un proyecto
+`CSH.Architecture.Tests`:
+
+```csharp
+// 1. Domain no depende de Infrastructure — dentro del módulo no hay frontera de proyecto
+Types().That().ResideInNamespace("CSH.*.Domain", true)
+    .Should().NotDependOnAny(Types().That().ResideInNamespace("CSH.*.Infrastructure", true))
+
+// 2. Ningún handler toca HttpContext — la regla de ICurrentUser (§ backend)
+Classes().That().HaveNameEndingWith("Handler")
+    .Should().NotDependOnAny("Microsoft.AspNetCore.Http")
+
+// 3. El DbContext no se usa fuera de Infrastructure
+Types().That().AreAssignableTo(typeof(DbContext))
+    .Should().OnlyBeAccessedBy(Types().That().ResideInNamespace("CSH.*.Infrastructure", true))
+
+// 4. Todo handler devuelve Result<T> — nada de excepciones para flujo de negocio
+Methods().That().AreDeclaredIn(Classes().That().HaveNameEndingWith("Handler"))
+    .And().ArePublic().Should().HaveReturnType(typeof(Task<>))
+```
+
+### Capa 4 — ESLint en el frontend
+
+```js
+// Nada de fetch fuera de shared/utils/api.ts
+'no-restricted-globals': ['error', { name: 'fetch', message: 'Usá apiFetch.' }]
+
+// Un módulo no importa de otro módulo
+'import/no-restricted-paths': [/* modules/* → modules/* prohibido */]
+```
+
+Con `eslint-plugin-boundaries` para el segundo, que es el que más se rompe solo.
+
+### Lo que NO se puede verificar por máquina
+
+Estas reglas son reales pero ninguna herramienta las chequea. Van al checklist
+de revisión de PR, y se dice explícitamente que dependen del criterio de quien
+revisa — no se finge que están cubiertas:
+
+- La lógica de negocio está en el handler, no repartida.
+- El repositorio no contiene reglas de negocio.
+- `CSH.Shared` se mantiene delgado.
+- Los nombres siguen el [glosario](glosario.md).
+- El `detail` de un `Error` es texto que se le puede mostrar a un aficionado.
+
+### Orden de implementación
+
+Las capas 1 y 2 se montan con el primer módulo, porque son configuración. Las
+capas 3 y 4 tienen sentido **cuando exista el primer módulo real** contra el
+cual escribir las reglas — antes son tests sobre código que no existe.
+
+---
+
+## 6. Lo que un agente DEV NO debe tocar
 
 - `.github/workflows/` sin aprobación explícita del equipo.
 - `docs/harness*.md` — cambios al harness van en su propio PR y se anuncian.
@@ -186,7 +269,7 @@ en rojo.
 
 ---
 
-## 6. Estado de este documento y preguntas abiertas
+## 7. Estado de este documento y preguntas abiertas
 
 **Este harness describe el stack destino, no el que corre hoy.** La aplicación
 en `app/` es TypeScript + Express + React JSX. Nada de lo que está acá está
@@ -199,26 +282,21 @@ actual. No está decidido si se reescribe de una, módulo por módulo (strangler
 fig), o si conviven los dos. Sin esa decisión, este documento describe un
 destino al que nadie sabe cómo llegar.
 
-**2. Glosario del dominio.** En el código actual conviven *evento*, *partido* y
-*espectáculo*; *butaca* y *asiento*; *tribuna*, *sector* y *zona*. DDD sin
-lenguaje ubicuo es solo estructura de carpetas: cada agente elige un término
-distinto y el modelo se ensucia solo.
+**2. Glosario del dominio.** Redactado en [`glosario.md`](glosario.md), a partir
+de leer la aplicación anterior. Queda pendiente **validar cuatro decisiones**
+con el club antes de darlas por cerradas: si todo evento de formato `Partido`
+tiene siempre un partido de calendario asociado, si el club dice "localidad" o
+"sector" en su operación diaria, si `venue` y salón son el mismo concepto, y
+los nombres reales de las tribunas. Ver §5 de ese documento.
 
-**3. Enforcement.** Todas las reglas de acá son prosa: nada impide ignorarlas.
-Convertirlas en tests de arquitectura (ArchUnitNET para los límites entre
-módulos, analyzers, reglas de ESLint) es lo que hace que sobrevivan más de tres
-semanas.
+**3. Enforcement.** Las capas están definidas en §5 de este documento. Las dos
+primeras —referencias de proyecto y configuración del compilador— se montan con
+el primer módulo. Las dos últimas —ArchUnitNET y ESLint— tienen sentido cuando
+exista el primer módulo real contra el cual escribir las reglas; antes serían
+tests sobre código que no existe.
 
-**4. Historial de migraciones por módulo.** Varios `DbContext` sobre la misma
-base colisionan en `__EFMigrationsHistory`. Cada uno necesita la suya:
-
-```csharp
-opt.UseNpgsql(conn, npgsql =>
-    npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "entradas"));
-```
-
-**5. Sin cubrir todavía:** convenciones de datos (naming en Postgres, zona
-horaria de Costa Rica, `decimal` para colones), idempotencia de webhooks de
-Stripe, observabilidad, y el comportamiento en el pico de apertura de venta
-—que es el riesgo operativo número uno del proyecto y hoy solo está
-contemplado a nivel de infraestructura, no de código.
+**4. Sin cubrir todavía:** convenciones de datos (naming en Postgres, zona
+horaria de Costa Rica), idempotencia de webhooks de Stripe, observabilidad, y
+el comportamiento en el pico de apertura de venta —que es el riesgo operativo
+número uno del proyecto y hoy solo está contemplado a nivel de infraestructura,
+no de código.
