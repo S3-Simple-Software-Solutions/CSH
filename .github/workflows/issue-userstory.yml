@@ -6,27 +6,38 @@ name: Issue User Story Intake
 #   csh-john   -> Windows de JohnRich12,   agente claude
 #   csh-local  -> Linux de anthonyOviedo,  agente codex
 #
-# El filtro por asignado es lo que decide quien corre: un issue sin asignar no
-# lo toma ninguno de los dos.
+# Los dos jobs tienen exactamente el mismo contrato de entrada; lo unico que
+# cambia es el asignado, el label del runner y el agente.
+#
+# En el disparo manual hay que elegir la maquina: si los dos jobs respondieran
+# a workflow_dispatch, el mismo issue se procesaria dos veces.
 
 on:
   issues:
-    types: [opened, reopened, assigned]
+    types: [opened, reopened, assigned, labeled]
   workflow_dispatch:
     inputs:
       issue_number:
-        description: Issue number to process, or "all" for all open issues
+        description: Numero del issue, o "all" para barrer los abiertos
         required: true
         default: "all"
         type: string
-      provider:
-        description: Agent provider
+      runner:
+        description: En que maquina correrlo
         required: true
-        default: codex
+        default: csh-john
         type: choice
         options:
-          - codex
+          - csh-john
+          - csh-local
+      provider:
+        description: Agente
+        required: true
+        default: claude
+        type: choice
+        options:
           - claude
+          - codex
           - noop
 
 permissions:
@@ -54,9 +65,9 @@ jobs:
     #                       propia: el texto del issue alimenta a un agente.
     #   sin user-story-created  para que no se reprocese en cada reasignacion.
     #
-    # workflow_dispatch saltea todo: es la salida manual para forzar un caso.
+    # El disparo manual saltea todo, pero solo si eligieron esta maquina.
     if: |
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && inputs.runner == 'csh-john') ||
       (
         contains(github.event.issue.labels.*.name, 'agent-ready') &&
         contains(github.event.issue.assignees.*.login, 'JohnRich12') &&
@@ -122,19 +133,22 @@ jobs:
     name: Create User Story (anthonyOviedo)
     runs-on: [self-hosted, csh-local]
 
-    # Mismo contrato de entrada que el job de John, con el otro asignado.
+    # Identico al de John, con el otro asignado y la otra maquina.
     if: |
-      contains(github.event.issue.labels.*.name, 'agent-ready') &&
-      contains(github.event.issue.assignees.*.login, 'anthonyOviedo') &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
-      !contains(github.event.issue.labels.*.name, 'user-story-created')
+      (github.event_name == 'workflow_dispatch' && inputs.runner == 'csh-local') ||
+      (
+        contains(github.event.issue.labels.*.name, 'agent-ready') &&
+        contains(github.event.issue.assignees.*.login, 'anthonyOviedo') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
+        !contains(github.event.issue.labels.*.name, 'user-story-created')
+      )
 
     env:
       GH_TOKEN: ${{ github.token }}
       GH_PROJECT_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-      ISSUE_NUMBER: ${{ github.event.issue.number }}
-      PROVIDER: codex
+      ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+      PROVIDER: ${{ inputs.provider || 'codex' }}
 
     steps:
       - name: Checkout dev
@@ -152,6 +166,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/issue-userstory.mjs \
-            --issue-number "$ISSUE_NUMBER" \
-            --provider "$PROVIDER"
+
+          # El barrido manual se limita a los issues de esta persona.
+          if [ "$ISSUE_NUMBER" = "all" ]; then
+            node scripts/issue-userstory.mjs --all-open --provider "$PROVIDER" --assignee anthonyOviedo
+          else
+            node scripts/issue-userstory.mjs \
+              --issue-number "$ISSUE_NUMBER" \
+              --provider "$PROVIDER"
+          fi
