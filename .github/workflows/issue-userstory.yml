@@ -43,16 +43,25 @@ jobs:
     name: Create User Story (JohnRich12)
     runs-on: [self-hosted, csh-john]
 
-    # El repo es publico y este job corre en un runner self-hosted: el texto del
-    # issue termina alimentando un agente en una maquina propia. Por eso solo se
-    # procesan automaticamente los issues de gente de la organizacion. Para un
-    # issue de terceros, un maintainer lo dispara a mano con workflow_dispatch.
+    # Cuatro condiciones, y las cuatro tienen que darse:
+    #
+    #   agent-ready         opt-in explicito. Asignarse un issue es algo que uno
+    #                       hace para organizarse; la etiqueta es la que dice
+    #                       "esto ya esta listo para que arranque el agente".
+    #   asignado a John     de quien es el issue. Sin esto, los dos runners se
+    #                       pelearian el mismo trabajo.
+    #   autor de la org     el repo es publico y esto corre en una maquina
+    #                       propia: el texto del issue alimenta a un agente.
+    #   sin user-story-created  para que no se reprocese en cada reasignacion.
+    #
+    # workflow_dispatch saltea todo: es la salida manual para forzar un caso.
     if: |
       github.event_name == 'workflow_dispatch' ||
       (
-        !contains(github.event.issue.labels.*.name, 'user-story-created') &&
+        contains(github.event.issue.labels.*.name, 'agent-ready') &&
+        contains(github.event.issue.assignees.*.login, 'JohnRich12') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
-        contains(github.event.issue.assignees.*.login, 'JohnRich12')
+        !contains(github.event.issue.labels.*.name, 'user-story-created')
       )
 
     env:
@@ -113,10 +122,12 @@ jobs:
     name: Create User Story (anthonyOviedo)
     runs-on: [self-hosted, csh-local]
 
+    # Mismo contrato de entrada que el job de John, con el otro asignado.
     if: |
-      !contains(github.event.issue.labels.*.name, 'user-story-created') &&
+      contains(github.event.issue.labels.*.name, 'agent-ready') &&
+      contains(github.event.issue.assignees.*.login, 'anthonyOviedo') &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
-      contains(github.event.issue.assignees.*.login, 'anthonyOviedo')
+      !contains(github.event.issue.labels.*.name, 'user-story-created')
 
     env:
       GH_TOKEN: ${{ github.token }}
