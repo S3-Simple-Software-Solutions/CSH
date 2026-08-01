@@ -27,6 +27,16 @@ describe('App', () => {
     expect(await screen.findByText(/no se pudo contactar/i)).toBeInTheDocument()
   })
 
+  test('muestra la version y el commit desplegados', () => {
+    vi.spyOn(api, 'apiFetch').mockReturnValue(new Promise(() => {}))
+
+    render(<App />)
+
+    // Vite reemplaza __BUILD_TAG__ en build time; en los tests corre sin
+    // build-args, asi que solo se verifica el formato version-commit.
+    expect(screen.getByText(/^[\w.-]+-([0-9a-f]{2}|\?\?)$/)).toBeInTheDocument()
+  })
+
   test('muestra el estado de carga antes de que responda la API', () => {
     vi.spyOn(api, 'apiFetch').mockReturnValue(new Promise(() => {}))
 

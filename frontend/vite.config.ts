@@ -1,14 +1,43 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
+import { formatBuildTag } from './src/shared/utils/buildTag.ts'
 
 // El puerto del backend esta fijado en
 // backend/src/CSH.Host/Properties/launchSettings.json.
 // Si cambia alla, tiene que cambiar aca (docs/harness_DEV.md §3).
 const API = 'http://127.0.0.1:5080'
 
+// Identificador de la revision desplegada (issue #119). Los dos valores los
+// pasa el deploy como build-args del Containerfile; en un build local no
+// existen y el tag queda como `local-??`.
+const BUILD_TAG = formatBuildTag({
+  version: process.env.APP_VERSION,
+  commitSha: process.env.COMMIT_SHA,
+})
+
+// Deja el tag en el <head> como metadato, para poder leerlo del HTML servido
+// sin ejecutar la SPA ni pegarle a un endpoint.
+function buildTagMeta(): Plugin {
+  return {
+    name: 'csh-build-tag-meta',
+    transformIndexHtml() {
+      return [
+        {
+          tag: 'meta',
+          attrs: { name: 'app-version', content: BUILD_TAG },
+          injectTo: 'head',
+        },
+      ]
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), buildTagMeta()],
+  define: {
+    __BUILD_TAG__: JSON.stringify(BUILD_TAG),
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

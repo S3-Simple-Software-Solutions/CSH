@@ -16,6 +16,14 @@ RUN npm ci --prefix frontend
 
 COPY frontend/ frontend/
 
+# Version y commit de la publicacion (issue #119): vite.config.ts los mete en el
+# HTML. Van DESPUES del npm ci para no invalidar la capa de dependencias en cada
+# commit. Sin estos build-args el tag queda como `local-??`.
+ARG APP_VERSION
+ARG COMMIT_SHA
+ENV APP_VERSION=$APP_VERSION
+ENV COMMIT_SHA=$COMMIT_SHA
+
 # vite.config.ts publica en ../backend/src/CSH.Host/wwwroot, fuera de frontend/.
 RUN mkdir -p backend/src/CSH.Host && npm run build --prefix frontend
 
