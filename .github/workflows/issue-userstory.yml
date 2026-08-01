@@ -1,8 +1,17 @@
 name: Issue User Story Intake
 
+# Un job por persona, cada uno atado al runner de su maquina por label. Sin eso
+# los dos runners toman el mismo issue y lo procesan dos veces.
+#
+#   csh-john   -> Windows de JohnRich12,   agente claude
+#   csh-local  -> Linux de anthonyOviedo,  agente codex
+#
+# El filtro por asignado es lo que decide quien corre: un issue sin asignar no
+# lo toma ninguno de los dos.
+
 on:
   issues:
-    types: [opened, reopened]
+    types: [opened, reopened, assigned]
   workflow_dispatch:
     inputs:
       issue_number:
@@ -29,24 +38,92 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  create-user-story:
-    name: Create User Story
-    runs-on: self-hosted
+  # ---------------------------------------------------------------- JohnRich12
+  historia-john:
+    name: Create User Story (JohnRich12)
+    runs-on: [self-hosted, csh-john]
+
     # El repo es publico y este job corre en un runner self-hosted: el texto del
     # issue termina alimentando un agente en una maquina propia. Por eso solo se
     # procesan automaticamente los issues de gente de la organizacion. Para un
     # issue de terceros, un maintainer lo dispara a mano con workflow_dispatch.
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (!contains(github.event.issue.labels.*.name, 'user-story-created') &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
+      (
+        !contains(github.event.issue.labels.*.name, 'user-story-created') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
+        contains(github.event.issue.assignees.*.login, 'JohnRich12')
+      )
 
     env:
       GH_TOKEN: ${{ github.token }}
       GH_PROJECT_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      # Token de suscripcion, generado con `claude setup-token`. Deliberadamente
+      # NO se define ANTHROPIC_API_KEY: si estuviera, el CLI le daria precedencia
+      # y se empezaria a facturar por token.
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
-      PROVIDER: ${{ inputs.provider || 'codex' }}
+      PROVIDER: ${{ inputs.provider || 'claude' }}
+
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Configure git author
+        run: |
+          git config user.name "csh-userstory-agent"
+          git config user.email "csh-userstory-agent@users.noreply.github.com"
+
+      - name: Verificar el CLI y las credenciales
+        if: env.PROVIDER == 'claude'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v claude > /dev/null; then
+            echo "::error::Falta el CLI en el runner: npm install -g @anthropic-ai/claude-code"
+            exit 1
+          fi
+          if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "::error::Falta el secret CLAUDE_CODE_OAUTH_TOKEN. Generalo con 'claude setup-token'."
+            exit 1
+          fi
+          claude --version
+
+      - name: Create user story from issue
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # El barrido manual se limita a los issues de esta persona: el config
+          # apunta a anthonyOviedo, asi que aca se pasa el asignado explicito.
+          if [ "$ISSUE_NUMBER" = "all" ]; then
+            node scripts/issue-userstory.mjs --all-open --provider "$PROVIDER" --assignee JohnRich12
+          else
+            node scripts/issue-userstory.mjs \
+              --issue-number "$ISSUE_NUMBER" \
+              --provider "$PROVIDER"
+          fi
+
+  # ------------------------------------------------------------- anthonyOviedo
+  historia-tony:
+    name: Create User Story (anthonyOviedo)
+    runs-on: [self-hosted, csh-local]
+
+    if: |
+      !contains(github.event.issue.labels.*.name, 'user-story-created') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
+      contains(github.event.issue.assignees.*.login, 'anthonyOviedo')
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_PROJECT_TOKEN: ${{ secrets.GH_PROJECT_TOKEN }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      PROVIDER: codex
 
     steps:
       - name: Checkout dev
@@ -64,11 +141,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          if [ "$ISSUE_NUMBER" = "all" ]; then
-            node scripts/issue-userstory.mjs --all-open --provider "$PROVIDER"
-          else
-            node scripts/issue-userstory.mjs \
-              --issue-number "$ISSUE_NUMBER" \
-              --provider "$PROVIDER"
-          fi
+          node scripts/issue-userstory.mjs \
+            --issue-number "$ISSUE_NUMBER" \
+            --provider "$PROVIDER"
