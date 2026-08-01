@@ -110,7 +110,13 @@ jobs:
 
             echo "== Construyendo imagen ($DEV_VERSION) =="
             cd "$BUILD_DIR"
-            podman build -f cicd/Containerfile -t "csh:$DEV_VERSION" -t csh:dev .
+            # APP_VERSION/COMMIT_SHA terminan en el HTML como `dev-<2 ultimos
+            # del sha>` (issue #119). En dev no hay version de release, asi que
+            # la etiqueta es "dev" a secas.
+            podman build -f cicd/Containerfile \
+              --build-arg APP_VERSION=dev \
+              --build-arg COMMIT_SHA="$DEPLOY_SHA" \
+              -t "csh:$DEV_VERSION" -t csh:dev .
 
             echo "== Reemplazando el contenedor =="
             # El puerto lo pudo haber tomado el servicio systemd del stack viejo.

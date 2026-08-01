@@ -85,6 +85,16 @@ section {
   color: var(--red);
 }
 
+/* Version desplegada: presente pero discreta, fuera del flujo de lectura. */
+.version {
+  margin-top: 32px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
 .loading-block {
   display: flex;
   align-items: center;

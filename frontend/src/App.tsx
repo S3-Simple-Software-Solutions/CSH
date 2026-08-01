@@ -37,6 +37,12 @@ export default function App() {
           </p>
         )}
       </section>
+
+      {/* Version + commit desplegados, para identificar la revision que se
+          esta viendo sin abrir el HTML (issue #119). */}
+      <footer className="version">
+        <span title="Version y commit desplegados">{__BUILD_TAG__}</span>
+      </footer>
     </main>
   )
 }
