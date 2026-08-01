@@ -174,7 +174,10 @@ jobs:
 
   notify:
     name: Notify Discord
-    if: always()
+    # Solo cuando algo se rompe. Un CI verde por push no aporta nada: el aviso
+    # que sirve es el del deploy, que trae version, cambios y donde probarlo.
+    # Un canal con ruido se deja de leer, y entonces tampoco se ve el rojo.
+    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
     runs-on: ubuntu-latest
     needs:
       - dependency-review
@@ -198,17 +201,21 @@ jobs:
             exit 0
           fi
 
-          if grep -q '"result":"failure"' <<<"$NEEDS_JSON"; then
-            TITLE="CI en rojo"; COLOR=15548997
-          elif grep -q '"result":"cancelled"' <<<"$NEEDS_JSON"; then
+          # El job solo corre si algo se rompio, asi que no hay caso verde.
+          if grep -q '"result":"cancelled"' <<<"$NEEDS_JSON"; then
             TITLE="CI cancelado"; COLOR=16776960
           else
-            TITLE="CI en verde"; COLOR=5763719
+            TITLE="CI en rojo"; COLOR=15548997
           fi
+
+          # Que se rompio, para no tener que abrir el run para saberlo.
+          ROTOS="$(jq -r 'to_entries
+            | map(select(.value.result == "failure" or .value.result == "cancelled"))
+            | map("- \(.key): \(.value.result)") | join("\n")' <<<"$NEEDS_JSON")"
 
           jq -n \
             --arg title "$TITLE" \
-            --arg desc "$GITHUB_EVENT_NAME sobre $GITHUB_REF_NAME (${GITHUB_SHA::7})" \
+            --arg desc "$(printf '%s sobre %s (%s)\n\n%s' "$GITHUB_EVENT_NAME" "$GITHUB_REF_NAME" "${GITHUB_SHA::7}" "$ROTOS")" \
             --arg url "$RUN_URL" \
             --argjson color "$COLOR" \
             '{embeds: [{title: $title, description: $desc, url: $url, color: $color}]}' \
