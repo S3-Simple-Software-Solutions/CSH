@@ -21,6 +21,16 @@
         "Glob"
       ]
     },
+    "claude-plan": {
+      "type": "claude-cli",
+      "command": "claude",
+      "model": "opus",
+      "allowedTools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ]
+    },
     "noop": {
       "type": "noop"
     }
