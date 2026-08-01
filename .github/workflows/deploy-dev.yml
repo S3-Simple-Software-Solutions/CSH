@@ -110,9 +110,10 @@ jobs:
 
             echo "== Construyendo imagen ($DEV_VERSION) =="
             cd "$BUILD_DIR"
-            # APP_VERSION/COMMIT_SHA terminan en el HTML como `dev-<2 ultimos
-            # del sha>` (issue #119). En dev no hay version de release, asi que
-            # la etiqueta es "dev" a secas.
+            # APP_VERSION/COMMIT_SHA terminan en el HTML como `dev-<short sha>`
+            # (issue #119) — el mismo short sha que se ve en $DEV_VERSION y en
+            # el aviso de Discord. En dev no hay version de release, asi que la
+            # etiqueta es "dev" a secas.
             podman build -f cicd/Containerfile \
               --build-arg APP_VERSION=dev \
               --build-arg COMMIT_SHA="$DEPLOY_SHA" \

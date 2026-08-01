@@ -225,8 +225,8 @@ jobs:
             echo "== Installing dependencies for $RELEASE_VERSION =="
             npm ci
             echo "== Building $RELEASE_VERSION =="
-            # APP_VERSION/COMMIT_SHA terminan en el HTML como `v0.N-<2 ultimos
-            # del sha>` (issue #119). Los lee frontend/vite.config.ts.
+            # APP_VERSION/COMMIT_SHA terminan en el HTML como
+            # `v0.N-<short sha>` (issue #119). Los lee frontend/vite.config.ts.
             APP_VERSION="$RELEASE_VERSION" COMMIT_SHA="$DEPLOY_SHA" npm run build
 
             cat > RELEASE_MANIFEST.json <<EOF

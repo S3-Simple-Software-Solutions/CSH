@@ -8,9 +8,10 @@ import { formatBuildTag } from './src/shared/utils/buildTag.ts'
 // Si cambia alla, tiene que cambiar aca (docs/harness_DEV.md §3).
 const API = 'http://127.0.0.1:5080'
 
-// Identificador de la revision desplegada (issue #119). Los dos valores los
-// pasa el deploy como build-args del Containerfile; en un build local no
-// existen y el tag queda como `local-??`.
+// Identificador de la revision desplegada (issue #119): `v0.3-c021d8c` en
+// produccion, `dev-c021d8c` en dev. Los dos valores los pasa el deploy como
+// build-args del Containerfile; en un build local no existen y el tag queda
+// como `local-??`.
 const BUILD_TAG = formatBuildTag({
   version: process.env.APP_VERSION,
   commitSha: process.env.COMMIT_SHA,
