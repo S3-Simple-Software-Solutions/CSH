@@ -11,7 +11,9 @@ technical rules for writing the code live in the DEV harness:
 |---|---|
 | [`harness_DEV.md`](harness_DEV.md) | Every code task — stack, architecture, running locally |
 | [`harness_DEV_backend.md`](harness_DEV_backend.md) | C#, endpoints, handlers, database |
-| [`harness_DEV_frontend.md`](harness_DEV_frontend.md) | React, TypeScript, CSS |
+| [`harness_DEV_cliente.md`](harness_DEV_cliente.md) | Any client — web or mobile |
+| [`harness_DEV_web.md`](harness_DEV_web.md) | The SPA specifically |
+| [`harness_DEV_movil.md`](harness_DEV_movil.md) | The mobile app specifically (M9) |
 | [`harness_DEV_testing.md`](harness_DEV_testing.md) | Every code task |
 
 Those documents describe the **target stack** (.NET 10 + React/TypeScript), not
