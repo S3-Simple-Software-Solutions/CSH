@@ -252,22 +252,90 @@ butaca dos veces. Ver el test obligatorio en
 
 ## 6. Autenticación
 
-### Decisión: cookie authentication de ASP.NET Core, no JWT
+### Las cuentas viven en Cognito
 
-CSH es un monolito servido desde un mismo origen, sin app móvil ni API pública
-para terceros. El JWT resuelve auth distribuida o cross-origin — ninguno de los
-dos casos aplica acá. Y en una ticketera hace falta poder **cortar acceso ya**
-(cuenta comprometida, fraude en una apertura de venta, admin que sale del club);
-un JWT no se revoca sin mantener una blocklist, que reintroduce el estado que el
-JWT supuestamente evitaba.
+`CSH.Usuarios` **no guarda credenciales**. Las cuentas —`administrativos`,
+`socios`, `invitados`— viven en un user pool de Cognito
+(`infra/modules/identidad`). El módulo guarda el perfil del aficionado y lo
+relaciona con el `sub` de Cognito, que es el identificador estable de la
+persona.
 
-La cookie de ASP.NET Core también es self-contained — lleva el `ClaimsPrincipal`
-cifrado, sin lookup a la DB por request — pero además tiene punto de revocación
-vía `SecurityStamp`.
+Cognito emite los tokens; el backend los valida contra el issuer del pool. Los
+roles llegan en el claim `cognito:groups`, y la precedencia del grupo decide
+cuál gana cuando alguien pertenece a más de uno.
 
-**Qué cambiaría esta decisión:** una app móvil nativa o exponer API a terceros.
-Ninguna está en el roadmap. Si llega, se cambia solo la implementación de
-`ICurrentUser` en `CSH.Host` — ningún módulo se entera.
+### Un esquema por tipo de cliente
+
+Hay dos clientes con entornos de seguridad distintos, así que autentican
+distinto. Los dos terminan en un `ClaimsPrincipal`, de modo que **los handlers
+no se enteran de la diferencia**.
+
+| Cliente | Esquema | Dónde vive la credencial |
+|---|---|---|
+| SPA (`frontend`) | Cookie `httpOnly`, vía BFF | Solo en el navegador como cookie que el JS no puede leer |
+| App móvil (M9) | Bearer | `SecureStore` del dispositivo — Keychain / Keystore |
+
+**Por qué el móvil lleva el token directo.** Cliente público con PKCE es el
+patrón estándar para apps nativas (RFC 8252). El almacenamiento seguro del
+sistema operativo no tiene equivalente a un XSS: no hay forma de que otro
+código de la app lea el token.
+
+**Por qué la web no.** PKCE protege el **intercambio del código**, no el
+**token ya guardado**. Son amenazas distintas:
+
+| Amenaza | ¿PKCE la cubre? |
+|---|---|
+| Interceptar el código en el redirect | Sí, es exactamente para eso |
+| XSS leyendo el token del `localStorage` | No |
+
+Y en este proyecto los **administradores entran por el navegador**. Un refresh
+token de 30 días en el `localStorage` de un admin es la credencial más valiosa
+del sistema en el entorno más hostil: un XSS da un mes de acceso
+administrativo. Guardarlo solo en memoria se pierde en cada recarga, y la
+presión de UX termina devolviéndolo al `localStorage`.
+
+Por eso la web usa **BFF**: el backend hace el intercambio del código con un
+cliente confidencial, se queda con los tokens de Cognito, y le entrega al
+navegador una cookie `httpOnly`. La SPA nunca ve un token.
+
+```csharp
+// CSH.Host/Program.cs
+builder.Services.AddAuthentication()
+    .AddCookie()                        // sesión de la SPA
+    .AddOpenIdConnect(/* Cognito */)    // login de la SPA — hace el intercambio
+    .AddJwtBearer(/* issuer del pool */); // app móvil
+```
+
+Eso exige **dos clientes en Cognito**: el público que ya existe para el móvil, y
+uno confidencial (`generate_secret = true`) para el backend.
+
+### La sesión web empieza autocontenida
+
+La cookie lleva los claims copiados del ID token y los tokens de Cognito se
+descartan. Cero almacenamiento de sesión, y ya se gana el `httpOnly`.
+
+**Se pasa a sesión con referencia del lado servidor solo cuando la operación lo
+pida** — cuando revocar a un admin tenga que ser inmediato en vez de esperar a
+que expire la cookie. No antes: es estado que hay que mantener.
+
+### La entrada tiene que funcionar sin sesión
+
+Consecuencia directa de lo anterior, y la que rompe todo si se descubre tarde.
+
+El día del partido el aficionado llega al molinete con el access token vencido
+—dura 60 minutos— y sin señal para refrescarlo, porque hay veinte mil personas
+saturando el wifi del estadio.
+
+**Si mostrar la entrada requiere una sesión válida o una llamada a la API, no
+funciona justo el día que importa.** Entonces:
+
+- El QR es un **artefacto firmado** que la app descargó cuando tenía señal, no
+  una consulta a `/api/entradas/{id}`.
+- El escáner del molinete lo valida contra una **clave pública local**, sin red.
+- La revocación viaja como una lista que el escáner sincroniza cuando puede, no
+  como una consulta en línea.
+
+Esto aplica igual a la app móvil y a una entrada mostrada desde el navegador.
 
 ### Cómo un handler sabe quién es el usuario
 
@@ -285,18 +353,28 @@ public interface ICurrentUser
 }
 ```
 
+`Id` es el **`sub` de Cognito**, no un id propio de la aplicación: es lo que
+`CSH.Usuarios` usa para relacionar el perfil.
+
 ```csharp
 // CSH.Host/Auth/CurrentUser.cs — única clase que conoce HttpContext
 public class CurrentUser(IHttpContextAccessor http) : ICurrentUser
 {
     private ClaimsPrincipal User => http.HttpContext!.User;
 
-    public Guid Id => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+    // El `sub` de Cognito, estable por persona y compartido entre web y movil.
+    public Guid Id => Guid.Parse(User.FindFirst("sub")!.Value);
     public string Email => User.FindFirst(ClaimTypes.Email)!.Value;
-    public bool IsAdmin => User.IsInRole("Admin");
+
+    // Cognito manda los grupos en `cognito:groups`. El mapeo grupo -> rol se
+    // configura una vez en Program.cs (RoleClaimType), no se resuelve aca.
+    public bool IsAdmin => User.IsInRole("administrativos");
     public bool IsAuthenticated => User.Identity?.IsAuthenticated ?? false;
 }
 ```
+
+Esta clase es la **única** que cambia si mañana se reemplaza Cognito. Ningún
+módulo se entera.
 
 ```csharp
 // CSH.Host/Program.cs
@@ -310,22 +388,47 @@ La autorización se declara en el endpoint, no se chequea dentro del handler:
 
 ```csharp
 app.MapPost("/api/entradas/comprar", Handle)
-   .RequireAuthorization();          // cualquier usuario autenticado
+   .RequireAuthorization();               // cualquier usuario autenticado
 
 app.MapPost("/api/admin/eventos", Handle)
-   .RequireAuthorization("Admin");   // solo admins
+   .RequireAuthorization("administrativos");  // grupo de Cognito
+```
+
+Un endpoint que acepta los dos clientes no declara esquema; uno exclusivo de
+uno declara el suyo:
+
+```csharp
+   .RequireAuthorization(new AuthorizationPolicyBuilder(
+        CookieAuthenticationDefaults.AuthenticationScheme)  // solo web
+        .RequireAuthenticatedUser().Build());
 ```
 
 ### Despliegue multi-instancia
 
 Cuando la app corra en más de una instancia (ASG de AWS), las **Data Protection
-keys** tienen que compartirse — si no, un usuario pierde la sesión al rebotar de
-instancia. Se persisten en la base o en S3:
+keys** tienen que compartirse — si no, un usuario de la web pierde la sesión al
+rebotar de instancia. Se persisten en la base o en S3:
 
 ```csharp
 builder.Services.AddDataProtection()
     .PersistKeysToDbContext<UsuariosDbContext>();
 ```
+
+Al móvil no le afecta: valida el JWT contra el issuer, sin estado local.
+
+### Preguntas abiertas
+
+Ninguna de estas está resuelta y todas se materializan al escribir
+`CSH.Usuarios`:
+
+1. **Quién crea el perfil.** Cuando alguien se registra en Cognito, ¿quién
+   inserta la fila en `CSH.Usuarios`? ¿El primer login, o un trigger del pool?
+2. **Qué es un `invitado`.** Es uno de los tres grupos. ¿Compra sin cuenta? Eso
+   toca el flujo de entradas y no está en el [glosario](glosario.md).
+3. **El segundo cliente de Cognito.** Hoy `infra/modules/identidad` define uno
+   solo, público, compartido. El BFF necesita uno confidencial aparte.
+4. **El portal cautivo (M10).** El aficionado se conecta al wifi del estadio
+   pasando por Aruba. ¿Es la misma identidad? ¿Participa la app?
 
 ---
 

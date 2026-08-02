@@ -9,9 +9,15 @@ que leer además el documento de la capa correspondiente.
 | Si la tarea toca… | Leer también |
 |---|---|
 | C#, endpoints, handlers, base de datos | [`harness_DEV_backend.md`](harness_DEV_backend.md) |
-| React, TypeScript, CSS | [`harness_DEV_frontend.md`](harness_DEV_frontend.md) |
+| Cualquier cliente — web o móvil | [`harness_DEV_cliente.md`](harness_DEV_cliente.md) |
+| …y además, si es la SPA | [`harness_DEV_web.md`](harness_DEV_web.md) |
+| …y además, si es la app móvil | [`harness_DEV_movil.md`](harness_DEV_movil.md) |
 | Cualquier cambio de código (siempre) | [`harness_DEV_testing.md`](harness_DEV_testing.md) |
 | Nombrar cualquier cosa del dominio (siempre) | [`glosario.md`](glosario.md) |
+
+Los documentos de plataforma son cortos a propósito: dicen **solo en qué se
+aparta** esa plataforma del contrato común. Una regla que aplica a los dos vive
+en `harness_DEV_cliente.md` y en ningún otro lado.
 
 ---
 
@@ -70,9 +76,11 @@ backend/                        ← .NET
     ├── CSH.Parqueo.Tests/
     └── ...
 
-frontend/                       ← SPA React (ver harness_DEV_frontend.md)
+frontend/                       ← SPA React (ver harness_DEV_web.md)
 ├── src/
 └── (los tests viven junto al código, no en un directorio aparte)
+
+mobile/                         ← app del aficionado, M9 — todavía no existe
 
 docs/                           ← el harness y el glosario
 .github/                        ← workflows
@@ -85,11 +93,13 @@ garantiza confusión.
 Los códigos `M1`–`M11` son las épicas del
 [board del proyecto](https://github.com/orgs/S3-Simple-Software-Solutions/projects/2),
 que es donde vive el alcance. `M9` es la app móvil del aficionado (React Native
-/ Expo): consume la misma API pero no es un proyecto de esta solución.
+/ Expo): consume la misma API pero no es un proyecto de esta solución. Autentica
+con bearer contra Cognito, mientras la web usa cookie vía BFF — ver
+[`harness_DEV_backend.md §6`](harness_DEV_backend.md).
 
 Detalle de la estructura interna de un módulo backend:
 [`harness_DEV_backend.md`](harness_DEV_backend.md).
-Detalle del frontend: [`harness_DEV_frontend.md`](harness_DEV_frontend.md).
+Detalle de los clientes: [`harness_DEV_cliente.md`](harness_DEV_cliente.md).
 
 ### Reglas — no negociables
 
