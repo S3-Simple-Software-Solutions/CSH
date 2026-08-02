@@ -27,7 +27,7 @@ que leer además el documento de la capa correspondiente.
 | Build frontend | Vite |
 | Routing frontend | React Router |
 | Estilos | CSS propio — sistema de variables de Herediano (sin librerías UI externas) |
-| Íconos | lucide-react |
+| Íconos | lucide-react — elegida, todavía sin instalar |
 | Tests backend | xUnit + Testcontainers |
 | Tests frontend | Vitest + React Testing Library |
 
@@ -189,6 +189,7 @@ dotnet build backend/CSH.slnx
 dotnet test backend/CSH.slnx                    # requiere Docker corriendo (Testcontainers)
 
 # Frontend
+npm run lint --prefix frontend        # oxlint
 npm run typecheck --prefix frontend   # tsc --noEmit
 npm run test --prefix frontend        # Vitest
 npm run build --prefix frontend       # build de producción
@@ -196,6 +197,11 @@ npm run build --prefix frontend       # build de producción
 
 Ningún PR llega a revisión con errores de compilación, de tipos, o con tests
 en rojo.
+
+Estos son exactamente los mismos comandos que corre
+[`ci.yml`](../.github/workflows/ci.yml) en cada PR contra `dev` y contra `main`.
+Si acá se agrega uno, se agrega allá — y al revés: un gate que solo corre en CI
+sorprende a quien validó local y creía estar listo.
 
 ---
 
@@ -294,12 +300,21 @@ cual escribir las reglas — antes son tests sobre código que no existe.
 
 ## 7. Estado de este documento y preguntas abiertas
 
-**Este harness describe el stack destino. La solución .NET todavía no existe.**
-Ningún ejemplo de este documento ni de los de capa está compilado.
+**Existe el esqueleto, no los módulos.** `CSH.Host`, `CSH.Shared` y el
+`frontend` compilan, pasan los gates y sirven `/healthz` más la SPA. Lo que
+está verificado contra código real es eso: `Result<T>`, `Error`,
+`ResultExtensions`, `apiFetch` y la configuración de los proyectos.
 
-En `dev` no queda código de aplicación: el commit `b051ba6` removió la app
-anterior (TypeScript + Express + React JSX). Esa app sigue viva en `main`, que
-es lo que corre en producción hoy.
+**El resto sigue sin compilar nunca.** Todo lo de módulos, EF Core, migraciones
+con esquema, MediatR, `ICurrentUser` y el fixture de Testcontainers son
+ejemplos escritos de memoria. Es la mayor parte de
+[`harness_DEV_backend.md`](harness_DEV_backend.md), así que tratalo como
+propuesta hasta que el primer módulo lo confirme o lo desmienta —igual que pasó
+con el esqueleto, que corrigió cuatro cosas que este harness afirmaba mal.
+
+La aplicación anterior (TypeScript + Express + React JSX) fue removida de `dev`
+en el commit `b051ba6`, pero **sigue viva en `main`**, que es lo que corre en
+producción hoy.
 
 Antes de tratar este documento como fuente de verdad hay que resolver:
 

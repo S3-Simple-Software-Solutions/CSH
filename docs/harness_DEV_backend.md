@@ -51,22 +51,37 @@ public readonly record struct Error(string Title, string Detail, int Status)
 ```
 
 ```csharp
-// CSH.Shared/Results/Result.cs
+// backend/src/CSH.Shared/Results/Result.cs
 public readonly struct Result<T>
 {
-    public T? Value { get; }
-    public Error? Error { get; }
-    public bool IsSuccess => Error is null;
+    private readonly T? _value;
+    private readonly Error? _error;
 
-    private Result(T? value, Error? error) => (Value, Error) = (value, error);
+    private Result(T? value, Error? error) => (_value, _error) = (value, error);
+
+    // El atributo es lo que le permite al compilador estrechar el tipo: despues
+    // de `if (!result.IsSuccess)`, sabe que result.Error no es null.
+    [MemberNotNullWhen(false, nameof(Error))]
+    public bool IsSuccess => _error is null;
+
+    public T? Value => _value;
+    public Error? Error => _error;
 
     public static Result<T> Ok(T value) => new(value, null);
     public static Result<T> Fail(Error error) => new(default, error);
 
+    // Las conversiones implicitas dejan que el handler escriba `return entrada;`
+    // y `return Error.NotFound(...);` sin ruido.
     public static implicit operator Result<T>(T value) => Ok(value);
     public static implicit operator Result<T>(Error error) => Fail(error);
 }
 ```
+
+**Ojo con el namespace:** estos tipos viven en `CSH.Shared` a secas, no en
+`CSH.Shared.Results`, aunque los archivos estén en la carpeta `Results/`. Un
+namespace terminado en `.Results` colisiona con
+`Microsoft.AspNetCore.Http.Results` y el compilador resuelve `Results.Ok(...)`
+contra el propio (`CS0234`).
 
 Uso en un handler — la conversión implícita evita ruido:
 

@@ -7,8 +7,26 @@ Aplica a toda tarea que toque React, TypeScript o CSS.
 
 ## 1. Estructura
 
+### Lo que existe hoy
+
+```
+frontend/src/
+├── shared/
+│   ├── components/
+│   │   └── LoadingBlock.tsx
+│   └── utils/
+│       └── api.ts           ← apiFetch, único punto de salida HTTP
+├── test/setup.ts
+├── App.tsx
+├── index.css                ← variables del sistema
+└── main.tsx
+```
+
+### A dónde va
+
 El frontend espeja los bounded contexts del backend: un directorio en
-`modules/` por cada módulo de la solución.
+`modules/` por cada módulo de la solución. **Todavía no existe ninguno** — lo
+crea el primer módulo que se implemente.
 
 ```
 frontend/src/
@@ -18,11 +36,10 @@ frontend/src/
 │   │   ├── types.ts         ← tipos del dominio (espejan el backend)
 │   │   └── pages/
 │   └── parqueo/
-├── shared/                  ← componentes y utilidades reutilizables
+├── shared/
 │   ├── components/
-│   ├── hooks/
+│   ├── hooks/               ← todavía vacío
 │   └── utils/
-│       └── api.ts           ← apiFetch, único punto de salida HTTP
 └── main.tsx                 ← router y composición de la app
 ```
 
@@ -52,32 +69,60 @@ Traduce el contrato HTTP del backend (ver
 [`harness_DEV_backend.md §3`](harness_DEV_backend.md)) a una discriminated
 union, para que el compilador obligue a manejar el error:
 
+El código vive en `frontend/src/shared/utils/api.ts`. Este es el archivo real,
+no un ejemplo:
+
 ```ts
-// shared/utils/api.ts
 export type ApiResult<T> =
   | { ok: true; value: T }
-  | { ok: false; status: number; title: string; detail: string; errors?: Record<string, string[]> };
+  | { ok: false; status: number; title: string; detail: string; errors?: Record<string, string[]> }
+
+/** Forma de RFC 9457 Problem Details, tal como la emite ASP.NET Core. */
+interface ProblemDetails {
+  title?: string
+  detail?: string
+  status?: number
+  errors?: Record<string, string[]>
+}
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
-  const res = await fetch(path, {
-    credentials: 'include',
-    headers: { 'content-type': 'application/json', ...init?.headers },
-    ...init,
-  });
+  let res: Response
+  try {
+    res = await fetch(path, {
+      credentials: 'include',
+      ...init,
+      // `headers` va DESPUES del spread de init, no antes: al reves, un init con
+      // headers propios pisaria el objeto entero y se perderia el content-type.
+      headers: { 'content-type': 'application/json', ...init?.headers },
+    })
+  } catch {
+    // El servidor no respondio: sin red, caido, o CORS. Sin este catch, cada
+    // pantalla necesitaria su propio try/catch.
+    return {
+      ok: false,
+      status: 0,
+      title: 'Sin conexion',
+      detail: 'No se pudo contactar al servidor. Revisa tu conexion.',
+    }
+  }
 
-  if (res.status === 204) return { ok: true, value: undefined as T };
-  if (res.ok) return { ok: true, value: await res.json() as T };
+  if (res.status === 204) return { ok: true, value: undefined as T }
+  if (res.ok) return { ok: true, value: (await res.json()) as T }
 
-  const problem = await res.json().catch(() => null);
+  const problem = (await res.json().catch(() => null)) as ProblemDetails | null
   return {
     ok: false,
     status: res.status,
-    title: problem?.title ?? 'Error de conexión',
-    detail: problem?.detail ?? 'No se pudo completar la operación.',
+    title: problem?.title ?? 'Error del servidor',
+    detail: problem?.detail ?? 'No se pudo completar la operacion.',
     errors: problem?.errors,
-  };
+  }
 }
 ```
+
+Dos detalles que parecen menores y no lo son: el orden de `headers` respecto al
+spread, y el `catch` alrededor del `fetch`. Los dos están explicados arriba
+porque son los que se rompen al reescribir esta función de memoria.
 
 ### El api.ts de cada módulo
 
@@ -137,11 +182,23 @@ Los tres estados se muestran siempre — nunca una pantalla en blanco:
 
 - Solo componentes funcionales.
 - Props tipadas con `interface` o `type` explícito.
-- `useEscClose(onClose)` en cualquier modal o panel con cierre.
-- `useConfirm()` para acciones destructivas (eliminar, cancelar, etc.).
 - Form state con updater funcional: `setForm(prev => ({ ...prev, campo: valor }))`
   — el spread directo sobre `form` pierde updates si hay dos seguidos.
-- Íconos de `lucide-react` únicamente.
+- Sin `!` para el nodo raíz ni para nada: si algo puede faltar, se chequea.
+
+### Pendiente de crear
+
+Estas piezas existían en la aplicación anterior y se van a necesitar de nuevo,
+pero **todavía no están** en `frontend/`. Quien las cree primero las agrega acá
+y en `shared/`:
+
+| Pieza | Para qué |
+|---|---|
+| `useEscClose(onClose)` | Cerrar modales y paneles con Escape |
+| `useConfirm()` | Confirmar acciones destructivas del admin |
+| `lucide-react` | Íconos — es la librería elegida, falta instalarla |
+
+Mientras no existan, no las cites en código: el import no resuelve.
 
 ---
 
@@ -151,8 +208,10 @@ Los tres estados se muestran siempre — nunca una pantalla en blanco:
   `--muted`, `--surface`, etc.).
 - Dark mode por defecto; light mode via `html[data-theme='light']`.
 - Sin Tailwind, sin styled-components, sin CSS-in-JS.
-- Fuentes del proyecto: `--font-display`, `--font-label`, `--font-accent`,
-  `--font-body`.
+- Fuentes definidas hoy en `frontend/src/index.css`: `--font-display` y
+  `--font-body`. La aplicación anterior tenía además `--font-label` (Oswald) y
+  `--font-accent` (Playfair Display); si se necesitan, se agregan ahí primero.
+- `@media (prefers-reduced-motion: reduce)` en cualquier cosa que anime.
 
 ---
 
