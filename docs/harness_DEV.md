@@ -85,7 +85,9 @@ garantiza confusión.
 Los códigos `M1`–`M11` son las épicas del
 [board del proyecto](https://github.com/orgs/S3-Simple-Software-Solutions/projects/2),
 que es donde vive el alcance. `M9` es la app móvil del aficionado (React Native
-/ Expo): consume la misma API pero no es un proyecto de esta solución.
+/ Expo): consume la misma API pero no es un proyecto de esta solución. Autentica
+con bearer contra Cognito, mientras la web usa cookie vía BFF — ver
+[`harness_DEV_backend.md §6`](harness_DEV_backend.md).
 
 Detalle de la estructura interna de un módulo backend:
 [`harness_DEV_backend.md`](harness_DEV_backend.md).
