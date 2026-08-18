@@ -109,27 +109,55 @@ irA(`/eventos/${res.value.id}`)   // acá `res.value` está tipado
 
 ## 4. Carga de datos
 
-```ts
-const [data, setData] = useState<Evento[] | null>(null)
-const [cargando, setCargando] = useState(true)
-const [error, setError] = useState<string | null>(null)
+El fetching, la caché, los reintentos y el refetch los maneja **TanStack
+Query**, no un `useEffect` a mano. Es la misma pieza en los dos clientes
+([`harness_DEV_movil.md §4`](harness_DEV_movil.md)): una sola dependencia
+resuelve caché con deduplicación, invalidación y refetch en segundo plano, en
+vez de repetir los tres estados a mano en cada pantalla.
 
-useEffect(() => {
-  entradasApi.listarEventos().then(res => {
-    if (res.ok) setData(res.value)
-    else setError(res.detail)
-    setCargando(false)
+Query **envuelve `apiFetch`, no lo reemplaza**: `apiFetch` sigue siendo el único
+lugar que llama a `fetch` (§3). El puente es el `queryFn`, que convierte el
+`ApiResult` en el modelo de Query —throw en error, valor en éxito—:
+
+```ts
+// modules/entradas/hooks.ts
+export function useEventos() {
+  return useQuery({
+    queryKey: ['eventos'],
+    queryFn: async () => {
+      const res = await entradasApi.listarEventos()
+      if (!res.ok) throw res       // el error tipado (title/detail) viaja como rechazo
+      return res.value
+    },
   })
-}, [])
+}
+```
+
+```ts
+// En la pantalla — los tres estados salen del hook, no de useState sueltos
+const { data, isPending, error } = useEventos()
 ```
 
 Los tres estados se muestran **siempre** — nunca una pantalla en blanco:
 
-| Estado | Qué se muestra |
+| Estado de Query | Qué se muestra |
 |---|---|
-| Cargando | El indicador de la plataforma |
-| Error | El `detail`, que ya viene escrito para el usuario final |
-| Vacío | Un texto que explique que no hay nada, no una lista vacía sin contexto |
+| `isPending` | El indicador de la plataforma |
+| `error` | El `detail` del `ApiResult`, que ya viene escrito para el usuario final |
+| `data` vacío | Un texto que explique que no hay nada, no una lista vacía sin contexto |
+
+**Tras una mutación se invalida la query**, no se re-arma el estado a mano — así
+la caché no queda mostrando datos viejos:
+
+```ts
+const qc = useQueryClient()
+await entradasApi.crearEvento(datos)
+qc.invalidateQueries({ queryKey: ['eventos'] })   // la lista se refresca sola
+```
+
+Cada plataforma monta su `QueryClientProvider` en la raíz (web en `main.tsx`,
+móvil en el layout raíz de expo-router). Es una librería elegida; en la web
+todavía falta instalarla ([`harness_DEV_web.md §5`](harness_DEV_web.md)).
 
 ---
 

@@ -98,7 +98,87 @@ reescribir esta función de memoria.
 
 ---
 
-## 4. Pendiente de crear
+## 4. Estado global — Zustand
+
+El estado global se mantiene **chico a propósito**. La mayoría de lo que parece
+global no lo es:
+
+| Tipo | Ejemplo | Dónde vive |
+|---|---|---|
+| Estado de servidor | eventos, butacas, cupos | cache de datos (TanStack Query, [cliente §4](harness_DEV_cliente.md)), **no** en el store |
+| Estado global de cliente | la sesión: ¿quién soy?, ¿admin? | store de Zustand |
+| Estado local | formularios, modal abierto, tab activo | `useState` en la pantalla |
+
+Meter datos del servidor en el store global es el error clásico: duplica el
+cache y obliga a invalidar a mano. Eso es trabajo del cache de datos, no del
+store.
+
+**Por qué Zustand y no Context.** El store se lee con **selectores** —cada
+componente se re-renderiza solo cuando cambia lo que usa—, no obliga a envolver
+el árbol en providers, y si el estado global crece (un carrito, selección de
+butacas en vivo) escala sin el problema de re-render que tiene Context. La
+contra es una dependencia; es una que paga.
+
+Lo global de verdad hoy es **uno solo**: la sesión.
+
+```ts
+// shared/session/sessionStore.ts
+import { create } from 'zustand'
+import { apiFetch } from '@/shared/utils/api'
+import type { Usuario } from './types'
+
+interface SessionState {
+  usuario: Usuario | null
+  cargando: boolean
+  hidratar: () => Promise<void>
+  cerrarSesion: () => Promise<void>
+}
+
+export const useSession = create<SessionState>((set) => ({
+  usuario: null,
+  cargando: true,
+  // Al arrancar la app: GET /api/me con la cookie de sesión (BFF, backend §6).
+  // 401 => sin sesión, no es un error que mostrar.
+  hidratar: async () => {
+    const res = await apiFetch<Usuario>('/api/me')
+    set({ usuario: res.ok ? res.value : null, cargando: false })
+  },
+  cerrarSesion: async () => {
+    await apiFetch('/api/logout', { method: 'POST' })
+    set({ usuario: null })
+  },
+}))
+```
+
+Consumo — siempre con selector, nunca el store entero:
+
+```ts
+const usuario = useSession(s => s.usuario)
+const esAdmin = useSession(s => s.usuario?.esAdmin ?? false) // derivado, no se guarda
+```
+
+Reglas del store:
+
+- **Un store por preocupación, no un mega-store.** Si mañana hacen falta toasts
+  globales, es otro store chico (`useToasts`), no un campo más en la sesión.
+- **Nada de datos del servidor acá** — eso es cache.
+- **Derivados con selector, no campos guardados.** `esAdmin` sale de `usuario`;
+  guardarlo aparte crea dos fuentes de verdad que se desincronizan.
+- **Se lee con selector** (`useSession(s => s.x)`), no `useSession()` completo:
+  el store entero re-renderiza ante cualquier cambio.
+- **Se hidrata una vez** al montar la app —`useSession.getState().hidratar()`—
+  antes de resolver rutas protegidas.
+
+Depende de piezas que **todavía no existen**: los endpoints `/api/me` y
+`/api/logout` (backend, junto con `CSH.Usuarios`) y el tipo `Usuario`. Mientras
+no estén, el store se puede escribir pero no tiene qué hidratar.
+
+El móvil, si comparte la sesión, **espeja esta forma**; cambia solo la
+hidratación —manda bearer en vez de cookie— igual que con `apiFetch`.
+
+---
+
+## 5. Pendiente de crear
 
 Estas piezas existían en la aplicación anterior y se van a necesitar de nuevo,
 pero **todavía no están** en `frontend/`. Quien las cree primero las agrega acá
@@ -109,5 +189,7 @@ y en `shared/`:
 | `useEscClose(onClose)` | Cerrar modales y paneles con Escape |
 | `useConfirm()` | Confirmar acciones destructivas del admin |
 | `lucide-react` | Íconos — es la librería elegida, falta instalarla |
+| `zustand` | Estado global (§4) — es la librería elegida, falta instalarla |
+| `@tanstack/react-query` | Cache de datos ([cliente §4](harness_DEV_cliente.md)) — es la librería elegida, falta instalarla |
 
 Mientras no existan, no las cites en código: el import no resuelve.
