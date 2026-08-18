@@ -248,6 +248,79 @@ Sin eso, dos compras simultáneas pasan las dos validaciones y venden la misma
 butaca dos veces. Ver el test obligatorio en
 [`harness_DEV_testing.md`](harness_DEV_testing.md).
 
+### Aplicar las migraciones — en el arranque, con un lock
+
+Definir una migración es solo la mitad; la otra es **cuándo se aplica**. En este
+proyecto se aplican **en el arranque del Host**, serializadas por un advisory
+lock de Postgres. Cero infraestructura nueva.
+
+**Por qué en el arranque y no un job aparte.** La base vive en subredes
+privadas: un job desde el CI necesitaría un bastión o SSM para alcanzarla. Las
+instancias, en cambio, ya arrancan dentro de la VPC y con el secreto de la base.
+El día que la escala lo pida se mueve a un job dedicado; hoy no paga.
+
+**Por qué el lock.** El deploy es un `instance_refresh` Rolling al 50% de sanas
+(`infra/modules/computo`): la imagen vieja y la nueva conviven, y en producción
+varias instancias arrancan a la vez. Sin lock, dos aplican las migraciones sobre
+el mismo esquema al mismo tiempo. `pg_advisory_lock` las serializa: la primera
+migra, las demás esperan y encuentran la base ya al día.
+
+```csharp
+// CSH.Host/Startup/Migraciones.cs
+public static class Migraciones
+{
+    private const long Llave = 727; // constante del proyecto, igual en toda instancia
+
+    public static async Task AplicarMigraciones(this WebApplication app)
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+
+        // Una conexión aparte sostiene el lock mientras corren todas las
+        // migraciones; se toma del mismo string que usan los módulos.
+        await using var candado = new NpgsqlConnection(
+            app.Configuration.GetConnectionString("Default"));
+        await candado.OpenAsync();
+        await Ejecutar(candado, "SELECT pg_advisory_lock(@k)");
+
+        try
+        {
+            // Un contexto por módulo. Al nacer un módulo, se agrega su contexto.
+            await scope.ServiceProvider
+                .GetRequiredService<UsuariosDbContext>().Database.MigrateAsync();
+        }
+        finally
+        {
+            await Ejecutar(candado, "SELECT pg_advisory_unlock(@k)");
+        }
+    }
+
+    private static async Task Ejecutar(NpgsqlConnection c, string sql)
+    {
+        await using var cmd = new NpgsqlCommand(sql, c);
+        cmd.Parameters.AddWithValue("k", Llave);
+        await cmd.ExecuteNonQueryAsync();
+    }
+}
+```
+
+```csharp
+// CSH.Host/Program.cs — después de builder.Build(), antes de servir tráfico
+await app.AplicarMigraciones();
+```
+
+**La regla que esto impone: expand/contract.** Como la versión vieja sigue viva
+durante el refresh, cada migración tiene que ser **compatible hacia atrás**. Un
+`drop`/`rename` destructivo en el mismo release que estrena la columna rompe la
+instancia vieja a media rotación. Se parte en dos releases: primero *expandir*
+(agregar lo nuevo sin tocar lo viejo), y solo cuando ninguna instancia usa lo
+viejo, *contraer* (quitarlo) en el release siguiente.
+
+**Nota de permisos.** Hoy la app conecta con el usuario maestro de RDS, que
+puede crear esquemas — por eso `MigrateAsync()` levanta el esquema del módulo
+solo. El día que exista un rol de aplicación con menos privilegios, el DDL de
+las migraciones va a necesitar un rol que sí pueda crear esquemas. Queda como
+pregunta abierta, junto con las de §6.
+
 ---
 
 ## 6. Autenticación
@@ -454,8 +527,14 @@ public interface IUsuariosService
 
 ### Caso 2 — Evento: algo ocurrió y otros módulos reaccionan
 
-**MediatR**. El evento se define en `CSH.Shared`; cada módulo interesado
-registra su propio handler.
+Para reacciones **opcionales**: algo pasó y a otros módulos les interesa, pero la
+operación original no depende de que reaccionen. El evento se define en
+`CSH.Shared/Events/`; cada módulo interesado registra su propio handler.
+
+> **MediatR pasó a licencia comercial.** Antes de adoptarlo hay que decidir:
+> fijar la última versión Apache-2.0, pagar la licencia, o usar un dispatcher
+> propio —para un monolito modular son ~30 líneas—. Lo que sigue vale igual con
+> las tres opciones: el patrón no cambia, solo cambia quién resuelve el `Publish`.
 
 ```csharp
 // CSH.Shared/Events/EntradaCompradaEvent.cs
@@ -464,26 +543,60 @@ public record EntradaCompradaEvent(Guid EntradaId, Guid UsuarioId, string Email)
 ```
 
 ```csharp
-// CSH.Entradas publica el evento desde el handler
+// CSH.Entradas publica el evento — DESPUÉS de confirmar la compra (ver abajo)
 await mediator.Publish(new EntradaCompradaEvent(entrada.Id, usuario.Id, usuario.Email), ct);
 ```
 
 ```csharp
-// CSH.Usuarios escucha y reacciona — en su propio handler
-public class RegistrarCompraHandler(IUsuariosRepository repo)
+// CSH.Comunicaciones escucha y manda el correo de confirmación, en su propio
+// handler. Si el correo falla, la compra sigue siendo válida: por eso es un
+// evento y no una llamada por interfaz.
+public class EnviarConfirmacionHandler(IEmailService email)
     : INotificationHandler<EntradaCompradaEvent>
 {
     public async Task Handle(EntradaCompradaEvent e, CancellationToken ct) =>
-        await repo.RegistrarCompra(e.UsuarioId, e.EntradaId, ct);
+        await email.EnviarConfirmacionCompra(e.Email, e.EntradaId, ct);
 }
 ```
+
+**Ojo con qué se manda por evento.** Mandar el correo es opcional: si se pierde,
+la compra no se invalida. En cambio, *registrar la compra en el perfil del
+usuario* NO es opcional —perder el historial de un aficionado es un bug—, así
+que eso va por **Caso 1** (interfaz síncrona, en la misma transacción), no por
+un evento. La prueba es simple: **si perder la reacción es un bug, no es un
+evento.**
+
+### Cuándo se publica, y qué pasa si el handler falla
+
+Un `Publish` en proceso es **at-most-once**: corre en la misma llamada, y si la
+instancia se cae a mitad, el evento se pierde. Dos reglas lo hacen predecible:
+
+1. **Publicar DESPUÉS del commit, nunca antes.** Si se publica antes de
+   `SaveChanges` y el commit falla, los suscriptores reaccionaron a una compra
+   que no ocurrió. El evento sale cuando el cambio ya es un hecho.
+2. **El handler es idempotente.** Puede llegar a correr dos veces (reintento,
+   redeploy); procesar el mismo evento dos veces no debe duplicar efectos.
+
+Además, cada módulo tiene su **propio `DbContext` y esquema**, así que el
+`Publish` **no es atómico entre módulos**: si el handler falla, el cambio del
+módulo origen ya se comprometió y no hay rollback cruzado. Eso es aceptable
+*solo* porque el evento es opcional (esa es la regla de arriba).
+
+**Cuando perder el evento sí duele → outbox.** Como todos los módulos comparten
+la misma base, la fila del outbox se guarda en el **mismo `SaveChanges`** que el
+cambio de negocio: o se guardan los dos, o ninguno. Un proceso aparte lee el
+outbox y publica. No se arranca con outbox: se agrega el día que exista un evento
+que no se pueda perder. Antes es infraestructura sin dueño.
 
 ### Reglas
 
 - Los eventos van en `CSH.Shared/Events/` — son el contrato público entre módulos.
 - Los handlers de eventos van dentro del módulo que reacciona, nunca en Shared.
 - Comunicación obligatoria y síncrona → interfaz en Shared (Caso 1).
-- Comunicación opcional o desacoplada → evento MediatR (Caso 2).
+- Comunicación opcional o desacoplada → evento (Caso 2).
+- **Si perder la reacción es un bug, es Caso 1, no un evento.**
+- Un evento se publica **después** del commit, y su handler es **idempotente**.
+- Perder el evento no puede ser un bug… salvo que se respalde con un **outbox**.
 - `CSH.Shared` no contiene lógica, solo contratos (`interface`, `record`, `dto`).
 
 ---
