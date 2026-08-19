@@ -1,0 +1,84 @@
+# Entorno de desarrollo local completo, en contenedores.
+#
+# Levanta la base, el backend (.NET con hot reload) y el frontend (Vite con
+# HMR) con un solo comando, sin instalar el SDK ni Node en la máquina — solo
+# hace falta Docker.
+#
+#   docker compose -f docker-compose.dev.yml up
+#
+# Se trabaja contra http://localhost:5173 (Vite), que proxea /api y /healthz
+# al backend, igual que el flujo nativo de docs/harness_DEV.md §3.
+#
+# Alternativa mínima: si preferís correr backend y frontend nativos y solo
+# querés la base en Docker, levantá únicamente el servicio `db`:
+#   docker compose -f docker-compose.dev.yml up db
+#
+# NOTA (Windows): el hot reload sobre volúmenes montados necesita polling, ya
+# activado abajo con DOTNET_USE_POLLING_FILE_WATCHER y CHOKIDAR_USEPOLLING.
+# Usá un clon que NO hayas compilado de forma nativa (o corré `git clean -xdf`
+# antes), para que los `obj/`, `bin/` y `node_modules/` de Windows no choquen
+# con los del contenedor Linux.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: csh_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d csh_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /src
+    command: >
+      sh -c "dotnet restore backend/CSH.slnx &&
+             dotnet watch --project backend/src/CSH.Host --non-interactive"
+    environment:
+      # Bindea a todas las interfaces del contenedor: localhost no es alcanzable
+      # desde el host ni desde el servicio de frontend.
+      ASPNETCORE_URLS: "http://+:5080"
+      ASPNETCORE_ENVIRONMENT: "Development"
+      # Hot reload sobre bind mounts: sin polling, dotnet watch no ve los cambios.
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      # La cadena la usará CSH.Usuarios (Fase 2). El esqueleto actual la ignora.
+      ConnectionStrings__Default: "Host=db;Database=csh_dev;Username=postgres;Password=postgres"
+    ports:
+      - "5080:5080"
+    volumes:
+      - .:/src
+      - nuget:/root/.nuget/packages
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /src/frontend
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      # El proxy de Vite apunta a este destino (ver frontend/vite.config.ts).
+      # Dentro de la red de compose el backend se llama `backend`, no 127.0.0.1.
+      VITE_API_TARGET: "http://backend:5080"
+      # HMR sobre bind mounts en Windows/WSL necesita polling.
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/src
+      - node_modules:/src/frontend/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  nuget:
+  node_modules:
