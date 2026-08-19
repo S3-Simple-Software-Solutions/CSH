@@ -17,12 +17,13 @@ Cuando esté arriba:
 
 | URL | Qué es |
 |---|---|
-| http://localhost:5173 | La app (Vite). **Se trabaja acá.** |
-| http://localhost:5080/healthz | Backend directo — responde `{"estado":"ok"}` |
+| http://localhost:5173 | SPA (Vite). La UI se trabaja acá; **la cookie BFF no pega todavía** (callback en `:5080`). |
+| http://localhost:5080 | Backend + login BFF (`/api/auth/login`) + `/healthz` |
 | localhost:5432 | PostgreSQL (`postgres` / `postgres`, base `csh_dev`) |
 
-El frontend proxea `/api` y `/healthz` al backend, así que la SPA ve el mismo
-origen que en producción.
+El frontend proxea `/api` y `/healthz` al backend. El callback OIDC
+(`/signin-oidc`) **no** pasa por Vite: el login con cookie se prueba en
+`:5080` hasta que eso se cablee. Detalle en [`harness_DEV.md` §3](harness_DEV.md).
 
 Hot reload: editás un `.cs` y el backend recompila solo; editás el frontend y
 el navegador refresca. Para bajarlo, `Ctrl+C` y `docker compose -f
@@ -54,14 +55,16 @@ npm run dev --prefix frontend
   de Windows que rompen dentro del contenedor Linux. Usá un clon limpio o corré
   `git clean -xdf` antes de `up`. El `node_modules` del contenedor vive en un
   volumen aparte para no pisar el del host.
-- **El puerto del backend.** El contenedor bindea a `0.0.0.0:5080`
-  (`ASPNETCORE_URLS`), no a `localhost`, si no no sería alcanzable desde el host
-  ni desde el frontend. Si cambiás el puerto, tocalo en el compose y en
+- **El puerto del backend.** El contenedor tiene que bindear `0.0.0.0:5080`.
+  `launchSettings.json` pisa eso con `localhost`; el compose arranca con
+  `--no-launch-profile`. Si cambiás el puerto, tocalo en el compose y en
   `frontend/vite.config.ts`.
+- **Cognito.** El compose carga `.env.cognito.dev` (`Cognito__*`). Sin ese
+  archivo el Host no arranca. No se commitea.
 
 ## Qué NO cubre todavía
 
-El backend de hoy es esqueleto (`CSH.Host` + `CSH.Shared`) y **no usa la base**.
-La cadena de conexión (`ConnectionStrings__Default`) ya está inyectada, lista
-para cuando exista `CSH.Usuarios` y sus migraciones. La generación de migraciones
-(`dotnet ef`) se corre dentro del contenedor de backend o de forma nativa.
+La SPA en Vite no recibe la cookie del BFF (orígenes `:5173` vs `:5080`).
+Data Protection keys viven en el disco del contenedor: al recrearlo se pierden
+las cookies. `ALLOW_ADMIN_USER_PASSWORD_AUTH` en el client móvil es solo para
+pruebas. Terraform `infra/modules/identidad` aún no declara los dos clients.

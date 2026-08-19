@@ -31,10 +31,10 @@ Al entregar, resumir qué cambió, qué se verificó y qué quedó sin verificar
 
 ## Estado del repositorio
 
-Hoy este repo contiene **solo documentación**: la solución .NET todavía no
-existe y el código de la aplicación anterior fue removido de `dev`. Los
-comandos de build y test del harness describen el destino, no lo que se puede
-correr hoy — ver [`docs/harness_DEV.md`](docs/harness_DEV.md) §6.
+En `dev` existe el esqueleto .NET (`CSH.Host`, `CSH.Shared`, `frontend`) y el
+primer módulo (`CSH.Usuarios`), con auth Cognito (BFF + JWT) y Docker local.
+La app Node de `main` sigue siendo producción. El detalle de qué está
+verificado y qué no está en [`docs/harness_DEV.md`](docs/harness_DEV.md) §7.
 
 `docs/harness.md` describe el flujo de trabajo del stack Node anterior y está
 pendiente de reescritura.

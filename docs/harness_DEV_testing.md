@@ -29,6 +29,11 @@ constraints, transacciones.
 Los tests de handler corren contra **Postgres real vía Testcontainers**.
 Requiere Docker corriendo.
 
+`TreatWarningsAsErrors` convierte advisories de NuGet en error de restore.
+Testcontainers arrastra `SSH.NET` con un advisory: el proyecto de tests puede
+poner `<NuGetAudit>false</NuGetAudit>`. No bajar `TreatWarningsAsErrors` en
+toda la solución por eso.
+
 ```csharp
 // backend/tests/CSH.Entradas.Tests/EntradasFixture.cs
 public class EntradasFixture : IAsyncLifetime
@@ -47,9 +52,14 @@ public class EntradasFixture : IAsyncLifetime
     }
 
     // Cada test que necesite conexión propia (concurrencia) pide una nueva.
+    // El historial de migraciones TAMBIÉN va al esquema del módulo — igual
+    // que en el registro del DbContext. Sin esto, el test ve las migraciones
+    // de otro módulo o no aplica las propias.
     public EntradasDbContext NuevoContexto() =>
         new(new DbContextOptionsBuilder<EntradasDbContext>()
-            .UseNpgsql(ConnectionString).Options);
+            .UseNpgsql(ConnectionString, npgsql =>
+                npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "entradas"))
+            .Options);
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 }

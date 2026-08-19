@@ -144,7 +144,7 @@ export const useSession = create<SessionState>((set) => ({
     set({ usuario: res.ok ? res.value : null, cargando: false })
   },
   cerrarSesion: async () => {
-    await apiFetch('/api/logout', { method: 'POST' })
+    await apiFetch('/api/auth/logout', { method: 'POST' })
     set({ usuario: null })
   },
 }))
@@ -169,12 +169,18 @@ Reglas del store:
 - **Se hidrata una vez** al montar la app —`useSession.getState().hidratar()`—
   antes de resolver rutas protegidas.
 
-Depende de piezas que **todavía no existen**: los endpoints `/api/me` y
-`/api/logout` (backend, junto con `CSH.Usuarios`) y el tipo `Usuario`. Mientras
-no estén, el store se puede escribir pero no tiene qué hidratar.
+`GET /api/me` ya existe (CSH.Usuarios) y crea el perfil si no hay fila.
+`POST /api/auth/logout` cierra la cookie. El store Zustand de sesión **todavía
+no está en el frontend** — este snippet es el contrato a implementar, no un
+archivo que ya viva en `shared/session/`.
+
+En local, hidratar contra Vite (`:5173`) no ve la cookie del BFF hasta que el
+callback OIDC pase por el proxy; ver [`harness_DEV.md` §3](harness_DEV.md).
 
 El móvil, si comparte la sesión, **espeja esta forma**; cambia solo la
-hidratación —manda bearer en vez de cookie— igual que con `apiFetch`.
+hidratación —manda bearer (access token) en vez de cookie— igual que con
+`apiFetch`. El access token no trae los mismos claims que la cookie: ver
+[`harness_DEV_backend.md` §6](harness_DEV_backend.md).
 
 ---
 

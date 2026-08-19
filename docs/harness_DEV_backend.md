@@ -328,14 +328,28 @@ pregunta abierta, junto con las de §6.
 ### Las cuentas viven en Cognito
 
 `CSH.Usuarios` **no guarda credenciales**. Las cuentas —`administrativos`,
-`socios`, `invitados`— viven en un user pool de Cognito
-(`infra/modules/identidad`). El módulo guarda el perfil del aficionado y lo
-relaciona con el `sub` de Cognito, que es el identificador estable de la
-persona.
+`socios`, `invitados`— viven en un user pool de Cognito. El módulo guarda el
+perfil del aficionado y lo relaciona con el `sub` de Cognito, que es el
+identificador estable de la persona (el mismo en web y móvil).
 
-Cognito emite los tokens; el backend los valida contra el issuer del pool. Los
-roles llegan en el claim `cognito:groups`, y la precedencia del grupo decide
-cuál gana cuando alguien pertenece a más de uno.
+Cognito emite los tokens; el Host los valida contra el issuer del pool. Los
+roles llegan en el claim `cognito:groups`. La precedencia del grupo (1 / 10 /
+100) decide cuál gana en Cognito cuando alguien está en más de uno; en la app,
+`IsInRole` mira el claim, no esa precedencia.
+
+**Quién crea el perfil.** El primer `GET /api/me` autenticado inserta la fila
+si no existe (`ObtenerPerfilHandler`). No hay trigger del pool ni Lambda. El
+insert es idempotente (unique en `Id` = `sub`): dos requests a la vez dejan
+una sola fila.
+
+**Dos app clients, no uno.** El BFF usa un client **confidencial** (`generate_secret`).
+El móvil usa uno **público** (PKCE, sin secret). Terraform
+`infra/modules/identidad` todavía define un solo client público: está
+desfasado. Hasta que se alinee, el pool de `dev` en AWS (`csh-dev`) es la
+fuente de verdad operativa.
+
+La configuración entra por `Cognito__*` / user-secrets / `.env.cognito.dev`.
+Nunca el secret en git. Si falta un campo, el Host no arranca.
 
 ### Un esquema por tipo de cliente
 
@@ -367,20 +381,70 @@ del sistema en el entorno más hostil: un XSS da un mes de acceso
 administrativo. Guardarlo solo en memoria se pierde en cada recarga, y la
 presión de UX termina devolviéndolo al `localStorage`.
 
-Por eso la web usa **BFF**: el backend hace el intercambio del código con un
-cliente confidencial, se queda con los tokens de Cognito, y le entrega al
-navegador una cookie `httpOnly`. La SPA nunca ve un token.
+Por eso la web usa **BFF**: el backend hace el intercambio del código con el
+client confidencial y le entrega al navegador una cookie `httpOnly`. La SPA
+nunca ve un token.
+
+El cableado vive en `CSH.Host/Auth/`, no suelto en `Program.cs`. Hace falta un
+**policy scheme** que elija cookie o Bearer según el header `Authorization`.
+Sin eso, un `/api/*` sin sesión redirige al Hosted UI en vez de devolver 401.
 
 ```csharp
-// CSH.Host/Program.cs
-builder.Services.AddAuthentication()
-    .AddCookie()                        // sesión de la SPA
-    .AddOpenIdConnect(/* Cognito */)    // login de la SPA — hace el intercambio
-    .AddJwtBearer(/* issuer del pool */); // app móvil
+// CSH.Host/Auth/AuthServiceCollectionExtensions.cs — idea, no copiar a ciegas
+builder.Services.AddAuthentication(o =>
+{
+    o.DefaultScheme = "CookieOrBearer";
+    o.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+})
+.AddPolicyScheme("CookieOrBearer", "...", o =>
+{
+    o.ForwardDefaultSelector = ctx =>
+        ctx.Request.Headers.Authorization.ToString()
+            .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? JwtBearerDefaults.AuthenticationScheme
+            : CookieAuthenticationDefaults.AuthenticationScheme;
+})
+.AddCookie(/* httpOnly, 401 en /api/* */)
+.AddOpenIdConnect(/* client confidencial, code + PKCE, SaveTokens = false */)
+.AddJwtBearer(/* issuer del pool */);
 ```
 
-Eso exige **dos clientes en Cognito**: el público que ya existe para el móvil, y
-uno confidencial (`generate_secret = true`) para el backend.
+Rutas de sesión (web):
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| `GET` | `/api/auth/login` | Challenge OIDC → Hosted UI |
+| `POST` | `/api/auth/logout` | Cierra cookie + logout de Cognito |
+| `GET` | `/api/me` | Perfil; lo crea si no existe. **401** sin sesión, nunca redirect |
+
+`/api/logout` **no existe**. El frontend usa `/api/auth/logout`.
+
+### Access token vs ID token
+
+La cookie web copia claims del **ID token** (`email`, `name`,
+`cognito:groups`). El móvil, bien hecho, manda el **access token**.
+
+El access token de Cognito **casi nunca trae `email` ni `name`**. Trae `sub`,
+`client_id`, `token_use=access`. `CurrentUser.Email` hoy exige `email`: un
+Bearer de access token puede autenticar y **explotar en `/api/me`**. Eso es
+un hueco conocido, no una feature.
+
+Hasta que se arregle (email en el access token vía pre-token, o perfil que
+solo exija `sub` y complete el resto después):
+
+- No asumir que el JWT del móvil tiene los mismos claims que la cookie.
+- No mandar el ID token “porque funciona en Postman”. El contrato móvil es
+  access token + refresh.
+- `ValidateAudience` hoy está en `false` porque Cognito pone el client en
+  `client_id`, no siempre en `aud`. Hay que validar `client_id` contra el
+  client móvil; dejarlo abierto es temporal.
+
+`cognito:groups` a veces llega como **un** claim con JSON array, no como
+varios claims. `IsInRole("administrativos")` puede fallar hasta que se
+normalice al armar el principal.
+
+`ALLOW_ADMIN_USER_PASSWORD_AUTH` en el client móvil es **solo para pruebas
+locales**. No va a un ambiente real.
 
 ### La sesión web empieza autocontenida
 
@@ -416,41 +480,27 @@ Los handlers **nunca** tocan `HttpContext`. Inyectan `ICurrentUser`, definido en
 `CSH.Shared`:
 
 ```csharp
-// CSH.Shared/Auth/ICurrentUser.cs
+// CSH.Shared/Auth/ICurrentUser.cs — el contrato real
 public interface ICurrentUser
 {
-    Guid Id { get; }
+    Guid Id { get; }              // sub de Cognito
     string Email { get; }
+    string Nombre { get; }
+    string? NumeroSocio { get; }
+    IReadOnlyList<string> Roles { get; }
     bool IsAdmin { get; }
     bool IsAuthenticated { get; }
 }
 ```
 
-`Id` es el **`sub` de Cognito**, no un id propio de la aplicación: es lo que
-`CSH.Usuarios` usa para relacionar el perfil.
+`Id` es el **`sub` de Cognito** (`Guid.Parse`), no un id propio de la
+aplicación: es lo que `CSH.Usuarios` usa para relacionar el perfil.
+
+La implementación (`CSH.Host/Auth/CurrentUser.cs`) es la **única** clase que
+conoce `HttpContext`. Si mañana se reemplaza Cognito, se cambia ahí.
+`RoleClaimType` es `cognito:groups`.
 
 ```csharp
-// CSH.Host/Auth/CurrentUser.cs — única clase que conoce HttpContext
-public class CurrentUser(IHttpContextAccessor http) : ICurrentUser
-{
-    private ClaimsPrincipal User => http.HttpContext!.User;
-
-    // El `sub` de Cognito, estable por persona y compartido entre web y movil.
-    public Guid Id => Guid.Parse(User.FindFirst("sub")!.Value);
-    public string Email => User.FindFirst(ClaimTypes.Email)!.Value;
-
-    // Cognito manda los grupos en `cognito:groups`. El mapeo grupo -> rol se
-    // configura una vez en Program.cs (RoleClaimType), no se resuelve aca.
-    public bool IsAdmin => User.IsInRole("administrativos");
-    public bool IsAuthenticated => User.Identity?.IsAuthenticated ?? false;
-}
-```
-
-Esta clase es la **única** que cambia si mañana se reemplaza Cognito. Ningún
-módulo se entera.
-
-```csharp
-// CSH.Host/Program.cs
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 ```
@@ -491,15 +541,18 @@ Al móvil no le afecta: valida el JWT contra el issuer, sin estado local.
 
 ### Preguntas abiertas
 
-Ninguna de estas está resuelta y todas se materializan al escribir
-`CSH.Usuarios`:
+Cerradas al escribir `CSH.Usuarios`:
 
-1. **Quién crea el perfil.** Cuando alguien se registra en Cognito, ¿quién
-   inserta la fila en `CSH.Usuarios`? ¿El primer login, o un trigger del pool?
-2. **Qué es un `invitado`.** Es uno de los tres grupos. ¿Compra sin cuenta? Eso
-   toca el flujo de entradas y no está en el [glosario](glosario.md).
-3. **El segundo cliente de Cognito.** Hoy `infra/modules/identidad` define uno
-   solo, público, compartido. El BFF necesita uno confidencial aparte.
+1. **Quién crea el perfil.** El primer `GET /api/me` autenticado. No hay
+   trigger de Cognito.
+2. **El segundo client.** Existe: BFF confidencial + móvil público. Falta
+   reflejarlo en Terraform.
+
+Siguen abiertas:
+
+3. **Qué es un `invitado`.** Es un grupo de Cognito (aficionado registrado sin
+   membresía). ¿Se puede comprar **sin cuenta** (guest checkout)? Eso toca
+   Entradas y no está en el [glosario](glosario.md).
 4. **El portal cautivo (M10).** El aficionado se conecta al wifi del estadio
    pasando por Aruba. ¿Es la misma identidad? ¿Participa la app?
 

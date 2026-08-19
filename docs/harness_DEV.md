@@ -128,7 +128,21 @@ Estas aplican a toda tarea, sin importar la capa:
 | Docker | cualquiera | `docker ps` — hace falta para los tests |
 | EF Core tools | 10.x | `dotnet tool install --global dotnet-ef` |
 
-### Primera vez
+Hay **dos formas** de correrlo. Elegí una; no mezcles `bin/`/`obj/` de Windows
+con el contenedor Linux.
+
+| Forma | Cuándo |
+|---|---|
+| Docker Compose — [`local-docker.md`](local-docker.md) | Sin SDK ni Node en el host. Un comando. |
+| Nativo (dos terminales, abajo) | Más rápido; hot reload sin polling. Postgres igual puede ir en Docker. |
+
+El Host aplica las migraciones al arrancar (lock de Postgres,
+[`harness_DEV_backend.md` §5](harness_DEV_backend.md)). No hace falta
+`dotnet ef database update` a mano en el día a día. Cognito **no** va en
+Compose: el backend apunta al pool de AWS `dev` vía `Cognito__*`
+(`.env.cognito.dev`, gitignored).
+
+### Primera vez (nativo)
 
 ```bash
 # 1. Dependencias
@@ -140,11 +154,12 @@ dotnet user-secrets set "ConnectionStrings:Default" \
   "Host=localhost;Database=csh_dev;Username=postgres;Password=<tu-clave>" \
   --project backend/src/CSH.Host
 
-# 3. Aplicar las migraciones de cada módulo (una por DbContext)
-dotnet ef database update --project backend/src/CSH.Entradas --startup-project backend/src/CSH.Host --context EntradasDbContext
-dotnet ef database update --project backend/src/CSH.Parqueo  --startup-project backend/src/CSH.Host --context ParqueoDbContext
-# …repetir por cada módulo
+# 3. Cognito (mismos nombres que .env.cognito.dev)
+dotnet user-secrets set "Cognito:Authority" "https://cognito-idp.us-east-1.amazonaws.com/<pool>" --project backend/src/CSH.Host
+# …Domain, BffClientId, BffClientSecret, MobileClientId
 ```
+
+Sin la sección `Cognito` completa el Host **no arranca**.
 
 ### Día a día — dos terminales
 
@@ -158,9 +173,15 @@ dotnet watch --project backend/src/CSH.Host
 npm run dev --prefix frontend
 ```
 
-Se trabaja contra **`http://localhost:5173`** (Vite), no contra el puerto del
-backend. Vite proxea `/api` al backend, así que el frontend ve el mismo origen
-que en producción y las cookies de sesión funcionan igual que en el deploy.
+Se trabaja contra **`http://localhost:5173`** (Vite) para la SPA. Vite proxea
+`/api` y `/healthz` a `:5080`.
+
+**Cookie de sesión (BFF):** el callback de Cognito hoy es
+`http://localhost:5080/signin-oidc`. El browser trata `:5173` y `:5080` como
+orígenes distintos, así que la cookie emitida en `:5080` **no viaja** con
+`apiFetch` contra Vite. Hasta que los callbacks OIDC pasen por el proxy de
+Vite, el login BFF se prueba en **`:5080`**. En producción Host sirve la SPA
+(mismo origen) y la cookie sí pega.
 
 | Proceso | Puerto | Definido en |
 |---|---|---|
@@ -176,8 +197,13 @@ proxy de Vite apunta a un puerto fijo.
   `--context`. Sin ese flag falla con "More than one DbContext was found".
 - **Migración en el proyecto equivocado:** `--project` es el módulo dueño de la
   migración; `--startup-project` es siempre `backend/src/CSH.Host`.
-- **Cookie de sesión que no pega:** si estás entrando por el puerto del backend
-  en vez de por Vite, el origen no coincide con el del login. Usá 5173.
+- **Cookie de sesión que no pega en local:** el login OIDC deja la cookie en
+  `:5080`. Entrar solo por Vite (`:5173`) no la ve. Ver el párrafo de cookie
+  arriba, no al revés.
+- **Docker en Windows:** `launchSettings.json` bindea `localhost` y tapa
+  `ASPNETCORE_URLS`. El compose usa `--no-launch-profile`. Si compilaste nativo
+  antes, borrá `backend/**/bin` y `backend/**/obj` o el contenedor Linux
+  rompe.
 - **`dotnet watch` no toma un archivo nuevo:** reiniciarlo. El watcher no
   siempre detecta archivos creados fuera del editor.
 - **No crear un namespace que termine en `.Results`.** Colisiona con
@@ -291,9 +317,10 @@ revisa — no se finge que están cubiertas:
 
 ### Orden de implementación
 
-Las capas 1 y 2 se montan con el primer módulo, porque son configuración. Las
-capas 3 y 4 tienen sentido **cuando exista el primer módulo real** contra el
-cual escribir las reglas — antes son tests sobre código que no existe.
+Las capas 1 y 2 ya están: `Directory.Build.props` y las `ProjectReference`.
+`CSH.Usuarios` es el primer módulo real. Las capas 3 y 4 (ArchUnitNET y
+boundaries en el frontend) **ya tienen contra qué escribirse** y siguen
+pendientes — no se finge que existen.
 
 ---
 
@@ -310,17 +337,15 @@ cual escribir las reglas — antes son tests sobre código que no existe.
 
 ## 7. Estado de este documento y preguntas abiertas
 
-**Existe el esqueleto, no los módulos.** `CSH.Host`, `CSH.Shared` y el
-`frontend` compilan, pasan los gates y sirven `/healthz` más la SPA. Lo que
-está verificado contra código real es eso: `Result<T>`, `Error`,
-`ResultExtensions`, `apiFetch` y la configuración de los proyectos.
+**Hay esqueleto y un módulo.** `CSH.Host`, `CSH.Shared`, `frontend` y
+`CSH.Usuarios` compilan. Auth Cognito (cookie BFF + JwtBearer), migraciones al
+arranque, `ICurrentUser`, el fixture de Testcontainers y el esquema
+`usuarios` están **verificados contra código**. El snippet de auth de
+[`harness_DEV_backend.md` §6](harness_DEV_backend.md) se reescribió para
+coincidir con `CSH.Host/Auth/`.
 
-**El resto sigue sin compilar nunca.** Todo lo de módulos, EF Core, migraciones
-con esquema, MediatR, `ICurrentUser` y el fixture de Testcontainers son
-ejemplos escritos de memoria. Es la mayor parte de
-[`harness_DEV_backend.md`](harness_DEV_backend.md), así que tratalo como
-propuesta hasta que el primer módulo lo confirme o lo desmienta —igual que pasó
-con el esqueleto, que corrigió cuatro cosas que este harness afirmaba mal.
+**Lo que sigue siendo propuesta:** Entradas y el resto de bounded contexts,
+MediatR, ArchUnitNET, sesión Zustand en la SPA, y toda la app móvil (M9).
 
 La aplicación anterior (TypeScript + Express + React JSX) fue removida de `dev`
 en el commit `b051ba6`, pero **sigue viva en `main`**, que es lo que corre en
@@ -341,11 +366,8 @@ tiene siempre un partido de calendario asociado, si el club dice "localidad" o
 "sector" en su operación diaria, si `venue` y salón son el mismo concepto, y
 los nombres reales de las tribunas. Ver §5 de ese documento.
 
-**3. Enforcement.** Las capas están definidas en §5 de este documento. Las dos
-primeras —referencias de proyecto y configuración del compilador— se montan con
-el primer módulo. Las dos últimas —ArchUnitNET y ESLint— tienen sentido cuando
-exista el primer módulo real contra el cual escribir las reglas; antes serían
-tests sobre código que no existe.
+**3. Enforcement.** Capas 1 y 2 ya están. ArchUnitNET y ESLint de boundaries
+(capas 3 y 4) siguen pendientes ahora que existe `CSH.Usuarios`.
 
 **4. Sin cubrir todavía:** convenciones de datos (naming en Postgres, zona
 horaria de Costa Rica), idempotencia de webhooks de Stripe, observabilidad, y

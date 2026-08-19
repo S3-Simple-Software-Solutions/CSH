@@ -100,7 +100,10 @@ plano con una sola pieza.
 ## 5. Lo demás que es propio del móvil
 
 **`apiFetch` con bearer.** Misma `ApiResult<T>` que la web, distinto cuerpo:
-manda `Authorization: Bearer`, y refresca el token contra Cognito cuando vence.
+manda `Authorization: Bearer` con el **access token**, y refresca contra
+Cognito cuando vence. No mandar el ID token. El access token de Cognito no
+trae `email`/`name` como la cookie web — el backend tiene que tolerarlo;
+detalle en [`harness_DEV_backend.md` §6](harness_DEV_backend.md).
 
 **Ciclo de vida.** La app se va a segundo plano, el sistema la mata, vuelve.
 Una compra a medias tiene que sobrevivir eso o cancelarse limpio — la web no
