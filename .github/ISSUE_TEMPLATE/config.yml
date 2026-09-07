@@ -1,0 +1,8 @@
+# Se deja habilitado el issue en blanco a proposito: muchas veces conviene abrir
+# uno de una linea y dejar que el intake automatico lo refine, en vez de llenar
+# un formulario.
+blank_issues_enabled: true
+contact_links:
+  - name: Alcance contratado (SOW)
+    url: https://github.com/orgs/S3-Simple-Software-Solutions/projects/2
+    about: Antes de abrir algo nuevo, revisa si ya esta en el roadmap del SOW.
