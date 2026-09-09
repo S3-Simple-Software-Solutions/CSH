@@ -14,6 +14,7 @@ import path from "node:path";
 import process from "node:process";
 import { execFileSync, spawnSync } from "node:child_process";
 import { runAgent, MARCA_FALLO } from "./agent-provider.mjs";
+import { avisar } from "./discord.mjs";
 
 const DEFAULT_CONFIG_PATH = "scripts/issue-userstory.config.json";
 const REPO = process.env.GITHUB_REPOSITORY || "S3-Simple-Software-Solutions/CSH";
@@ -189,18 +190,18 @@ function publicarPlan(issueNumber, planMarkdown) {
   return Boolean(existente);
 }
 
-function avisar(titulo, descripcion, estado, issue, args) {
-  if (args.noNotify || !process.env.DISCORD_WEBHOOK_URL) return;
-  spawnSync("node", [
-    "scripts/agentic-discord.mjs",
-    "--title", titulo,
-    "--description", descripcion,
-    "--status", estado,
-    "--field", `Issue=${issue.url}`
-  ], { stdio: "inherit", encoding: "utf8" });
+async function notificar(titulo, descripcion, estado, issue, args) {
+  if (args.noNotify) return;
+  await avisar({
+    titulo,
+    descripcion,
+    estado,
+    url: issue.url,
+    campos: { Issue: issue.url }
+  });
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.issueNumber) throw new Error("Falta --issue-number.");
 
@@ -216,7 +217,7 @@ function main() {
 
   if (estado.etapa === "Planning") {
     moverEtapa(estado, "Building", env);
-    avisar("Plan aprobado", `Issue #${issue.number}: ${issue.title}\nEtapa: Building`, "success", issue, args);
+    await notificar("Plan aprobado", `Issue #${issue.number}: ${issue.title}\nEtapa: Building`, "success", issue, args);
     console.log(JSON.stringify({ issue: issue.number, accion: "plan aprobado", etapa: "Building" }, null, 2));
     return;
   }
@@ -241,14 +242,14 @@ function main() {
 
   if (!resultado.ok) {
     publicarPlan(issue.number, `> **${MARCA_FALLO} el plan.**\n> ${resultado.motivo}\n>\n> Volve a comentar \`approved\` cuando el agente este operativo.`);
-    avisar("Plan no generado", `Issue #${issue.number}: ${issue.title}\n${resultado.motivo}`, "warning", issue, args);
+    await notificar("Plan no generado", `Issue #${issue.number}: ${issue.title}\n${resultado.motivo}`, "warning", issue, args);
     process.exitCode = 1;
     return;
   }
 
   const reescrito = publicarPlan(issue.number, resultado.texto);
   moverEtapa(estado, "Planning", env);
-  avisar(
+  await notificar(
     reescrito ? "Plan reescrito" : "Plan generado",
     `Issue #${issue.number}: ${issue.title}\nEtapa: Planning`,
     "success",
@@ -263,4 +264,7 @@ function main() {
   }, null, 2));
 }
 
-main();
+main().catch((error) => {
+  console.error(error.message || error);
+  process.exitCode = 1;
+});

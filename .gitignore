@@ -1,3 +1,25 @@
+# --- .NET ---
+bin/
+obj/
+*.user
+# La SPA compilada la genera `npm run build`; no se commitea.
+backend/src/CSH.Host/wwwroot/
+
+# --- Terraform ---
+# El lock de proveedores (.terraform.lock.hcl) SI se commitea: fija versiones.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.auto.tfvars
+*.tfvars.local
+
+# --- Node / Vite ---
+node_modules/
+frontend/node_modules/
+
+# --- Restos del stack anterior ---
 cache/
 dist-server/
 .tmp-scrape/

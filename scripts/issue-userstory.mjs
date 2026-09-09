@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { execFileSync, spawnSync } from "node:child_process";
 import { runAgent, MARCA_FALLO } from "./agent-provider.mjs";
+import { avisar } from "./discord.mjs";
 
 const DEFAULT_CONFIG_PATH = "scripts/issue-userstory.config.json";
 const REPO = process.env.GITHUB_REPOSITORY || "S3-Simple-Software-Solutions/CSH";
@@ -368,21 +369,17 @@ async function notify(issue, enlace, projectResult, args, estado = {}) {
     refinada ? "" : "El agente de refinamiento fallo; se conservo el texto original del issue."
   ].filter(Boolean).join("\n");
 
-  spawn("node", [
-    "scripts/agentic-discord.mjs",
-    "--title",
+  await avisar({
     titulo,
-    "--description",
-    description,
-    "--status",
-    refinada ? "success" : "warning",
-    "--field",
-    `Issue=${issue.url}`,
-    "--field",
-    `Origen=${reescrita ? "reescritura" : "alta"}`,
-    "--field",
-    "Etapa=Backlog"
-  ]);
+    descripcion: description,
+    estado: refinada ? "success" : "warning",
+    url: issue.url,
+    campos: {
+      Issue: issue.url,
+      Origen: reescrita ? "reescritura" : "alta",
+      Etapa: "Backlog"
+    }
+  });
 }
 
 function issueFromArgs(args) {

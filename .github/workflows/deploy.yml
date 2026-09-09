@@ -34,13 +34,34 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          node scripts/agentic-discord.mjs \
-            --title "CSH production deploy started" \
-            --description "Deploying production from ${GITHUB_SHA::7}" \
-            --status info \
-            --field "Environment=production" \
-            --field "Branch=${GITHUB_REF_NAME}" \
-            --field "Run=$RUN_URL"
+          set -euo pipefail
+
+          # En un fork el secret no existe: no avisar no es una falla.
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "Sin DISCORD_WEBHOOK_URL, no se avisa."
+            exit 0
+          fi
+
+          jq -n \
+            --arg desc "Deploying production from ${GITHUB_SHA::7}" \
+            --arg branch "$GITHUB_REF_NAME" \
+            --arg run "$RUN_URL" \
+            '{embeds: [{
+               title: "CSH production deploy started",
+               description: $desc,
+               url: $run,
+               color: 3447003,
+               fields: [
+                 {name: "Environment", value: "production", inline: true},
+                 {name: "Branch", value: $branch, inline: true},
+                 {name: "Run", value: $run}
+               ]
+             }]}' > /tmp/discord.json
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d @/tmp/discord.json \
+            "$DISCORD_WEBHOOK_URL"
 
       - name: Create release metadata
         id: release
@@ -204,7 +225,9 @@ jobs:
             echo "== Installing dependencies for $RELEASE_VERSION =="
             npm ci
             echo "== Building $RELEASE_VERSION =="
-            npm run build
+            # APP_VERSION/COMMIT_SHA terminan en el HTML como
+            # `v0.N-<short sha>` (issue #119). Los lee frontend/vite.config.ts.
+            APP_VERSION="$RELEASE_VERSION" COMMIT_SHA="$DEPLOY_SHA" npm run build
 
             cat > RELEASE_MANIFEST.json <<EOF
           {
@@ -318,16 +341,38 @@ jobs:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          set -euo pipefail
+
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "Sin DISCORD_WEBHOOK_URL, no se avisa."
+            exit 0
+          fi
+
           case "$JOB_STATUS" in
-            success) STATUS=success; TITLE="CSH production deploy succeeded" ;;
-            cancelled) STATUS=warning; TITLE="CSH production deploy cancelled" ;;
-            *) STATUS=failure; TITLE="CSH production deploy failed" ;;
+            success)   TITLE="CSH production deploy succeeded"; COLOR=5763719 ;;
+            cancelled) TITLE="CSH production deploy cancelled"; COLOR=16776960 ;;
+            *)         TITLE="CSH production deploy failed";    COLOR=15548997 ;;
           esac
 
-          node scripts/agentic-discord.mjs \
-            --title "$TITLE" \
-            --description "Production deploy finished${RELEASE_VERSION:+ for $RELEASE_VERSION}" \
-            --status "$STATUS" \
-            --field "Environment=production" \
-            --field "Result=$JOB_STATUS" \
-            --field "Run=$RUN_URL"
+          jq -n \
+            --arg title "$TITLE" \
+            --arg desc "Production deploy finished${RELEASE_VERSION:+ for $RELEASE_VERSION}" \
+            --arg status "$JOB_STATUS" \
+            --arg run "$RUN_URL" \
+            --argjson color "$COLOR" \
+            '{embeds: [{
+               title: $title,
+               description: $desc,
+               url: $run,
+               color: $color,
+               fields: [
+                 {name: "Environment", value: "production", inline: true},
+                 {name: "Result", value: $status, inline: true},
+                 {name: "Run", value: $run}
+               ]
+             }]}' > /tmp/discord.json
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d @/tmp/discord.json \
+            "$DISCORD_WEBHOOK_URL"

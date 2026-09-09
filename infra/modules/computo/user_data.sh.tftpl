@@ -1,0 +1,117 @@
+#!/bin/bash
+# Arranque de una instancia de la aplicacion.
+#
+# La AMI es estandar de Amazon Linux 2023: no se hornea nada por release. Lo
+# unico que la instancia necesita es podman, y la version que trae el repo de
+# AL2023 se actualiza sola. El artefacto de release es la imagen de ECR.
+set -euo pipefail
+exec > >(tee /var/log/csh-arranque.log) 2>&1
+
+# --- Parches de seguridad ----------------------------------------------------
+# La AMI puede tener semanas cuando la instancia arranca. Esto corre una sola
+# vez; lo continuo lo hace dnf-automatic mas abajo.
+dnf update -y --security
+
+dnf install -y podman jq dnf-automatic
+
+# Parches de seguridad aplicados solos. Una instancia del Auto Scaling Group
+# puede vivir semanas, y nadie entra a actualizarla a mano.
+sed -i 's/^upgrade_type.*/upgrade_type = security/' /etc/dnf/automatic.conf
+sed -i 's/^apply_updates.*/apply_updates = yes/' /etc/dnf/automatic.conf
+systemctl enable --now dnf-automatic.timer
+
+# --- Superficie de ataque ----------------------------------------------------
+# El acceso a la instancia es por SSM Session Manager: no hay llaves que rotar
+# ni repartir, y el security group ni siquiera abre el 22. Con SSH corriendo, un
+# error futuro en el security group volveria a exponerlo.
+systemctl disable --now sshd 2>/dev/null || true
+
+# Endurecimientos de kernel que no interfieren con el ruteo que podman necesita
+# para publicar puertos (por eso no se toca ip_forward).
+cat > /etc/sysctl.d/99-csh.conf <<'SYSCTL'
+kernel.dmesg_restrict = 1
+kernel.kptr_restrict = 2
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.all.log_martians = 1
+SYSCTL
+sysctl --system >/dev/null
+
+# --- Credenciales del registro ----------------------------------------------
+aws ecr get-login-password --region ${region} \
+  | podman login --username AWS --password-stdin ${registro_host}
+
+# --- Clave de la base --------------------------------------------------------
+# La administra RDS en Secrets Manager: no viaja por Terraform ni por el CI.
+SECRETO="$(aws secretsmanager get-secret-value \
+  --secret-id ${secreto_arn} \
+  --region ${region} \
+  --query SecretString --output text)"
+
+DB_USUARIO="$(jq -r .username <<<"$SECRETO")"
+DB_CLAVE="$(jq -r .password <<<"$SECRETO")"
+
+install -m 600 -o root -g root /dev/null /etc/csh.env
+cat > /etc/csh.env <<EOF
+ASPNETCORE_URLS=http://0.0.0.0:${puerto}
+ConnectionStrings__Default=Host=${db_host};Port=${db_puerto};Database=${db_nombre};Username=$DB_USUARIO;Password=$DB_CLAVE;SSL Mode=Require;Trust Server Certificate=true
+Cognito__Authority=${cognito_autoridad}
+Cognito__ClientId=${cognito_cliente_id}
+Cognito__Region=${region}
+EOF
+
+unset SECRETO DB_CLAVE
+
+# --- La aplicacion -----------------------------------------------------------
+podman pull ${imagen}
+
+# El contenedor corre con lo minimo:
+#   --cap-drop=ALL          no necesita capacidades: escucha en un puerto alto
+#   --security-opt          no puede ganar privilegios via setuid
+#   --read-only             el sistema de archivos de la imagen no se modifica
+#   --tmpfs /tmp            lo unico que .NET necesita escribir
+#   --pids-limit/--memory   un runaway no se lleva la instancia entera
+cat > /etc/systemd/system/csh.service <<'UNIT'
+[Unit]
+Description=CSH
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=-/usr/bin/podman rm -f csh
+ExecStart=/usr/bin/podman run --rm --name csh \
+  --env-file /etc/csh.env \
+  -p ${puerto}:${puerto} \
+  --cap-drop=ALL \
+  --security-opt=no-new-privileges \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+  --pids-limit 512 \
+  --memory ${memoria_contenedor} \
+  ${imagen}
+ExecStop=/usr/bin/podman stop csh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now csh.service
+
+# El ALB saca de rotacion la instancia si esto no responde.
+for intento in $(seq 1 30); do
+  if curl --fail --silent "http://127.0.0.1:${puerto}/healthz"; then
+    echo "La app respondio el health check"
+    exit 0
+  fi
+  echo "Esperando el arranque de la app... ($intento/30)"
+  sleep 2
+done
+
+echo "La app no arranco"
+systemctl status csh.service --no-pager || true
+journalctl -u csh.service -n 50 --no-pager || true
+exit 1

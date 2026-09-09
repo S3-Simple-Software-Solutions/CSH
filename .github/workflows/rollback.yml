@@ -41,13 +41,33 @@ jobs:
           RELEASE_VERSION: ${{ inputs.release_version }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          node scripts/agentic-discord.mjs \
-            --title "CSH rollback started" \
-            --description "Rolling production back to $RELEASE_VERSION" \
-            --status warning \
-            --field "Environment=production" \
-            --field "Release=$RELEASE_VERSION" \
-            --field "Run=$RUN_URL"
+          set -euo pipefail
+
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "Sin DISCORD_WEBHOOK_URL, no se avisa."
+            exit 0
+          fi
+
+          jq -n \
+            --arg desc "Rolling production back to $RELEASE_VERSION" \
+            --arg release "$RELEASE_VERSION" \
+            --arg run "$RUN_URL" \
+            '{embeds: [{
+               title: "CSH rollback started",
+               description: $desc,
+               url: $run,
+               color: 16776960,
+               fields: [
+                 {name: "Environment", value: "production", inline: true},
+                 {name: "Release", value: $release, inline: true},
+                 {name: "Run", value: $run}
+               ]
+             }]}' > /tmp/discord.json
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d @/tmp/discord.json \
+            "$DISCORD_WEBHOOK_URL"
 
       - name: Validate selected release
         id: release
@@ -280,17 +300,40 @@ jobs:
           RELEASE_URL: ${{ steps.release.outputs.url }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          set -euo pipefail
+
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "Sin DISCORD_WEBHOOK_URL, no se avisa."
+            exit 0
+          fi
+
           case "$JOB_STATUS" in
-            success) STATUS=success; TITLE="CSH rollback succeeded" ;;
-            cancelled) STATUS=warning; TITLE="CSH rollback cancelled" ;;
-            *) STATUS=failure; TITLE="CSH rollback failed" ;;
+            success)   TITLE="CSH rollback succeeded"; COLOR=5763719 ;;
+            cancelled) TITLE="CSH rollback cancelled"; COLOR=16776960 ;;
+            *)         TITLE="CSH rollback failed";    COLOR=15548997 ;;
           esac
 
-          node scripts/agentic-discord.mjs \
-            --title "$TITLE" \
-            --description "Rollback finished for $RELEASE_VERSION" \
-            --status "$STATUS" \
-            --field "Environment=production" \
-            --field "Result=$JOB_STATUS" \
-            --field "Release=${RELEASE_URL:-$RELEASE_VERSION}" \
-            --field "Run=$RUN_URL"
+          jq -n \
+            --arg title "$TITLE" \
+            --arg desc "Rollback finished for $RELEASE_VERSION" \
+            --arg status "$JOB_STATUS" \
+            --arg release "${RELEASE_URL:-$RELEASE_VERSION}" \
+            --arg run "$RUN_URL" \
+            --argjson color "$COLOR" \
+            '{embeds: [{
+               title: $title,
+               description: $desc,
+               url: $run,
+               color: $color,
+               fields: [
+                 {name: "Environment", value: "production", inline: true},
+                 {name: "Result", value: $status, inline: true},
+                 {name: "Release", value: $release},
+                 {name: "Run", value: $run}
+               ]
+             }]}' > /tmp/discord.json
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d @/tmp/discord.json \
+            "$DISCORD_WEBHOOK_URL"

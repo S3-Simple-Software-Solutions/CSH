@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { execFileSync, spawnSync } from "node:child_process";
+import { avisar } from "./discord.mjs";
 
 const DEFAULT_CONFIG_PATH = "scripts/issue-userstory.config.json";
 const REPO = process.env.GITHUB_REPOSITORY || "S3-Simple-Software-Solutions/CSH";
@@ -124,19 +125,18 @@ function setStage(config, issue, stage) {
   }
 }
 
-function notify(issue, stage, result, args) {
-  if (args.noNotify || !process.env.DISCORD_WEBHOOK_URL) return;
-  spawnSync("node", [
-    "scripts/agentic-discord.mjs",
-    "--title", STAGE_TITLES[stage] || `User story en ${stage}`,
-    "--description", `Issue #${issue.number}: ${issue.title}`,
-    "--status", result.moved ? "success" : "warning",
-    "--field", `Issue=${issue.url}`,
-    "--field", `Etapa=${stage}`
-  ], { stdio: "inherit", encoding: "utf8" });
+async function notify(issue, stage, result, args) {
+  if (args.noNotify) return;
+  await avisar({
+    titulo: STAGE_TITLES[stage] || `User story en ${stage}`,
+    descripcion: `Issue #${issue.number}: ${issue.title}`,
+    estado: result.moved ? "success" : "warning",
+    url: issue.url,
+    campos: { Issue: issue.url, Etapa: stage }
+  });
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.issueNumber || !args.stage) {
     throw new Error("Faltan --issue-number o --stage.");
@@ -144,10 +144,13 @@ function main() {
   const config = loadConfig(args.configPath);
   const issue = fetchIssue(args.issueNumber);
   const result = setStage(config, issue, args.stage);
-  notify(issue, args.stage, result, args);
+  await notify(issue, args.stage, result, args);
 
   console.log(JSON.stringify({ issue: issue.number, stage: args.stage, ...result }, null, 2));
   if (!result.moved) process.exitCode = 1;
 }
 
-main();
+main().catch((error) => {
+  console.error(error.message || error);
+  process.exitCode = 1;
+});
